@@ -47,10 +47,10 @@ The orchestrator is the heart of Roots. It is stateless between ticks — each t
 - `InvalidTransitionError(Exception)`: includes `current`, `target`, `valid_targets: list[RunStatus]`
 
 **Acceptance Criteria:**
-- [ ] All valid transitions accepted
-- [ ] Invalid transitions raise InvalidTransitionError with valid targets listed
-- [ ] Terminal states have no valid transitions
-- [ ] Tests cover every valid transition and key invalid ones (e.g., completed→running)
+- [x] All valid transitions accepted
+- [x] Invalid transitions raise InvalidTransitionError with valid targets listed
+- [x] Terminal states have no valid transitions
+- [x] Tests cover every valid transition and key invalid ones (e.g., completed→running)
 
 ### US-002: ProcessRunner — Tick-Based Execution Loop
 
