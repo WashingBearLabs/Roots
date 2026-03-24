@@ -77,11 +77,11 @@ The Roots CLI (`roots`) provides command-line access to process validation, serv
 - Use `typer.echo` with color styling via `rich` (Typer supports this)
 
 **Acceptance Criteria:**
-- [ ] Single file validation works
-- [ ] Directory validation finds and validates all YAML files
-- [ ] Errors include file path, node ID context, and field details
-- [ ] Exit code is 0 for all valid, 1 for any invalid
-- [ ] Tests verify valid file, invalid file, directory scanning
+- [x] Single file validation works
+- [x] Directory validation finds and validates all YAML files
+- [x] Errors include file path, node ID context, and field details
+- [x] Exit code is 0 for all valid, 1 for any invalid
+- [x] Tests verify valid file, invalid file, directory scanning
 
 ### US-004: `roots run` Command
 
