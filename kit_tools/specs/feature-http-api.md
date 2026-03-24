@@ -95,11 +95,11 @@ The HTTP API is a FastAPI server exposing the full Roots framework via REST endp
 - All lifecycle endpoints validate state transitions via the state machine. Return 409 Conflict with `{"detail": "Cannot transition from {current} to {target}. Valid targets: [...]"}`.
 
 **Acceptance Criteria:**
-- [ ] Pause transitions running→paused
-- [ ] Resume transitions paused→running and restarts execution
-- [ ] Invalid transitions return 409 with helpful message
-- [ ] History returns ordered events
-- [ ] Tests cover pause/resume cycle and invalid transitions
+- [x] Pause transitions running→paused
+- [x] Resume transitions paused→running and restarts execution
+- [x] Invalid transitions return 409 with helpful message
+- [x] History returns ordered events
+- [x] Tests cover pause/resume cycle and invalid transitions
 
 ### US-005: Checkpoint and Escalation Resolution Routes
 
