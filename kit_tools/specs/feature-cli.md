@@ -123,12 +123,12 @@ The Roots CLI (`roots`) provides command-line access to process validation, serv
   - Ping each remote agent's callback_url, show healthy/unhealthy
 
 **Acceptance Criteria:**
-- [ ] `roots status` lists runs in a formatted table
-- [ ] Status filters work (--process, --status)
-- [ ] `roots status <run_id>` shows detailed run info
-- [ ] `roots agents` lists all registered agents
-- [ ] `roots agents health` pings remote agents
-- [ ] Tests verify output formatting and filtering
+- [x] `roots status` lists runs in a formatted table
+- [x] Status filters work (--process, --status)
+- [x] `roots status <run_id>` shows detailed run info
+- [x] `roots agents` lists all registered agents
+- [x] `roots agents health` pings remote agents
+- [x] Tests verify output formatting and filtering
 
 ## Out of Scope
 
