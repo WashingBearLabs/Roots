@@ -214,3 +214,57 @@
 - Learnings: asyncio.create_task for fire-and-forget webhook delivery within an EventSink.emit — tasks are collected by the emitter's own buffer management; hmac.new(secret.encode(), body_bytes, hashlib.sha256).hexdigest() computes HMAC-SHA256 on the exact JSON bytes sent in the POST body; httpx.MockTransport with request capture list is the standard test pattern for verifying HTTP calls including headers and body content; Verifier note: Clean implementation. WebhookDispatcher correctly subclasses EventSink, uses fire-and-forget asyncio.create_task for delivery, computes HMAC-SHA256 per spec, and handles failures gracefully. Tests are thorough with good coverage of edge cases.
 - Committed: feat(event-system): US-005 - WebhookDispatcher (as EventSink)
 
+### US-001: Run State Machine (Attempt 1) — PASS
+- Completed: 2026-03-24T06:01:05Z
+- Verified by: independent verifier session
+- Learnings: StrEnum pattern is consistent across the codebase (schema.py, types.py) — used the same import style from enum; Test files follow test_{module}.py naming convention in the top-level tests/ directory; Verifier note: Clean, minimal implementation matching the spec exactly. RunStatus is StrEnum with 6 values, transition map matches spec, can_transition and transition functions work as specified, InvalidTransitionError includes all required attributes. No extraneous code or scope creep.
+- Committed: feat(orchestrator-engine): US-001 - Run State Machine
+
+### US-002: ProcessRunner — Tick-Based Execution Loop (Attempt 1) — PASS
+- Completed: 2026-03-24T06:05:25Z
+- Verified by: independent verifier session
+- Learnings: EventEmitter.emit() is synchronous fire-and-forget — call emitter.close() in tests to await pending sink tasks before asserting; EdgeDefinition uses from_node/to_node fields (with alias from/to for YAML), while DecisionEdge uses target — _resolve_next handles both via getattr; SqliteBackend.create_run returns a RunRecord with status=pending and current_node_id=None — the first tick must set both status and current_node_id; time.monotonic() for duration_ms measurement avoids clock skew issues; Verifier note: All 8 acceptance criteria are met. Implementation follows the spec closely: tick is crash-safe with try/finally lock management, state is loaded fresh each tick, pending→running transition works correctly, events include all required fields, history uses lifecycle strings, and run_to_completion loops properly. 13 tests all pass using SQLite in-memory backend with a mock echo agent.
+- Committed: feat(orchestrator-engine): US-002 - ProcessRunner — Tick-Based Execution Loop
+
+### US-003: Agent and Agent Pool Handlers (Attempt 1) — PASS
+- Completed: 2026-03-24T06:10:06Z
+- Verified by: independent verifier session
+- Learnings: Escalation in handlers must set a flag (_escalated) rather than directly updating run status, because tick() calls update_run_atomically after the handler returns — direct status updates get overwritten; Agent pool _invoke_pool_agent helper centralizes event emission (invoked/returned) for all pool modes, avoiding duplication across parallel/sequential/first_pass; asyncio.gather with return_exceptions=True allows filtering successful AgentOutput from BaseException failures in parallel pool mode; Verifier note: Implementation is clean and well-structured. Handler dispatch is properly wired in _dispatch_node. Pool modes correctly follow the spec: parallel uses asyncio.gather, sequential chains state, first_pass treats escalation as failure. Escalation creates records with correct trigger_type. All 13 tests pass with no regressions in orchestrator tests.
+- Committed: feat(orchestrator-engine): US-003 - Agent and Agent Pool Handlers
+
+### US-004: Decision, Checkpoint, Emit, and End Handlers (Attempt 1) — PASS
+- Completed: 2026-03-24T06:15:33Z
+- Verified by: independent verifier session
+- Learnings: Escalation in handlers must set _escalated flag rather than directly updating run status — tick() handles the atomic status update; Decision handler routes via _decision_next_node field on ProcessRunner, checked in tick() between _escalated and _resolve_next; Emit nodes use custom event_type strings that don't map to EventType enum — construct EventEnvelope directly instead of create_event; Checkpoint handler reuses the _escalated flag to trigger pause, since the tick loop already handles escalated→paused transition; Verifier note: Implementation is clean and matches the spec closely. All handlers follow the patterns described in the implementation hints. The dispatch dict covers all NodeType enum values. Tests are thorough with 11 passing tests covering normal paths, edge cases (missing payload keys), and error paths (escalation, fork/join stubs). Both test_orchestrator.py (13 passed) and test_handlers.py (11 passed) run green.
+- Committed: feat(orchestrator-engine): US-004 - Decision, Checkpoint, Emit, and End Handlers
+
+### US-005: Edge Evaluation and State Accumulation (Attempt 1) — PASS
+- Completed: 2026-03-24T06:19:52Z
+- Verified by: independent verifier session
+- Learnings: Edge evaluation and state accumulation were already implemented in prior stories (US-002 tick loop, US-004 handlers) — US-005 required dedicated tests proving each acceptance criterion; Echo agent returns {"echo": work_item_state} which naturally proves state accumulation — node2's output contains node1's output_key in the echoed state; Nodes without output_key (emit, checkpoint, decision, end) return None from handlers and fail the hasattr check, so state is never modified; Verifier note: All 7 acceptance criteria are met. Implementation is clean — edge evaluation in _resolve_next, decision routing via _decision_next_node, state accumulation via output_key guard in tick(). All 8 tests pass. OrchestrationError is properly defined. No issues found.
+- Committed: feat(orchestrator-engine): US-005 - Edge Evaluation and State Accumulation
+
+### US-006: Orchestrator Class (Attempt 1) — PASS
+- Completed: 2026-03-24T06:24:53Z
+- Verified by: independent verifier session
+- Learnings: Orchestrator creates AgentInvoker internally from the AgentRegistry — ProcessRunner needs AgentInvoker, not the registry directly; SqliteBackend.update_run_status does raw SQL without state machine validation, so setting current_node_id on a pending run works by calling update_run_status with the same pending status; run_loop graceful shutdown: catching asyncio.CancelledError and returning cleanly allows the task to complete without propagating the error; Verifier note: Implementation is clean and follows the spec closely. Constructor signature matches hints. All methods (start_run, tick_all, run_loop, execute_run) are implemented as specified. 10 new tests all pass, 13 existing orchestrator tests pass with no regressions.
+- Committed: feat(orchestrator-engine): US-006 - Orchestrator Class
+
+### US-007: Roots Embedded API — Core Methods (Attempt 1) — PASS
+- Completed: 2026-03-24T06:28:38Z
+- Verified by: independent verifier session
+- Learnings: Orchestrator already creates AgentInvoker internally from AgentRegistry, so Roots class only needs to pass the registry to Orchestrator — not the invoker; SqliteBackend requires explicit initialize() call before use — Roots constructor does not call it, leaving initialization to the consumer; Echo agent must return dict with 'output' and 'escalate' keys to match AgentOutput model expectations; Verifier note: All 9 acceptance criteria met. Full test suite passes (573 passed, 80 skipped). Implementation is clean, follows the spec closely, and all internal wiring matches the implementation hints.
+- Committed: feat(orchestrator-engine): US-007 - Roots Embedded API — Core Methods
+
+### US-008: Roots Embedded API — Graph and Resolution (Attempt 1) — PASS
+- Completed: 2026-03-24T06:33:02Z
+- Verified by: independent verifier session
+- Learnings: Checkpoint node gets both 'entered' and 'completed' history events from the tick loop even when run pauses — current_node_id + paused status must take priority over history 'completed' in node status derivation; Edge status derivation: 'traversed' if both from and to nodes have any history events, 'pending' otherwise — simple set membership check on node_events keys; Verifier note: All 586 tests pass (80 skipped). Implementation is clean, well-structured, and follows the spec's implementation hints faithfully. The only discrepancy is between the 'max 2 queries' acceptance criterion text and the implementation hints that explicitly describe 3 queries — the code follows the hints. The 'skipped' node status from hints is not implemented but is not required by acceptance criteria.
+- Committed: feat(orchestrator-engine): US-008 - Roots Embedded API — Graph and Resolution
+
+### US-009: Example Process YAML Files (Attempt 1) — PASS
+- Completed: 2026-03-24T06:37:42Z
+- Verified by: independent verifier session
+- Learnings: Echo agent must return dict with 'output' and 'escalate' keys to match AgentOutput model — consistent with prior learnings; RunRecord uses 'work_item_state' field, not 'state'; The parallel-validation YAML has 9 nodes (not 10 as might be expected from the hint) — the gate decision node uses config edges rather than top-level edges per schema requirements; SqliteBackend requires explicit initialize() call before use — Roots constructor does not call it; Verifier note: Clean implementation. All files match the spec's implementation hints closely. Full test suite passes with no regressions (594 passed, 80 skipped). The example script runs successfully as a standalone program.
+- Committed: feat(orchestrator-engine): US-009 - Example Process YAML Files
+

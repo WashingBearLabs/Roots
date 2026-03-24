@@ -10,7 +10,7 @@
 > **TEMPLATE_INTENT:** Persistent record of code quality, security, and intent alignment findings from automated validation. Tracks findings across sessions with status tracking and archival.
 
 > Last updated: 2026-03-23
-> Updated by: Claude (validate-feature — event-system)
+> Updated by: Claude (validate-feature — orchestrator-engine)
 
 ---
 
@@ -36,6 +36,53 @@
 
 <!-- Newest findings at top. Each entry has a unique ID: YYYY-MM-DD-NNN -->
 <!-- Findings are added by /kit-tools:validate-feature -->
+
+### 2026-03-23 — Orchestrator Engine Validation
+
+| ID | Category | Severity | File | Status |
+|----|----------|----------|------|--------|
+| 2026-03-23-075 | quality | warning | `roots/__init__.py` | open |
+| 2026-03-23-076 | quality | warning | `roots/__init__.py` | open |
+| 2026-03-23-077 | quality | warning | `roots/core/orchestrator.py` | open |
+| 2026-03-23-078 | quality | warning | `roots/core/orchestrator.py` | open |
+| 2026-03-23-079 | quality | warning | `roots/core/orchestrator.py` | open |
+| 2026-03-23-080 | quality | info | `roots/core/state_machine.py` | open |
+| 2026-03-23-081 | security | info | `roots/storage/postgres.py` | open |
+| 2026-03-23-082 | security | info | `roots/core/orchestrator.py` | open |
+| 2026-03-23-083 | compliance | info | `feature spec` | open |
+| 2026-03-23-084 | testing | info | `test suite` | open |
+
+**2026-03-23-075** — `resolve_checkpoint` method (~130 lines) contains three near-identical branches for approve/reject/redirect, each duplicating checkpoint/escalation resolution and event emission logic.
+> Recommendation: Extract common resolution logic into a `_resolve_record` helper to eliminate duplication, reducing the method to ~40-50 lines.
+
+**2026-03-23-076** — `get_run_graph` method (~95 lines) handles query execution, node status derivation, timestamp extraction, and edge status derivation all inline. Exceeds 50-line guideline.
+> Recommendation: Extract node status derivation and edge status derivation into `_derive_node_statuses()` and `_derive_edge_statuses()` helper methods.
+
+**2026-03-23-077** — `ProcessRunner.tick()` method (~127 lines) handles lock acquisition, state loading, status transitions, node dispatch, state persistence, event emission, and lock release in a single method body.
+> Recommendation: Extract the lock-guarded body (steps 2-10) into a `_execute_tick_body()` method. Keep `tick()` focused on lock acquire/release.
+
+**2026-03-23-078** — Line 233 contains a redundant local import `from roots.core.schema import EndNodeConfig` inside `_resolve_next`. `EndNodeConfig` is already imported at module scope (line 19).
+> Recommendation: Remove the local import on line 233.
+
+**2026-03-23-079** — Lines 242-243 and 250-252 use fragile `getattr` fallback pattern (`getattr(first_edge, "to_node", None) or getattr(first_edge, "target", None)`) to resolve next node ID. Same pattern in `roots/__init__.py` line 242-243. Duck-typing makes it unclear which edge type is handled and could silently return `None`.
+> Recommendation: Use explicit `isinstance` checks against `EdgeDefinition` and `DecisionEdge`, or unify edge types with a consistent target property.
+
+**2026-03-23-080** — The `transition()` and `can_transition()` functions in `roots/core/state_machine.py` are not called by any production code path (orchestrator, storage). Status transitions bypass the state machine validation entirely.
+> Recommendation: Integrate state machine validation into `update_run_status` / orchestrator status changes, or document that validation is the caller's responsibility.
+
+**2026-03-23-081** — `PostgresBackend.__init__` stores the DSN string (which typically contains database credentials) as `self._dsn`. If the object appears in error tracebacks or debugging output, the password could be exposed.
+> Recommendation: Add a `__repr__` method that masks the DSN, or accept DSN components separately.
+
+**2026-03-23-082** — `ProcessRunner.run_to_completion()` has no upper bound on iterations. A process definition with a cycle (which the validator does not check for) could cause an infinite loop.
+> Recommendation: Add a configurable maximum tick count (e.g., default 1000) and raise `OrchestrationError` if exceeded. Consider adding cycle detection to the process validator.
+
+**2026-03-23-083** — US-008 acceptance criterion 4 states "Graph loads in max 2 storage queries" but the implementation uses 3 queries (get_run, get_process, list_history_events). The spec's own implementation hints explicitly describe this 3-query approach and note it is "still efficient — no N+1."
+> Recommendation: Update the acceptance criterion text from "max 2 storage queries" to "max 3 storage queries (no N+1)" to match the implementation hints.
+
+**2026-03-23-084** — Orchestrator engine test suite: 594 passed, 80 skipped (PostgreSQL — no `ROOTS_POSTGRES_DSN`), 0 failures in 3.10s. 36 warnings (expected unreachable-node warnings in validator/graph tests).
+> Recommendation: No action required.
+
+---
 
 ### 2026-03-23 — Event System Validation
 
