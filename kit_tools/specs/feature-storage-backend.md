@@ -188,12 +188,12 @@ The storage backend provides the persistence layer for all Roots state. It defin
 - `check_run_lock(run_id)`: SELECT locked_by, locked_at FROM runs WHERE id=?
 
 **Acceptance Criteria:**
-- [ ] Lock acquired on unlocked run returns True
-- [ ] Lock on already-locked run returns False
-- [ ] Stale lock (past timeout) is reclaimed
-- [ ] Release by owner clears lock
-- [ ] Release by non-owner is no-op
-- [ ] Tests cover: acquire, contention, staleness, release, non-owner release
+- [x] Lock acquired on unlocked run returns True
+- [x] Lock on already-locked run returns False
+- [x] Stale lock (past timeout) is reclaimed
+- [x] Release by owner clears lock
+- [x] Release by non-owner is no-op
+- [x] Tests cover: acquire, contention, staleness, release, non-owner release
 
 ### US-008: PostgreSQL Backend — Schema and Core CRUD
 
