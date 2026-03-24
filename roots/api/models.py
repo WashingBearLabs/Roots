@@ -66,3 +66,10 @@ class RunResponse(BaseModel):
     work_item_state: dict[str, Any]
     created_at: datetime
     updated_at: datetime
+
+
+class HistoryEventResponse(BaseModel):
+    event_type: str
+    node_id: str | None = None
+    data: dict[str, Any]
+    created_at: datetime
