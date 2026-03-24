@@ -1,4 +1,4 @@
-"""Tests for fork/join (US-001 branch creation, US-002 parallel execution, US-003 merge_all, US-004 collect)."""
+"""Tests for fork/join (US-001 branch creation, US-002 parallel execution, US-003 merge_all, US-004 collect, US-005 partial failure)."""
 
 from __future__ import annotations
 
@@ -1433,14 +1433,14 @@ class TestJoinCollect:
         assert "error" in results[1]
         assert "branch failure" in results[1]["error"]
 
-    async def test_collect_without_allow_partial_skips_failed(
+    async def test_collect_without_allow_partial_fails_on_branch_failure(
         self,
         sqlite_storage: StorageBackend,
         invoker: AgentInvoker,
         decision_engine: DecisionEngine,
         emitter: EventEmitter,
     ) -> None:
-        """Failed branches are skipped when allow_partial is False."""
+        """allow_partial=False fails the run on any branch failure (US-005)."""
         proc, run_id = await _setup_run(
             sqlite_storage,
             make_collect_process(
@@ -1455,14 +1455,8 @@ class TestJoinCollect:
         )
 
         await runner.tick()  # fork
-        await runner.tick()  # join
-
-        run = await sqlite_storage.get_run(run_id)
-        assert run is not None
-        results = run.work_item_state["results"]
-        # Only the successful branch is included
-        assert len(results) == 1
-        assert results[0]["branch_id"] == "branch-0"
+        with pytest.raises(OrchestrationError, match="Branch failure"):
+            await runner.tick()  # join — should fail
 
     async def test_collect_continues_to_end(
         self,
@@ -1489,3 +1483,399 @@ class TestJoinCollect:
         run = await sqlite_storage.get_run(run_id)
         assert run is not None
         assert run.status == RunStatus.COMPLETED
+
+
+# --- US-005 Helpers ---
+
+
+def make_fork_all_failing_process(
+    allow_partial: bool = False,
+    merge_strategy: MergeStrategy = MergeStrategy.MERGE_ALL,
+    collect_key: str | None = None,
+) -> ProcessDefinition:
+    """Fork → 2 failing agents → Join → End."""
+    join_config: dict[str, Any] = {
+        "merge_strategy": merge_strategy,
+        "allow_partial": allow_partial,
+    }
+    if collect_key is not None:
+        join_config["collect_key"] = collect_key
+    return ProcessDefinition(
+        id="fork-all-fail",
+        name="Fork All Failing",
+        version="1.0.0",
+        nodes=[
+            NodeDefinition(
+                id="fork1",
+                type=NodeType.FORK,
+                label="Fork",
+                config=ForkNodeConfig(),
+            ),
+            NodeDefinition(
+                id="branch_a",
+                type=NodeType.AGENT,
+                label="Failing A",
+                config=AgentNodeConfig(agent="failing", output_key="a_out"),
+            ),
+            NodeDefinition(
+                id="branch_b",
+                type=NodeType.AGENT,
+                label="Failing B",
+                config=AgentNodeConfig(agent="failing", output_key="b_out"),
+            ),
+            NodeDefinition(
+                id="join1",
+                type=NodeType.JOIN,
+                label="Join",
+                config=JoinNodeConfig(**join_config),
+            ),
+            NodeDefinition(
+                id="done",
+                type=NodeType.END,
+                label="Done",
+                config=EndNodeConfig(status=EndStatus.COMPLETED),
+            ),
+        ],
+        edges=[
+            EdgeDefinition(from_node="fork1", to_node="branch_a"),
+            EdgeDefinition(from_node="fork1", to_node="branch_b"),
+            EdgeDefinition(from_node="branch_a", to_node="join1"),
+            EdgeDefinition(from_node="branch_b", to_node="join1"),
+            EdgeDefinition(from_node="join1", to_node="done"),
+        ],
+        entry_point="fork1",
+        fork_join_map={"fork1": "join1"},
+    )
+
+
+def make_partial_failure_process(
+    allow_partial: bool,
+    merge_strategy: MergeStrategy = MergeStrategy.MERGE_ALL,
+    collect_key: str | None = None,
+) -> ProcessDefinition:
+    """Fork → 1 echo + 1 failing → Join → End."""
+    join_config: dict[str, Any] = {
+        "merge_strategy": merge_strategy,
+        "allow_partial": allow_partial,
+    }
+    if collect_key is not None:
+        join_config["collect_key"] = collect_key
+    return ProcessDefinition(
+        id="fork-partial",
+        name="Fork Partial Failure",
+        version="1.0.0",
+        nodes=[
+            NodeDefinition(
+                id="fork1",
+                type=NodeType.FORK,
+                label="Fork",
+                config=ForkNodeConfig(),
+            ),
+            NodeDefinition(
+                id="branch_a",
+                type=NodeType.AGENT,
+                label="Good Branch",
+                config=AgentNodeConfig(agent="echo", output_key="a_out"),
+            ),
+            NodeDefinition(
+                id="branch_b",
+                type=NodeType.AGENT,
+                label="Failing Branch",
+                config=AgentNodeConfig(agent="failing", output_key="b_out"),
+            ),
+            NodeDefinition(
+                id="join1",
+                type=NodeType.JOIN,
+                label="Join",
+                config=JoinNodeConfig(**join_config),
+            ),
+            NodeDefinition(
+                id="done",
+                type=NodeType.END,
+                label="Done",
+                config=EndNodeConfig(status=EndStatus.COMPLETED),
+            ),
+        ],
+        edges=[
+            EdgeDefinition(from_node="fork1", to_node="branch_a"),
+            EdgeDefinition(from_node="fork1", to_node="branch_b"),
+            EdgeDefinition(from_node="branch_a", to_node="join1"),
+            EdgeDefinition(from_node="branch_b", to_node="join1"),
+            EdgeDefinition(from_node="join1", to_node="done"),
+        ],
+        entry_point="fork1",
+        fork_join_map={"fork1": "join1"},
+    )
+
+
+# --- US-005 Tests ---
+
+
+class TestPartialFailureHandling:
+    """US-005: Partial Failure Handling."""
+
+    async def test_allow_partial_false_fails_on_any_branch_failure(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+        sink: CollectorSink,
+    ) -> None:
+        """allow_partial=False fails run on any branch failure."""
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_partial_failure_process(allow_partial=False),
+            {"input": "strict"},
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        await runner.tick()  # fork
+        with pytest.raises(OrchestrationError, match="Branch failure"):
+            await runner.tick()  # join — should raise
+
+        # run.failed event should have been emitted
+        failed_events = [
+            e for e in sink.events if e.event == "roots.run.failed"
+        ]
+        assert len(failed_events) == 1
+        assert "failed_branches" in failed_events[0].metadata
+
+    async def test_allow_partial_true_continues_with_successful_branches(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """allow_partial=True merges only successful branches."""
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_partial_failure_process(allow_partial=True),
+            {"input": "tolerant"},
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        await runner.tick()  # fork
+        await runner.tick()  # join — should NOT raise
+        await runner.tick()  # end
+
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        assert run.status == RunStatus.COMPLETED
+        state = run.work_item_state
+        # Successful branch's output should be present
+        assert "a_out" in state
+
+    async def test_failed_branch_info_recorded_in_state(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Failed branch info recorded in work item state under _failed_branches."""
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_partial_failure_process(allow_partial=True),
+            {"input": "record"},
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        await runner.tick()  # fork
+        await runner.tick()  # join
+
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        state = run.work_item_state
+        assert "_failed_branches" in state
+        failed = state["_failed_branches"]
+        assert len(failed) == 1
+        assert failed[0]["branch_id"] == "branch-1"
+        assert failed[0]["entry_node"] == "branch_b"
+        assert "error_message" in failed[0]
+        assert "branch failure" in failed[0]["error_message"]
+
+    async def test_all_branches_fail_even_with_allow_partial(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+        sink: CollectorSink,
+    ) -> None:
+        """All branches failing fails the run even with allow_partial=True."""
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_fork_all_failing_process(allow_partial=True),
+            {"input": "all_fail"},
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        await runner.tick()  # fork
+        with pytest.raises(OrchestrationError, match="All branches failed"):
+            await runner.tick()  # join — should raise
+
+        # run.failed event emitted
+        failed_events = [
+            e for e in sink.events if e.event == "roots.run.failed"
+        ]
+        assert len(failed_events) == 1
+
+    async def test_join_metadata_indicates_partial_completion(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+        sink: CollectorSink,
+    ) -> None:
+        """Join node.completed event metadata notes partial completion."""
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_partial_failure_process(allow_partial=True),
+            {"input": "metadata"},
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        await runner.tick()  # fork
+        await runner.tick()  # join
+
+        # Find the node.completed event for join1
+        join_completed = [
+            e for e in sink.events
+            if e.event == "roots.node.completed" and e.node_id == "join1"
+        ]
+        assert len(join_completed) == 1
+        meta = join_completed[0].metadata
+        assert meta.get("partial_completion") is True
+        assert meta.get("failed_branches") == 1
+        assert meta.get("successful_branches") == 1
+
+    async def test_all_success_no_partial_metadata(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+        sink: CollectorSink,
+    ) -> None:
+        """All-success scenario: no _failed_branches, no partial_completion metadata."""
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_fork_2_branch_process(),
+            {"input": "all_good"},
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        await runner.tick()  # fork
+        await runner.tick()  # join
+
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        assert "_failed_branches" not in run.work_item_state
+
+        # node.completed for join should NOT have partial_completion metadata
+        join_completed = [
+            e for e in sink.events
+            if e.event == "roots.node.completed" and e.node_id == "join1"
+        ]
+        assert len(join_completed) == 1
+        meta = join_completed[0].metadata
+        assert meta.get("partial_completion") is not True
+
+    async def test_partial_failure_not_allowed_merge_all(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """merge_all with allow_partial=False raises on branch failure."""
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_partial_failure_process(
+                allow_partial=False,
+                merge_strategy=MergeStrategy.MERGE_ALL,
+            ),
+            {"input": "strict_merge"},
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        await runner.tick()  # fork
+        with pytest.raises(OrchestrationError, match="Branch failure"):
+            await runner.tick()  # join
+
+    async def test_partial_failure_allowed_collect(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """collect with allow_partial=True includes failed branches and records _failed_branches."""
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_partial_failure_process(
+                allow_partial=True,
+                merge_strategy=MergeStrategy.COLLECT,
+                collect_key="results",
+            ),
+            {"input": "partial_collect"},
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        await runner.tick()  # fork
+        await runner.tick()  # join
+
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        state = run.work_item_state
+        # _failed_branches should be recorded
+        assert "_failed_branches" in state
+        assert len(state["_failed_branches"]) == 1
+        # Collect results should include both branches
+        assert "results" in state
+        results = state["results"]
+        assert len(results) == 2
+        # Failed branch has state=None and error
+        failed_entry = [r for r in results if r["state"] is None]
+        assert len(failed_entry) == 1
+        assert "error" in failed_entry[0]
+
+    async def test_all_fail_without_allow_partial(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """All branches failing with allow_partial=False also raises."""
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_fork_all_failing_process(allow_partial=False),
+            {"input": "all_fail_strict"},
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        await runner.tick()  # fork
+        with pytest.raises(OrchestrationError, match="All branches failed"):
+            await runner.tick()  # join

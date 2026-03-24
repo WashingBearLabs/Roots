@@ -87,6 +87,7 @@ class ProcessRunner:
         self._process_id: str | None = None
         self._escalated: bool = False
         self._decision_next_node: str | None = None
+        self._join_metadata: dict[str, Any] | None = None
 
     async def tick(self) -> bool:
         """Execute one node and return True if the run should continue."""
@@ -263,15 +264,19 @@ class ProcessRunner:
 
             # Step 10: Emit node.completed with duration
             elapsed_ms = int((time.monotonic() - start_time) * 1000)
+            node_completed_meta = self._join_metadata
+            self._join_metadata = None
+            completed_kwargs: dict[str, Any] = {
+                "run_id": self.run_id,
+                "process_id": run.process_id,
+                "node_id": node.id,
+                "node_type": node.type.value,
+                "duration_ms": elapsed_ms,
+            }
+            if node_completed_meta is not None:
+                completed_kwargs["metadata"] = node_completed_meta
             self._event_emitter.emit(
-                create_event(
-                    EventType.NODE_COMPLETED,
-                    run_id=self.run_id,
-                    process_id=run.process_id,
-                    node_id=node.id,
-                    node_type=node.type.value,
-                    duration_ms=elapsed_ms,
-                )
+                create_event(EventType.NODE_COMPLETED, **completed_kwargs)
             )
 
             # Continue if still running
@@ -841,15 +846,72 @@ class ProcessRunner:
                 f"Join node '{node.id}' reached without branch results"
             )
 
+        branches = getattr(self, "_fork_branches", [])
+
+        # Classify results into successes and failures
+        successful: list[tuple[int, dict[str, Any]]] = []
+        failed: list[dict[str, Any]] = []
+        for i, result in enumerate(results):
+            branch_meta = branches[i] if i < len(branches) else {}
+            branch_id = branch_meta.get("branch_id", f"branch-{i}")
+            entry_node = branch_meta.get("entry_node_id")
+            if isinstance(result, BaseException):
+                failed.append({
+                    "branch_id": branch_id,
+                    "entry_node": entry_node,
+                    "error_message": str(result),
+                })
+            else:
+                successful.append((i, result))
+
+        # All branches failed — always fail regardless of allow_partial
+        if failed and not successful:
+            self._event_emitter.emit(
+                create_event(
+                    EventType.RUN_FAILED,
+                    run_id=self.run_id,
+                    process_id=self._process_id or "",
+                    node_id=node.id,
+                    metadata={"failed_branches": failed},
+                )
+            )
+            raise OrchestrationError(
+                f"All branches failed in fork/join at '{node.id}'"
+            )
+
+        # Some branches failed
+        if failed:
+            if not node.config.allow_partial:
+                # Fail the entire run
+                self._event_emitter.emit(
+                    create_event(
+                        EventType.RUN_FAILED,
+                        run_id=self.run_id,
+                        process_id=self._process_id or "",
+                        node_id=node.id,
+                        metadata={"failed_branches": failed},
+                    )
+                )
+                raise OrchestrationError(
+                    f"Branch failure in fork/join at '{node.id}': "
+                    f"{failed[0]['branch_id']} — {failed[0]['error_message']}"
+                )
+
+            # allow_partial=True: record failed branches in state
+            state["_failed_branches"] = failed
+            # Signal partial completion for node.completed event metadata
+            self._join_metadata = {
+                "partial_completion": True,
+                "failed_branches": len(failed),
+                "successful_branches": len(successful),
+            }
+
         if node.config.merge_strategy == MergeStrategy.MERGE_ALL:
             merged: dict[str, Any] = {}
-            for result in results:
-                if isinstance(result, dict):
-                    merged = deep_merge(merged, result)
-            # Write merged state back to work item state
+            for _, result in successful:
+                merged = deep_merge(merged, result)
             state.update(merged)
         elif node.config.merge_strategy == MergeStrategy.COLLECT:
-            branches = getattr(self, "_fork_branches", [])
             collected: list[dict[str, Any]] = []
             for i, result in enumerate(results):
                 branch_meta = branches[i] if i < len(branches) else {}
