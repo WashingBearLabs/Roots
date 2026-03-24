@@ -41,12 +41,12 @@ The process schema layer is the foundation of Roots. It defines the Pydantic v2 
 - Add basic `tests/conftest.py` with a comment placeholder for shared fixtures (will be populated in T1.2)
 
 **Acceptance Criteria:**
-- [ ] `pyproject.toml` exists with all dependencies and Python 3.12+ constraint
-- [ ] Full directory structure matches the session prompt layout
-- [ ] `pip install -e .` succeeds
-- [ ] `pyright` runs (may have errors on empty files, but the config is correct)
-- [ ] `pytest` discovers the `tests/` directory
-- [ ] Typecheck/lint passes (on scaffolding only)
+- [x] `pyproject.toml` exists with all dependencies and Python 3.12+ constraint
+- [x] Full directory structure matches the session prompt layout
+- [x] `pip install -e .` succeeds
+- [x] `pyright` runs (may have errors on empty files, but the config is correct)
+- [x] `pytest` discovers the `tests/` directory
+- [x] Typecheck/lint passes (on scaffolding only)
 
 ### US-002: Base Node Model and NodeType Enum
 
