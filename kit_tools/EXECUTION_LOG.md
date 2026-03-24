@@ -448,3 +448,8 @@
 - Learnings: register_mcp_server lives on the Roots class (not AgentRegistry) since it needs both the gateway and registry; MCPGateway is now instantiated eagerly in Roots.__init__ and passed to AgentInvoker, enabling both auto-registration and invocation through the same gateway instance; Name sanitization uses re.sub(r'[^a-zA-Z0-9]', '_', tool_name) to replace all non-alphanumeric characters with underscores; Roots.close() now also closes the MCPGateway to clean up any connections established during auto-registration; Verifier note: Clean implementation. All acceptance criteria are met. The code properly validates mutual exclusivity of url/command parameters, sanitizes tool names, respects tool_filter, populates input schemas, and returns agent names. The AgentRegistration model in types.py has proper validation for MCP agents (requires mcp_tool_name and exactly one of mcp_server_url/mcp_server_command). The close() method properly cleans up MCP gateway connections.
 - Committed: feat(mcp-invocation): US-005 - MCP Agent Auto-Registration
 
+### Execution Complete — 2026-03-24T09:35:52Z
+- Stories: 71/71 completed
+- Total attempts: 72
+- Total sessions: 154
+
