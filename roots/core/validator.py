@@ -11,6 +11,7 @@ import yaml
 from pydantic import ValidationError
 
 from roots.core.schema import (
+    DecisionNodeConfig,
     NodeType,
     OnExhaustion,
     ProcessDefinition,
@@ -26,6 +27,79 @@ class ProcessValidationError(Exception):
             f"Process validation failed with {len(errors)} error(s):\n"
             + "\n".join(f"  - {e}" for e in errors)
         )
+
+
+def _validate_fork_join_pairing(
+    process: ProcessDefinition,
+    adjacency: dict[str, list[str]],
+) -> tuple[list[str], dict[str, str]]:
+    """Validate fork/join pairing and return errors + fork→join mapping."""
+    errors: list[str] = []
+    fork_join_map: dict[str, str] = {}
+    node_type_map = {node.id: node.type for node in process.nodes}
+
+    for node in process.nodes:
+        if node.type != NodeType.FORK:
+            continue
+
+        branches = adjacency.get(node.id, [])
+        if len(branches) < 2:
+            errors.append(
+                f"Fork node '{node.id}' has no outbound edges "
+                f"— need at least 2 branches"
+            )
+            continue
+
+        join_targets: set[str] = set()
+        for branch_start in branches:
+            # BFS from branch_start until hitting a join or dead end
+            visited: set[str] = set()
+            queue: deque[str] = deque([branch_start])
+            found_join: str | None = None
+
+            while queue:
+                current = queue.popleft()
+                if current in visited:
+                    continue
+                visited.add(current)
+
+                current_type = node_type_map.get(current)
+                if current_type == NodeType.JOIN:
+                    found_join = current
+                    break
+                if current_type == NodeType.END:
+                    errors.append(
+                        f"Fork node '{node.id}': branch starting at "
+                        f"'{branch_start}' reaches end node without "
+                        f"passing through a join"
+                    )
+                    found_join = None
+                    break
+                for neighbor in adjacency.get(current, []):
+                    if neighbor not in visited:
+                        queue.append(neighbor)
+
+            if found_join is None and not any(
+                node_type_map.get(v) in (NodeType.JOIN, NodeType.END)
+                for v in visited
+            ):
+                errors.append(
+                    f"Fork node '{node.id}': branch starting at "
+                    f"'{branch_start}' has no path to a join node"
+                )
+            elif found_join is not None:
+                join_targets.add(found_join)
+
+        if len(join_targets) > 1:
+            sorted_joins = sorted(join_targets)
+            errors.append(
+                f"Fork node '{node.id}': branches converge at different "
+                f"join nodes ('{sorted_joins[0]}', '{sorted_joins[1]}')"
+            )
+        elif len(join_targets) == 1:
+            fork_join_map[node.id] = next(iter(join_targets))
+
+    return errors, fork_join_map
 
 
 def validate_structure(process: ProcessDefinition) -> list[str]:
@@ -69,8 +143,6 @@ def validate_structure(process: ProcessDefinition) -> list[str]:
         adjacency[edge.from_node].append(edge.to_node)
     for node in process.nodes:
         if node.type == NodeType.DECISION:
-            from roots.core.schema import DecisionNodeConfig
-
             if isinstance(node.config, DecisionNodeConfig):
                 for dedge in node.config.edges:
                     adjacency[node.id].append(dedge.target)
@@ -89,6 +161,22 @@ def validate_structure(process: ProcessDefinition) -> list[str]:
             warnings.warn(
                 f"Node '{node.id}' is unreachable from entry point",
                 stacklevel=2,
+            )
+
+    # Fork/join pairing
+    fork_join_errors, fork_join_map = _validate_fork_join_pairing(
+        process, adjacency
+    )
+    errors.extend(fork_join_errors)
+    if not fork_join_errors:
+        process.fork_join_map = fork_join_map
+
+    # Unpaired join nodes
+    paired_joins = set(fork_join_map.values())
+    for node in process.nodes:
+        if node.type == NodeType.JOIN and node.id not in paired_joins:
+            errors.append(
+                f"Join node '{node.id}' is not paired with any fork node"
             )
 
     # Fallback edge validity
@@ -163,7 +251,9 @@ def parse_process_dict(data: dict[str, Any]) -> ProcessDefinition:
     Raises:
         ValidationError: If the dict fails Pydantic validation.
     """
-    return ProcessDefinition.model_validate(data)
+    process = ProcessDefinition.model_validate(data)
+    process.recompute_fork_join_map()
+    return process
 
 
 def load_process_yaml(path: str | Path) -> ProcessDefinition:

@@ -485,3 +485,219 @@ class TestProcessValidationErrorIntegration:
         yaml_file.write_text(yaml.dump(data))
         errors = validate_process_yaml(yaml_file)
         assert any("no end node" in e.lower() for e in errors)
+
+
+class TestForkJoinPairing:
+    def test_valid_two_branch_fork_join(self) -> None:
+        process = _build_process(
+            nodes=[
+                _make_node("start"),
+                _make_node("split", "fork"),
+                _make_node("a", "agent"),
+                _make_node("b", "agent"),
+                _make_node("merge", "join"),
+                _make_node("done", "end"),
+            ],
+            edges=[
+                {"from": "start", "to": "split"},
+                {"from": "split", "to": "a"},
+                {"from": "split", "to": "b"},
+                {"from": "a", "to": "merge"},
+                {"from": "b", "to": "merge"},
+                {"from": "merge", "to": "done"},
+            ],
+            entry_point="start",
+        )
+        errors = validate_structure(process)
+        assert not any("fork" in e.lower() or "join" in e.lower() for e in errors)
+        assert process.fork_join_map == {"split": "merge"}
+
+    def test_valid_three_branch_fork_join(self) -> None:
+        process = _build_process(
+            nodes=[
+                _make_node("start"),
+                _make_node("split", "fork"),
+                _make_node("a", "agent"),
+                _make_node("b", "agent"),
+                _make_node("c", "agent"),
+                _make_node("merge", "join"),
+                _make_node("done", "end"),
+            ],
+            edges=[
+                {"from": "start", "to": "split"},
+                {"from": "split", "to": "a"},
+                {"from": "split", "to": "b"},
+                {"from": "split", "to": "c"},
+                {"from": "a", "to": "merge"},
+                {"from": "b", "to": "merge"},
+                {"from": "c", "to": "merge"},
+                {"from": "merge", "to": "done"},
+            ],
+            entry_point="start",
+        )
+        errors = validate_structure(process)
+        assert not any("fork" in e.lower() or "join" in e.lower() for e in errors)
+        assert process.fork_join_map == {"split": "merge"}
+
+    def test_fork_with_no_outbound_edges(self) -> None:
+        process = _build_process(
+            nodes=[
+                _make_node("start"),
+                _make_node("split", "fork"),
+                _make_node("done", "end"),
+            ],
+            edges=[
+                {"from": "start", "to": "split"},
+            ],
+            entry_point="start",
+        )
+        errors = validate_structure(process)
+        assert any(
+            "Fork node 'split' has no outbound edges" in e
+            for e in errors
+        )
+
+    def test_fork_with_one_branch_rejected(self) -> None:
+        process = _build_process(
+            nodes=[
+                _make_node("start"),
+                _make_node("split", "fork"),
+                _make_node("a", "agent"),
+                _make_node("merge", "join"),
+                _make_node("done", "end"),
+            ],
+            edges=[
+                {"from": "start", "to": "split"},
+                {"from": "split", "to": "a"},
+                {"from": "a", "to": "merge"},
+                {"from": "merge", "to": "done"},
+            ],
+            entry_point="start",
+        )
+        errors = validate_structure(process)
+        assert any(
+            "Fork node 'split' has no outbound edges — need at least 2 branches" in e
+            for e in errors
+        )
+
+    def test_branch_escaping_to_end_without_join(self) -> None:
+        process = _build_process(
+            nodes=[
+                _make_node("start"),
+                _make_node("split", "fork"),
+                _make_node("a", "agent"),
+                _make_node("b", "agent"),
+                _make_node("merge", "join"),
+                _make_node("done", "end"),
+            ],
+            edges=[
+                {"from": "start", "to": "split"},
+                {"from": "split", "to": "a"},
+                {"from": "split", "to": "b"},
+                {"from": "a", "to": "merge"},
+                {"from": "b", "to": "done"},
+                {"from": "merge", "to": "done"},
+            ],
+            entry_point="start",
+        )
+        errors = validate_structure(process)
+        assert any(
+            "Fork node 'split': branch starting at 'b' reaches end node "
+            "without passing through a join" in e
+            for e in errors
+        )
+
+    def test_branches_converging_at_different_joins(self) -> None:
+        process = _build_process(
+            nodes=[
+                _make_node("start"),
+                _make_node("split", "fork"),
+                _make_node("a", "agent"),
+                _make_node("b", "agent"),
+                _make_node("join1", "join"),
+                _make_node("join2", "join"),
+                _make_node("done", "end"),
+            ],
+            edges=[
+                {"from": "start", "to": "split"},
+                {"from": "split", "to": "a"},
+                {"from": "split", "to": "b"},
+                {"from": "a", "to": "join1"},
+                {"from": "b", "to": "join2"},
+                {"from": "join1", "to": "done"},
+                {"from": "join2", "to": "done"},
+            ],
+            entry_point="start",
+        )
+        errors = validate_structure(process)
+        assert any(
+            "branches converge at different join nodes" in e
+            for e in errors
+        )
+
+    def test_unpaired_join_node(self) -> None:
+        process = _build_process(
+            nodes=[
+                _make_node("start"),
+                _make_node("stray_join", "join"),
+                _make_node("done", "end"),
+            ],
+            edges=[
+                {"from": "start", "to": "stray_join"},
+                {"from": "stray_join", "to": "done"},
+            ],
+            entry_point="start",
+        )
+        errors = validate_structure(process)
+        assert any(
+            "Join node 'stray_join' is not paired with any fork node" in e
+            for e in errors
+        )
+
+    def test_branch_with_no_path_to_join(self) -> None:
+        process = _build_process(
+            nodes=[
+                _make_node("start"),
+                _make_node("split", "fork"),
+                _make_node("a", "agent"),
+                _make_node("b", "agent"),
+                _make_node("done", "end"),
+            ],
+            edges=[
+                {"from": "start", "to": "split"},
+                {"from": "split", "to": "a"},
+                {"from": "split", "to": "b"},
+                {"from": "a", "to": "b"},
+            ],
+            entry_point="start",
+        )
+        errors = validate_structure(process)
+        assert any(
+            "has no path to a join node" in e
+            for e in errors
+        )
+
+    def test_fork_join_map_stored_on_process_definition(self) -> None:
+        process = _build_process(
+            nodes=[
+                _make_node("start"),
+                _make_node("split", "fork"),
+                _make_node("a", "agent"),
+                _make_node("b", "agent"),
+                _make_node("merge", "join"),
+                _make_node("done", "end"),
+            ],
+            edges=[
+                {"from": "start", "to": "split"},
+                {"from": "split", "to": "a"},
+                {"from": "split", "to": "b"},
+                {"from": "a", "to": "merge"},
+                {"from": "b", "to": "merge"},
+                {"from": "merge", "to": "done"},
+            ],
+            entry_point="start",
+        )
+        errors = validate_structure(process)
+        assert errors == []
+        assert isinstance(process.fork_join_map, dict)
+        assert process.fork_join_map["split"] == "merge"

@@ -217,6 +217,7 @@ class ProcessDefinition(BaseModel):
     nodes: list[NodeDefinition]
     edges: list[EdgeDefinition]
     entry_point: str
+    fork_join_map: dict[str, str] = Field(default_factory=dict)
 
     _node_map: dict[str, NodeDefinition] = {}
 
@@ -246,6 +247,12 @@ class ProcessDefinition(BaseModel):
 
     def get_node(self, node_id: str) -> NodeDefinition | None:
         return self._node_map.get(node_id)
+
+    def recompute_fork_join_map(self) -> None:
+        """Recompute fork→join mapping via structural validation."""
+        from roots.core.validator import validate_structure
+
+        validate_structure(self)
 
     def get_outbound_edges(
         self, node_id: str
