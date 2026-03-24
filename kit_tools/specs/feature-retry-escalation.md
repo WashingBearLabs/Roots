@@ -153,13 +153,13 @@ Retry and escalation extend the orchestrator with production-critical error hand
 - For escalation resolution with `redirect`: the human specifies which edge to take (since there may not be a pre-defined next step)
 
 **Acceptance Criteria:**
-- [ ] `approve` resumes run from the expected next node
-- [ ] `reject` transitions run to `failed`
-- [ ] `redirect` resumes run from the specified node
-- [ ] Resolution updates the checkpoint/escalation record
-- [ ] Appropriate resolved event is emitted
-- [ ] Invalid redirect target raises error
-- [ ] Tests cover approve, reject, and redirect paths for both checkpoints and escalations
+- [x] `approve` resumes run from the expected next node
+- [x] `reject` transitions run to `failed`
+- [x] `redirect` resumes run from the specified node
+- [x] Resolution updates the checkpoint/escalation record
+- [x] Appropriate resolved event is emitted
+- [x] Invalid redirect target raises error
+- [x] Tests cover approve, reject, and redirect paths for both checkpoints and escalations
 
 ## Out of Scope
 
