@@ -92,3 +92,31 @@ class CheckpointResolveRequest(BaseModel):
     decision: str
     notes: str | None = None
     redirect_to: str | None = None
+
+
+# --- Agent models ---
+
+
+class AgentRegisterRequest(BaseModel):
+    """Body for POST /agents — register a remote agent."""
+
+    name: str
+    type: str = "remote"
+    callback_url: str
+    input_schema: dict[str, Any] | None = None
+    output_schema: dict[str, Any] | None = None
+    timeout_seconds: int = 300
+
+
+class AgentSummary(BaseModel):
+    name: str
+    type: str
+    callback_url: str | None = None
+    created_at: datetime
+
+
+class AgentHealthResponse(BaseModel):
+    name: str
+    status: str
+    response_time_ms: float | None = None
+    error: str | None = None
