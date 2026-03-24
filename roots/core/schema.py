@@ -219,7 +219,7 @@ class ProcessDefinition(BaseModel):
     entry_point: str
     fork_join_map: dict[str, str] = Field(default_factory=dict)
 
-    _node_map: dict[str, NodeDefinition] = PrivateAttr(default_factory=dict)
+    _node_map: dict[str, NodeDefinition] = PrivateAttr(default_factory=dict)  # pyright: ignore[reportUnknownVariableType]
 
     @model_validator(mode="after")
     def validate_process(self) -> Self:

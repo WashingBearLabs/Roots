@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 from roots.core.schema import DecisionEdge, DecisionMode, DecisionNodeConfig, NodeDefinition
 
-from simpleeval import (
+from simpleeval import (  # type: ignore[import-untyped]
     AttributeDoesNotExist,
     EvalWithCompoundTypes,
     NameNotDefined,
@@ -88,9 +88,9 @@ def evaluate_condition(expression: str, state: dict[str, Any]) -> bool:
     names = flatten_for_eval(state)
     parsed_expr = _ARRAY_DOT_RE.sub(r"[\1]", expression)
     evaluator = EvalWithCompoundTypes(names=names, functions={})
-    evaluator.MAX_STRING_LENGTH = 100_000
-    evaluator.MAX_COMPREHENSION_LENGTH = 1000
-    evaluator.MAX_POWER = 100
+    evaluator.MAX_STRING_LENGTH = 100_000  # type: ignore[misc]
+    evaluator.MAX_COMPREHENSION_LENGTH = 1000  # type: ignore[misc]
+    evaluator.MAX_POWER = 100  # type: ignore[misc]
     try:
         result = evaluator.eval(parsed_expr)
     except NameNotDefined as exc:

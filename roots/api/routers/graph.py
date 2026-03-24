@@ -21,7 +21,7 @@ from roots.api.models import (
     PositionUpdateRequest,
 )
 from roots.core.orchestrator import OrchestrationError
-from roots.core.schema import EdgeDefinition, NodeDefinition, ProcessDefinition
+from roots.core.schema import EdgeDefinition, NodeDefinition, NodeType, ProcessDefinition
 from roots.core.validator import validate_structure
 
 router = APIRouter(tags=["graph"])
@@ -185,7 +185,7 @@ async def add_node(
     try:
         node = NodeDefinition(
             id=body.id,
-            type=body.type,
+            type=NodeType(body.type),
             label=body.label,
             config=body.config,
             metadata=body.metadata,

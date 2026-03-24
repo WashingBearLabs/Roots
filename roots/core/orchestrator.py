@@ -244,7 +244,7 @@ class ProcessRunner:
 
             # Step 7: Write output to state if applicable
             if output is not None and hasattr(node.config, "output_key"):
-                state[node.config.output_key] = output
+                state[node.config.output_key] = output  # type: ignore[union-attr]
 
             # Step 8: Determine next node (or pause if escalated)
             if self._escalated:
@@ -375,11 +375,12 @@ class ProcessRunner:
         self, node: NodeDefinition, state: dict[str, Any]
     ) -> dict[str, Any] | None:
         assert isinstance(node.config, AgentNodeConfig)
+        config = node.config
 
         async def _invoke() -> AgentOutput:
             agent_input = AgentInput(
                 work_item_state=state,
-                node_config=node.config.model_dump(),
+                node_config=config.model_dump(),
                 run_id=self.run_id,
             )
             self._event_emitter.emit(
@@ -388,11 +389,11 @@ class ProcessRunner:
                     run_id=self.run_id,
                     process_id=self._process_id or "",
                     node_id=node.id,
-                    metadata={"agent": node.config.agent},
+                    metadata={"agent": config.agent},
                 )
             )
             result = await self._agent_invoker.invoke(
-                node.config.agent, agent_input
+                config.agent, agent_input
             )
             self._event_emitter.emit(
                 create_event(
@@ -400,7 +401,7 @@ class ProcessRunner:
                     run_id=self.run_id,
                     process_id=self._process_id or "",
                     node_id=node.id,
-                    metadata={"agent": node.config.agent},
+                    metadata={"agent": config.agent},
                 )
             )
             return result
@@ -421,7 +422,7 @@ class ProcessRunner:
                     run_id=self.run_id,
                     process_id=self._process_id or "",
                     node_id=node.id,
-                    metadata={"agent": node.config.agent, "error": str(e)},
+                    metadata={"agent": config.agent, "error": str(e)},
                 )
             )
             await self._trigger_escalation(
@@ -843,7 +844,7 @@ class ProcessRunner:
 
             # Write output to state if applicable
             if output is not None and hasattr(node.config, "output_key"):
-                state[node.config.output_key] = output
+                state[node.config.output_key] = output  # type: ignore[union-attr]
 
             # Emit node.completed with branch_id and duration
             elapsed_ms = int((time.monotonic() - node_start) * 1000)
@@ -887,15 +888,15 @@ class ProcessRunner:
                 f"Join node '{node.id}' reached without branch results"
             )
 
-        branches = getattr(self, "_fork_branches", [])
+        branches: list[dict[str, Any]] = getattr(self, "_fork_branches", [])
 
         # Classify results into successes and failures
         successful: list[tuple[int, dict[str, Any]]] = []
         failed: list[dict[str, Any]] = []
         for i, result in enumerate(results):
-            branch_meta = branches[i] if i < len(branches) else {}
-            branch_id = branch_meta.get("branch_id", f"branch-{i}")
-            entry_node = branch_meta.get("entry_node_id")
+            branch_meta: dict[str, Any] = branches[i] if i < len(branches) else {}
+            branch_id: str = branch_meta.get("branch_id", f"branch-{i}")
+            entry_node: str | None = branch_meta.get("entry_node_id")
             if isinstance(result, BaseException):
                 failed.append({
                     "branch_id": branch_id,
@@ -955,9 +956,9 @@ class ProcessRunner:
         elif node.config.merge_strategy == MergeStrategy.COLLECT:
             collected: list[dict[str, Any]] = []
             for i, result in enumerate(results):
-                branch_meta = branches[i] if i < len(branches) else {}
-                branch_id = branch_meta.get("branch_id", f"branch-{i}")
-                entry_node = branch_meta.get("entry_node_id")
+                branch_meta_c: dict[str, Any] = branches[i] if i < len(branches) else {}
+                branch_id = branch_meta_c.get("branch_id", f"branch-{i}")
+                entry_node = branch_meta_c.get("entry_node_id")
                 if isinstance(result, BaseException):
                     if node.config.allow_partial:
                         collected.append({

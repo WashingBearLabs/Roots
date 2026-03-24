@@ -843,7 +843,7 @@ class PostgresBackend(StorageBackend):
                 now,
             )
             # Pin connection so advisory lock stays held
-            self._lock_connections[run_id] = conn
+            self._lock_connections[run_id] = conn  # type: ignore[assignment]
             return True
         except Exception:
             await self.pool.release(conn)

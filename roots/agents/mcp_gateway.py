@@ -82,7 +82,7 @@ class MCPConnection:
     """Represents an active connection to an MCP server."""
 
     url: str
-    session: ClientSession
+    session: Any  # ClientSession when mcp is available
     _cleanup: Any = field(repr=False, default=None)
     command: list[str] | None = field(repr=False, default=None)
     process: asyncio.subprocess.Process | None = field(repr=False, default=None)

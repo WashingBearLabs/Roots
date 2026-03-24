@@ -15,7 +15,7 @@ from roots.core.orchestrator import Orchestrator, OrchestrationError
 from roots.core.validator import load_process_yaml
 from roots.events.emitter import EventEmitter
 from roots.events.sinks import EventSink, StdoutSink, FileSink, HttpSink
-from roots.events.types import EventType, create_event
+from roots.events.types import EventType, create_event  # noqa: F401
 from roots.storage.base import RunRecord, StorageBackend
 from roots.storage.postgres import PostgresBackend
 from roots.storage.sqlite import SqliteBackend

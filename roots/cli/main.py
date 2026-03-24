@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import time
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
 import typer
@@ -154,7 +154,7 @@ def validate(
         raise typer.Exit(code=1)
 
 
-def _parse_work_item(value: str) -> dict:
+def _parse_work_item(value: str) -> dict[str, Any]:
     """Parse a work item from a JSON string or file path."""
     from pathlib import Path as _Path
 
@@ -367,7 +367,7 @@ def status(
     console.print(table)
 
 
-async def _list_agents(storage: str) -> list[dict]:
+async def _list_agents(storage: str) -> list[dict[str, Any]]:
     """Fetch agents from storage."""
     if _is_postgres_dsn(storage):
         backend = PostgresBackend(storage)
@@ -380,7 +380,7 @@ async def _list_agents(storage: str) -> list[dict]:
         await backend.close()
 
 
-async def _check_agent_health(agents: list[dict]) -> list[dict]:
+async def _check_agent_health(agents: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Ping remote agents and return health results."""
     results = []
     for agent in agents:

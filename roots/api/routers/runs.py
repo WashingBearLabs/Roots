@@ -45,7 +45,7 @@ async def create_run(
 
     task = asyncio.create_task(roots.execute_run(run.id))
 
-    def _on_task_done(t: asyncio.Task) -> None:
+    def _on_task_done(t: asyncio.Task[None]) -> None:
         if not t.cancelled() and t.exception():
             logger.error("Background run execution failed: %s", t.exception())
 
@@ -169,7 +169,7 @@ async def resume_run(
 
     task = asyncio.create_task(roots.execute_run(run_id))
 
-    def _on_task_done(t: asyncio.Task) -> None:
+    def _on_task_done(t: asyncio.Task[None]) -> None:
         if not t.cancelled() and t.exception():
             logger.error("Background run execution failed: %s", t.exception())
 

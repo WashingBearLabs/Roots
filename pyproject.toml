@@ -35,6 +35,15 @@ dev = [
 
 [tool.pyright]
 typeCheckingMode = "strict"
+reportMissingTypeStubs = "warning"
+reportUnknownMemberType = "warning"
+reportUnknownVariableType = "warning"
+reportUnknownParameterType = "warning"
+reportPrivateUsage = "warning"
+reportUnusedImport = "warning"
+reportUnusedFunction = "warning"
+reportUnusedVariable = "warning"
+reportUnknownArgumentType = "warning"
 
 [tool.ruff]
 line-length = 88
