@@ -109,11 +109,11 @@ Fork/join enables parallel branch execution within a process graph. A fork node 
 - Failed branches (when `allow_partial` is True): include with `{"branch_id": "branch-2", "state": null, "error": "error message"}`
 
 **Acceptance Criteria:**
-- [ ] Branch outputs collected as list under configured key
-- [ ] Each list entry includes branch metadata and state
-- [ ] `collect_key` is used from join node config
-- [ ] Order matches branch order (deterministic)
-- [ ] Tests verify collect with heterogeneous branch outputs
+- [x] Branch outputs collected as list under configured key
+- [x] Each list entry includes branch metadata and state
+- [x] `collect_key` is used from join node config
+- [x] Order matches branch order (deterministic)
+- [x] Tests verify collect with heterogeneous branch outputs
 
 ### US-005: Partial Failure Handling
 
