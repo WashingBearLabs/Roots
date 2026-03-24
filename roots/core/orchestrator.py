@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import Any
 
 from roots.agents.invoker import AgentInvoker
-from roots.agents.types import AgentInput
+from roots.agents.types import AgentInput, AgentOutput
 from roots.core.decision import DecisionEngine
 from roots.core.schema import (
     AgentNodeConfig,
     AgentPoolNodeConfig,
+    ExecutionMode,
     NodeDefinition,
     NodeType,
 )
@@ -49,6 +51,8 @@ class ProcessRunner:
         self._decision_engine = decision_engine
         self._event_emitter = event_emitter
         self._owner_id = owner_id
+        self._process_id: str | None = None
+        self._escalated: bool = False
 
     async def tick(self) -> bool:
         """Execute one node and return True if the run should continue."""
@@ -65,6 +69,8 @@ class ProcessRunner:
             if run is None:
                 await self._storage.release_run_lock(self.run_id, self._owner_id)
                 return False
+
+            self._process_id = run.process_id
 
             # Pending → Running transition on first tick
             if run.status == RunStatus.PENDING:
@@ -122,14 +128,19 @@ class ProcessRunner:
 
             # Step 6: Call appropriate handler
             state = dict(run.work_item_state)
+            self._escalated = False
             output = await self._dispatch_node(node, state)
 
             # Step 7: Write output to state if applicable
             if output is not None and hasattr(node.config, "output_key"):
                 state[node.config.output_key] = output
 
-            # Step 8: Determine next node
-            next_node_id, status = self._resolve_next(node, output, process)
+            # Step 8: Determine next node (or pause if escalated)
+            if self._escalated:
+                next_node_id = run.current_node_id
+                status = RunStatus.PAUSED
+            else:
+                next_node_id, status = self._resolve_next(node, output, process)
 
             # Step 9: Persist atomically
             await self._storage.update_run_atomically(
@@ -229,7 +240,7 @@ class ProcessRunner:
         )
         return next_id, RunStatus.RUNNING
 
-    # --- Node Handlers (stubs for US-003/US-004, minimal for tick tests) ---
+    # --- Node Handlers ---
 
     async def _handle_agent(
         self, node: NodeDefinition, state: dict[str, Any]
@@ -240,16 +251,169 @@ class ProcessRunner:
             node_config=node.config.model_dump(),
             run_id=self.run_id,
         )
+        self._event_emitter.emit(
+            create_event(
+                EventType.AGENT_INVOKED,
+                run_id=self.run_id,
+                process_id=self._process_id or "",
+                node_id=node.id,
+                metadata={"agent": node.config.agent},
+            )
+        )
         result = await self._agent_invoker.invoke(
             node.config.agent, agent_input
         )
+        self._event_emitter.emit(
+            create_event(
+                EventType.AGENT_RETURNED,
+                run_id=self.run_id,
+                process_id=self._process_id or "",
+                node_id=node.id,
+                metadata={"agent": node.config.agent},
+            )
+        )
+        if result.escalate:
+            await self._trigger_escalation(
+                node, state, result.escalation_reason or "Agent requested escalation"
+            )
         return result.output
 
     async def _handle_agent_pool(
         self, node: NodeDefinition, state: dict[str, Any]
     ) -> dict[str, Any] | None:
         assert isinstance(node.config, AgentPoolNodeConfig)
-        raise NotImplementedError("Agent pool handler in US-003")
+        config = node.config
+        agents = config.agents
+
+        if config.execution_mode == ExecutionMode.PARALLEL:
+            return await self._pool_parallel(node, agents, state)
+        elif config.execution_mode == ExecutionMode.SEQUENTIAL:
+            return await self._pool_sequential(node, agents, state)
+        else:  # FIRST_PASS
+            return await self._pool_first_pass(node, agents, state)
+
+    async def _invoke_pool_agent(
+        self, node: NodeDefinition, agent_name: str, state: dict[str, Any]
+    ) -> AgentOutput:
+        """Invoke a single agent within a pool, emitting lifecycle events."""
+        agent_input = AgentInput(
+            work_item_state=state,
+            node_config=node.config.model_dump(),  # type: ignore[union-attr]
+            run_id=self.run_id,
+        )
+        self._event_emitter.emit(
+            create_event(
+                EventType.AGENT_INVOKED,
+                run_id=self.run_id,
+                process_id=self._process_id or "",
+                node_id=node.id,
+                metadata={"agent": agent_name},
+            )
+        )
+        result = await self._agent_invoker.invoke(agent_name, agent_input)
+        self._event_emitter.emit(
+            create_event(
+                EventType.AGENT_RETURNED,
+                run_id=self.run_id,
+                process_id=self._process_id or "",
+                node_id=node.id,
+                metadata={"agent": agent_name},
+            )
+        )
+        return result
+
+    async def _pool_parallel(
+        self,
+        node: NodeDefinition,
+        agents: list[str],
+        state: dict[str, Any],
+    ) -> dict[str, Any]:
+        results = await asyncio.gather(
+            *[self._invoke_pool_agent(node, name, state) for name in agents],
+            return_exceptions=True,
+        )
+        successful: list[AgentOutput] = []
+        for r in results:
+            if isinstance(r, BaseException):
+                logger.warning("Agent failed in pool '%s': %s", node.id, r)
+            else:
+                successful.append(r)
+        if not successful:
+            raise OrchestrationError(
+                f"All {len(agents)} agents failed in pool '{node.id}'"
+            )
+        merged: dict[str, Any] = {}
+        for r in successful:
+            merged.update(r.output)
+        # Check escalation on any successful result
+        for r in successful:
+            if r.escalate:
+                await self._trigger_escalation(
+                    node, state, r.escalation_reason or "Agent requested escalation"
+                )
+                break
+        return merged
+
+    async def _pool_sequential(
+        self,
+        node: NodeDefinition,
+        agents: list[str],
+        state: dict[str, Any],
+    ) -> dict[str, Any]:
+        current_state = dict(state)
+        output: dict[str, Any] = {}
+        for name in agents:
+            result = await self._invoke_pool_agent(node, name, current_state)
+            output.update(result.output)
+            current_state.update(result.output)
+            if result.escalate:
+                await self._trigger_escalation(
+                    node, state, result.escalation_reason or "Agent requested escalation"
+                )
+                break
+        return output
+
+    async def _pool_first_pass(
+        self,
+        node: NodeDefinition,
+        agents: list[str],
+        state: dict[str, Any],
+    ) -> dict[str, Any]:
+        last_error: BaseException | None = None
+        for name in agents:
+            try:
+                result = await self._invoke_pool_agent(node, name, state)
+            except Exception as exc:
+                last_error = exc
+                logger.warning("Agent '%s' failed in first_pass pool '%s': %s", name, node.id, exc)
+                continue
+            if result.escalate:
+                last_error = OrchestrationError(
+                    f"Agent '{name}' escalated in pool '{node.id}'"
+                )
+                continue
+            return result.output
+        raise OrchestrationError(
+            f"All agents failed in first_pass pool '{node.id}': {last_error}"
+        )
+
+    async def _trigger_escalation(
+        self, node: NodeDefinition, state: dict[str, Any], reason: str
+    ) -> None:
+        """Flag escalation and create an escalation record.
+
+        The tick loop reads ``_escalated`` and writes PAUSED status atomically.
+        """
+        self._escalated = True
+        await self._storage.create_escalation(
+            run_id=self.run_id,
+            node_id=node.id,
+            trigger_type="agent_explicit_signal",
+            reason=reason,
+            work_item_snapshot=state,
+        )
+
+    # --- Stub Handlers (US-004+) ---
 
     async def _handle_decision(
         self, node: NodeDefinition, state: dict[str, Any]
