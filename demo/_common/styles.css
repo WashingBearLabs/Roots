@@ -1,0 +1,217 @@
+/* Roots Demo — Shared Styles */
+
+:root {
+  --bg: #1a1a2e;
+  --surface: #16213e;
+  --text: #e0e0e0;
+  --accent: #0f3460;
+  --green: #4ecca3;
+  --blue: #4a9ff5;
+  --red: #e74c3c;
+  --yellow: #f1c40f;
+  --gray: #555;
+  --border: rgba(255, 255, 255, 0.08);
+  --radius: 8px;
+}
+
+/* Reset & base */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  font-family: system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+code, pre, .mono {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* Layout */
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.5rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+header h1 {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 1rem;
+  padding: 1rem;
+  overflow: hidden;
+}
+
+main.two-column {
+  grid-template-columns: 1fr 1fr;
+}
+
+footer {
+  padding: 0.5rem 1.5rem;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--gray);
+  border-top: 1px solid var(--border);
+}
+
+footer a {
+  color: var(--blue);
+  text-decoration: none;
+}
+
+footer a:hover {
+  text-decoration: underline;
+}
+
+/* Card */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.card h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+/* Node status */
+.node-pending {
+  color: var(--gray);
+}
+
+.node-running {
+  color: var(--blue);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.node-completed {
+  color: var(--green);
+}
+
+.node-failed {
+  color: var(--red);
+}
+
+.node-paused {
+  color: var(--yellow);
+}
+
+/* Status badge */
+.status-badge {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.status-badge.pending  { background: var(--gray);   color: #fff; }
+.status-badge.running  { background: var(--blue);   color: #fff; }
+.status-badge.completed { background: var(--green); color: #1a1a2e; }
+.status-badge.failed   { background: var(--red);    color: #fff; }
+.status-badge.paused   { background: var(--yellow); color: #1a1a2e; }
+
+/* Buttons */
+button, .btn {
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius);
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: inherit;
+  transition: opacity 0.15s;
+}
+
+button:hover, .btn:hover {
+  opacity: 0.85;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--text);
+}
+
+.btn-success {
+  background: var(--green);
+  color: #1a1a2e;
+}
+
+.btn-danger {
+  background: var(--red);
+  color: #fff;
+}
+
+.btn-outline {
+  background: transparent;
+  border: 1px solid var(--text);
+  color: var(--text);
+}
+
+/* Scrollable panel */
+.panel-scroll {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.panel-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.panel-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.panel-scroll::-webkit-scrollbar-thumb {
+  background: var(--gray);
+  border-radius: 3px;
+}
+
+/* Animations */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.5; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Utility */
+.text-green  { color: var(--green); }
+.text-blue   { color: var(--blue); }
+.text-red    { color: var(--red); }
+.text-yellow { color: var(--yellow); }
+.text-gray   { color: var(--gray); }
