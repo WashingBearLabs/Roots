@@ -1,9 +1,13 @@
-"""Safe expression evaluator for deterministic decision conditions."""
+"""Decision engine for deterministic and AI-based decision evaluation."""
 
 from __future__ import annotations
 
 import re
 from typing import Any
+
+from pydantic import BaseModel
+
+from roots.core.schema import DecisionMode, DecisionNodeConfig, NodeDefinition
 
 from simpleeval import (
     AttributeDoesNotExist,
@@ -15,9 +19,23 @@ from simpleeval import (
 class DecisionEvaluationError(Exception):
     """Raised when a decision expression cannot be evaluated."""
 
-    def __init__(self, expression: str, message: str) -> None:
+    def __init__(
+        self,
+        expression: str,
+        message: str,
+        *,
+        node_id: str | None = None,
+        context: dict[str, Any] | None = None,
+    ) -> None:
         self.expression = expression
-        super().__init__(f"Failed to evaluate '{expression}': {message}")
+        self.node_id = node_id
+        self.context = context
+        if node_id:
+            super().__init__(
+                f"Node '{node_id}': failed to evaluate '{expression}': {message}"
+            )
+        else:
+            super().__init__(f"Failed to evaluate '{expression}': {message}")
 
 
 def flatten_for_eval(state: dict[str, Any], prefix: str = "") -> dict[str, Any]:
@@ -84,3 +102,71 @@ def evaluate_condition(expression: str, state: dict[str, Any]) -> bool:
             expression, str(exc)
         ) from exc
     return bool(result)
+
+
+class DecisionResult(BaseModel):
+    """Result of a decision evaluation."""
+
+    selected_edge: str
+    mode: str
+    confidence: float
+    reasoning: str | None = None
+
+
+class DecisionEngine:
+    """Evaluates decision nodes to determine execution routing."""
+
+    async def evaluate(
+        self, node: NodeDefinition, work_item_state: dict[str, Any]
+    ) -> DecisionResult:
+        """Evaluate a decision node against work item state.
+
+        Args:
+            node: The decision node to evaluate.
+            work_item_state: Current work item state dict.
+
+        Returns:
+            DecisionResult with the selected edge target.
+
+        Raises:
+            DecisionEvaluationError: If no condition matches or evaluation fails.
+        """
+        assert isinstance(node.config, DecisionNodeConfig)
+
+        if node.config.mode == DecisionMode.DETERMINISTIC:
+            return self._evaluate_deterministic(node, work_item_state)
+
+        raise NotImplementedError(
+            f"Decision mode '{node.config.mode}' is not yet implemented"
+        )
+
+    def _evaluate_deterministic(
+        self,
+        node: NodeDefinition,
+        work_item_state: dict[str, Any],
+    ) -> DecisionResult:
+        """Evaluate a deterministic decision node (first matching edge wins)."""
+        assert isinstance(node.config, DecisionNodeConfig)
+
+        conditions_tried: list[str] = []
+        for edge in node.config.edges:
+            assert edge.condition is not None
+            conditions_tried.append(edge.condition)
+            if evaluate_condition(edge.condition, work_item_state):
+                return DecisionResult(
+                    selected_edge=edge.target,
+                    mode=DecisionMode.DETERMINISTIC,
+                    confidence=1.0,
+                    reasoning=f"Matched condition: {edge.condition}",
+                )
+
+        raise DecisionEvaluationError(
+            expression=", ".join(conditions_tried),
+            message=(
+                f"no condition matched. "
+                f"Conditions tried: {conditions_tried}. "
+                f"State: {work_item_state}"
+            ),
+            node_id=node.id,
+            context=work_item_state,
+        )

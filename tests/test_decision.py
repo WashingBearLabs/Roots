@@ -1,11 +1,20 @@
-"""Tests for safe expression evaluator (US-001)."""
+"""Tests for decision engine (US-001, US-002)."""
 
 import pytest
 
 from roots.core.decision import (
+    DecisionEngine,
     DecisionEvaluationError,
+    DecisionResult,
     evaluate_condition,
     flatten_for_eval,
+)
+from roots.core.schema import (
+    DecisionEdge,
+    DecisionMode,
+    DecisionNodeConfig,
+    NodeDefinition,
+    NodeType,
 )
 
 
@@ -204,3 +213,93 @@ class TestLiterals:
     def test_bool_literal(self) -> None:
         assert evaluate_condition("x == True", {"x": True}) is True
         assert evaluate_condition("x == False", {"x": False}) is True
+
+
+# --- DecisionEngine: deterministic mode (US-002) ---
+
+
+def _make_decision_node(
+    edges: list[DecisionEdge],
+    node_id: str = "decide-1",
+) -> NodeDefinition:
+    """Helper to create a deterministic decision node."""
+    return NodeDefinition(
+        id=node_id,
+        type=NodeType.DECISION,
+        label="Test Decision",
+        config=DecisionNodeConfig(
+            mode=DecisionMode.DETERMINISTIC,
+            edges=edges,
+        ),
+    )
+
+
+class TestDecisionEngineDeterministic:
+    @pytest.fixture
+    def engine(self) -> DecisionEngine:
+        return DecisionEngine()
+
+    @pytest.mark.asyncio
+    async def test_single_match(self, engine: DecisionEngine) -> None:
+        node = _make_decision_node([
+            DecisionEdge(target="node-a", condition="status == 'done'"),
+        ])
+        result = await engine.evaluate(node, {"status": "done"})
+        assert result.selected_edge == "node-a"
+        assert result.mode == "deterministic"
+        assert result.confidence == 1.0
+
+    @pytest.mark.asyncio
+    async def test_first_of_multiple_match(self, engine: DecisionEngine) -> None:
+        node = _make_decision_node([
+            DecisionEdge(target="node-a", condition="x > 10"),
+            DecisionEdge(target="node-b", condition="x > 5"),
+            DecisionEdge(target="node-c", condition="x > 0"),
+        ])
+        result = await engine.evaluate(node, {"x": 8})
+        assert result.selected_edge == "node-b"
+
+    @pytest.mark.asyncio
+    async def test_edge_order_matters(self, engine: DecisionEngine) -> None:
+        """Both conditions match, but first edge wins."""
+        node = _make_decision_node([
+            DecisionEdge(target="node-first", condition="x > 0"),
+            DecisionEdge(target="node-second", condition="x > 0"),
+        ])
+        result = await engine.evaluate(node, {"x": 5})
+        assert result.selected_edge == "node-first"
+
+    @pytest.mark.asyncio
+    async def test_no_match_raises_error(self, engine: DecisionEngine) -> None:
+        node = _make_decision_node(
+            [
+                DecisionEdge(target="node-a", condition="status == 'done'"),
+                DecisionEdge(target="node-b", condition="status == 'error'"),
+            ],
+            node_id="decide-routing",
+        )
+        with pytest.raises(DecisionEvaluationError) as exc_info:
+            await engine.evaluate(node, {"status": "pending"})
+        err = exc_info.value
+        assert err.node_id == "decide-routing"
+        assert err.context == {"status": "pending"}
+        assert "no condition matched" in str(err)
+        assert "status == 'done'" in str(err)
+        assert "status == 'error'" in str(err)
+
+    @pytest.mark.asyncio
+    async def test_confidence_always_one(self, engine: DecisionEngine) -> None:
+        node = _make_decision_node([
+            DecisionEdge(target="node-a", condition="x == 1"),
+        ])
+        result = await engine.evaluate(node, {"x": 1})
+        assert result.confidence == 1.0
+
+    @pytest.mark.asyncio
+    async def test_result_includes_reasoning(self, engine: DecisionEngine) -> None:
+        node = _make_decision_node([
+            DecisionEdge(target="node-a", condition="x == 1"),
+        ])
+        result = await engine.evaluate(node, {"x": 1})
+        assert result.reasoning is not None
+        assert "x == 1" in result.reasoning
