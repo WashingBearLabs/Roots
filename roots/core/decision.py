@@ -6,6 +6,7 @@ import json
 import re
 from typing import Any
 
+import litellm
 from pydantic import BaseModel, Field
 
 from roots.core.schema import DecisionEdge, DecisionMode, DecisionNodeConfig, NodeDefinition
@@ -105,6 +106,14 @@ def evaluate_condition(expression: str, state: dict[str, Any]) -> bool:
     return bool(result)
 
 
+class AIDecisionResponse(BaseModel):
+    """Structured response model for AI decision modes."""
+
+    selected_edge_target: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    reasoning: str
+
+
 class DecisionResult(BaseModel):
     """Result of a decision evaluation."""
 
@@ -112,14 +121,8 @@ class DecisionResult(BaseModel):
     mode: str
     confidence: float
     reasoning: str | None = None
-
-
-class AIDecisionResponse(BaseModel):
-    """Structured response model for AI decision modes."""
-
-    selected_edge_target: str
-    confidence: float = Field(ge=0.0, le=1.0)
-    reasoning: str
+    escalated: bool = False
+    ai_recommendation: AIDecisionResponse | None = None
 
 
 DECISION_TOOL: dict[str, Any] = {
@@ -255,6 +258,9 @@ class DecisionEngine:
         if node.config.mode == DecisionMode.DETERMINISTIC:
             return self._evaluate_deterministic(node, work_item_state)
 
+        if node.config.mode in (DecisionMode.AI_BOUNDED, DecisionMode.AI_AUTONOMOUS):
+            return await self._evaluate_ai(node, work_item_state)
+
         raise NotImplementedError(
             f"Decision mode '{node.config.mode}' is not yet implemented"
         )
@@ -288,4 +294,62 @@ class DecisionEngine:
             ),
             node_id=node.id,
             context=work_item_state,
+        )
+
+    async def _evaluate_ai(
+        self,
+        node: NodeDefinition,
+        work_item_state: dict[str, Any],
+    ) -> DecisionResult:
+        """Evaluate an AI decision node (ai_bounded or ai_autonomous)."""
+        assert isinstance(node.config, DecisionNodeConfig)
+
+        model = resolve_model(node.config, self._default_model)
+        messages = build_decision_messages(
+            node.config.context_prompt,
+            work_item_state,
+            node.config.edges,
+        )
+
+        response = await litellm.acompletion(
+            model=model,
+            messages=messages,
+            tools=[DECISION_TOOL],
+            tool_choice={"type": "function", "function": {"name": "make_decision"}},
+        )
+
+        ai_response = parse_ai_response(response)
+
+        # Validate edge target is in defined edges
+        valid_targets = {edge.target for edge in node.config.edges}
+        if ai_response.selected_edge_target not in valid_targets:
+            raise DecisionEvaluationError(
+                expression="AI edge selection",
+                message=(
+                    f"AI selected invalid edge target "
+                    f"'{ai_response.selected_edge_target}'. "
+                    f"Valid targets: {sorted(valid_targets)}"
+                ),
+                node_id=node.id,
+                context=work_item_state,
+            )
+
+        # Confidence threshold check
+        assert node.config.confidence_threshold is not None
+        if ai_response.confidence < node.config.confidence_threshold:
+            return DecisionResult(
+                selected_edge=ai_response.selected_edge_target,
+                mode=node.config.mode,
+                confidence=ai_response.confidence,
+                reasoning=ai_response.reasoning,
+                escalated=True,
+                ai_recommendation=ai_response,
+            )
+
+        return DecisionResult(
+            selected_edge=ai_response.selected_edge_target,
+            mode=node.config.mode,
+            confidence=ai_response.confidence,
+            reasoning=ai_response.reasoning,
+            ai_recommendation=ai_response,
         )
