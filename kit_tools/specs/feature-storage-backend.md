@@ -147,12 +147,12 @@ The storage backend provides the persistence layer for all Roots state. It defin
 - `clear_retry(run_id, node_id)`: DELETE FROM retry_state WHERE run_id=? AND node_id=?
 
 **Acceptance Criteria:**
-- [ ] Decision records appended and queryable by process_id + node_id
-- [ ] Retry state: first increment creates row with attempt_count=1
-- [ ] Retry state: subsequent increments increase attempt_count
-- [ ] Retry state: clear removes the row
-- [ ] get_retry_state returns None when no state exists
-- [ ] Tests cover decision append/query and full retry lifecycle
+- [x] Decision records appended and queryable by process_id + node_id
+- [x] Retry state: first increment creates row with attempt_count=1
+- [x] Retry state: subsequent increments increase attempt_count
+- [x] Retry state: clear removes the row
+- [x] get_retry_state returns None when no state exists
+- [x] Tests cover decision append/query and full retry lifecycle
 
 ### US-006: SQLite — Webhook Registry and Pattern Matching
 
