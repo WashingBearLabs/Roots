@@ -554,3 +554,295 @@ def test_run_help():
     result = runner.invoke(app, ["run", "--help"])
     assert result.exit_code == 0
     assert "Execute a process run" in result.output
+
+
+# --- US-005: roots status and roots agents Commands ---
+
+
+def _make_run_record(
+    run_id="run-001",
+    process_id="proc-1",
+    status="running",
+    current_node_id="node-a",
+):
+    """Return a RunRecord for testing."""
+    from datetime import datetime, timezone
+    from roots.storage.base import RunRecord
+
+    now = datetime(2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+    return RunRecord(
+        id=run_id,
+        process_id=process_id,
+        status=status,
+        current_node_id=current_node_id,
+        work_item_state={"key": "value"},
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def _make_history_event(event_type="node_entered", node_id="node-a"):
+    """Return a HistoryEvent for testing."""
+    from datetime import datetime, timezone
+    from roots.storage.base import HistoryEvent
+
+    now = datetime(2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+    return HistoryEvent(
+        id=1,
+        run_id="run-001",
+        event_type=event_type,
+        node_id=node_id,
+        data={},
+        created_at=now,
+    )
+
+
+def _patch_status_backend(
+    runs=None, run_detail=None, history_events=None
+):
+    """Return context managers that patch the backend for status tests."""
+    mock_backend = AsyncMock()
+    mock_backend.list_runs = AsyncMock(return_value=runs or [])
+    mock_backend.get_run = AsyncMock(return_value=run_detail)
+    mock_backend.list_history_events = AsyncMock(
+        return_value=history_events or []
+    )
+    mock_backend.close = AsyncMock()
+    return patch("roots.cli.main.SqliteBackend", return_value=mock_backend)
+
+
+def test_status_lists_runs():
+    """status lists runs in a formatted table."""
+    runs = [
+        _make_run_record("run-001", "proc-1", "running", "node-a"),
+        _make_run_record("run-002", "proc-2", "completed", None),
+    ]
+    with _patch_status_backend(runs=runs):
+        result = runner.invoke(app, ["status"])
+        assert result.exit_code == 0
+        assert "run-001" in result.output
+        assert "run-002" in result.output
+        assert "proc-1" in result.output
+        assert "running" in result.output
+
+
+def test_status_empty():
+    """status shows message when no runs found."""
+    with _patch_status_backend(runs=[]):
+        result = runner.invoke(app, ["status"])
+        assert result.exit_code == 0
+        assert "No runs found" in result.output
+
+
+def test_status_filter_process():
+    """status --process filters by process ID."""
+    runs = [_make_run_record("run-001", "proc-1")]
+    with _patch_status_backend(runs=runs) as mock_cls:
+        result = runner.invoke(app, ["status", "--process", "proc-1"])
+        assert result.exit_code == 0
+        mock_backend = mock_cls.return_value
+        mock_backend.list_runs.assert_awaited_once_with(
+            process_id="proc-1", status=None
+        )
+
+
+def test_status_filter_status():
+    """status --status filters by run status."""
+    runs = [_make_run_record("run-001", status="completed")]
+    with _patch_status_backend(runs=runs) as mock_cls:
+        result = runner.invoke(app, ["status", "--status", "completed"])
+        assert result.exit_code == 0
+        mock_backend = mock_cls.return_value
+        mock_backend.list_runs.assert_awaited_once_with(
+            process_id=None, status="completed"
+        )
+
+
+def test_status_detail_view():
+    """status <run_id> shows detailed run info."""
+    run = _make_run_record("run-001", "proc-1", "running", "node-a")
+    events = [_make_history_event("node_entered", "node-a")]
+    with _patch_status_backend(run_detail=run, history_events=events):
+        result = runner.invoke(app, ["status", "run-001"])
+        assert result.exit_code == 0
+        assert "run-001" in result.output
+        assert "proc-1" in result.output
+        assert "running" in result.output
+        assert "node-a" in result.output
+        assert "node_entered" in result.output
+
+
+def test_status_detail_not_found():
+    """status <run_id> exits 1 when run not found."""
+    with _patch_status_backend(run_detail=None):
+        result = runner.invoke(app, ["status", "nonexistent"])
+        assert result.exit_code == 1
+        assert "not found" in result.output.lower()
+
+
+def test_status_table_columns():
+    """status table includes expected columns."""
+    runs = [_make_run_record()]
+    with _patch_status_backend(runs=runs):
+        result = runner.invoke(app, ["status"])
+        assert result.exit_code == 0
+        assert "run_id" in result.output
+        assert "process_id" in result.output
+        assert "status" in result.output
+        assert "current_node" in result.output
+        assert "created_at" in result.output
+        assert "updated_at" in result.output
+
+
+def _patch_agents_backend(agents=None):
+    """Return context manager that patches backend for agents tests."""
+    mock_backend = AsyncMock()
+    mock_backend.list_agents = AsyncMock(return_value=agents or [])
+    mock_backend.close = AsyncMock()
+    return patch("roots.cli.main.SqliteBackend", return_value=mock_backend)
+
+
+def test_agents_lists_agents():
+    """agents lists all registered agents."""
+    agent_list = [
+        {
+            "name": "summarizer",
+            "type": "local",
+            "callback_url": None,
+            "created_at": "2025-01-15T12:00:00+00:00",
+        },
+        {
+            "name": "classifier",
+            "type": "remote",
+            "callback_url": "http://agent.example.com/classify",
+            "created_at": "2025-01-15T12:00:00+00:00",
+        },
+    ]
+    with _patch_agents_backend(agents=agent_list):
+        result = runner.invoke(app, ["agents"])
+        assert result.exit_code == 0
+        assert "summarizer" in result.output
+        assert "classifier" in result.output
+        assert "local" in result.output
+        assert "remote" in result.output
+
+
+def test_agents_empty():
+    """agents shows message when no agents registered."""
+    with _patch_agents_backend(agents=[]):
+        result = runner.invoke(app, ["agents"])
+        assert result.exit_code == 0
+        assert "No agents registered" in result.output
+
+
+def test_agents_table_columns():
+    """agents table includes expected columns."""
+    agent_list = [
+        {
+            "name": "test-agent",
+            "type": "local",
+            "callback_url": None,
+            "created_at": "2025-01-15T12:00:00+00:00",
+        }
+    ]
+    with _patch_agents_backend(agents=agent_list):
+        result = runner.invoke(app, ["agents"])
+        assert result.exit_code == 0
+        assert "name" in result.output
+        assert "type" in result.output
+        assert "callback_url" in result.output
+        assert "registered_at" in result.output
+
+
+def test_agents_health_pings_remote():
+    """agents health pings remote agents and shows status."""
+    agent_list = [
+        {
+            "name": "remote-agent",
+            "type": "remote",
+            "callback_url": "http://agent.example.com/health",
+            "created_at": "2025-01-15T12:00:00+00:00",
+        },
+    ]
+    with _patch_agents_backend(agents=agent_list):
+        with patch("roots.cli.main.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client_cls.return_value.__aenter__ = AsyncMock(
+                return_value=mock_client
+            )
+            mock_client_cls.return_value.__aexit__ = AsyncMock(
+                return_value=False
+            )
+            mock_client.get = AsyncMock()
+
+            result = runner.invoke(app, ["agents", "health"])
+            assert result.exit_code == 0
+            assert "remote-agent" in result.output
+            assert "healthy" in result.output
+
+
+def test_agents_health_unhealthy():
+    """agents health shows unhealthy for unreachable agents."""
+    agent_list = [
+        {
+            "name": "broken-agent",
+            "type": "remote",
+            "callback_url": "http://unreachable.example.com",
+            "created_at": "2025-01-15T12:00:00+00:00",
+        },
+    ]
+    with _patch_agents_backend(agents=agent_list):
+        with patch("roots.cli.main.httpx.AsyncClient") as mock_client_cls:
+            mock_client = AsyncMock()
+            mock_client_cls.return_value.__aenter__ = AsyncMock(
+                return_value=mock_client
+            )
+            mock_client_cls.return_value.__aexit__ = AsyncMock(
+                return_value=False
+            )
+            mock_client.get = AsyncMock(
+                side_effect=Exception("Connection refused")
+            )
+
+            result = runner.invoke(app, ["agents", "health"])
+            assert result.exit_code == 0
+            assert "broken-agent" in result.output
+            assert "unhealthy" in result.output
+
+
+def test_agents_health_empty():
+    """agents health shows message when no agents registered."""
+    with _patch_agents_backend(agents=[]):
+        result = runner.invoke(app, ["agents", "health"])
+        assert result.exit_code == 0
+        assert "No agents registered" in result.output
+
+
+def test_agents_health_local_always_healthy():
+    """agents health marks local agents as healthy without pinging."""
+    agent_list = [
+        {
+            "name": "local-agent",
+            "type": "local",
+            "callback_url": None,
+            "created_at": "2025-01-15T12:00:00+00:00",
+        }
+    ]
+    with _patch_agents_backend(agents=agent_list):
+        result = runner.invoke(app, ["agents", "health"])
+        assert result.exit_code == 0
+        assert "local-agent" in result.output
+        assert "healthy" in result.output
+
+
+def test_status_help():
+    """roots status --help works."""
+    result = runner.invoke(app, ["status", "--help"])
+    assert result.exit_code == 0
+    assert "Show status of runs" in result.output
+
+
+def test_agents_help():
+    """roots agents --help works."""
+    result = runner.invoke(app, ["agents", "--help"])
+    assert result.exit_code == 0

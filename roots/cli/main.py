@@ -3,18 +3,25 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Optional
 
+import httpx
 import typer
 import uvicorn
+from rich.console import Console
+from rich.table import Table
 
 from roots import Roots, __version__
 from roots.api.app import create_app
 from roots.events.sinks import StdoutSink
+from roots.storage.base import RunRecord
 from roots.storage.sqlite import SqliteBackend
 from roots.storage.postgres import PostgresBackend
 
 app = typer.Typer(help="Roots — A process orchestration framework.")
+agents_app = typer.Typer(help="List and inspect registered agents.")
+app.add_typer(agents_app, name="agents")
 
 
 def version_callback(value: bool) -> None:
@@ -232,16 +239,242 @@ def run(
     asyncio.run(_run_process(ctx.obj["storage"], process, work_item, wait))
 
 
+async def _list_runs(
+    storage: str,
+    process_filter: str | None,
+    status_filter: str | None,
+    limit: int,
+) -> list[RunRecord]:
+    """Fetch runs from storage with optional filters."""
+    if _is_postgres_dsn(storage):
+        backend = PostgresBackend(storage)
+    else:
+        backend = SqliteBackend(storage)
+    await backend.initialize()
+    try:
+        runs = await backend.list_runs(
+            process_id=process_filter, status=status_filter
+        )
+        runs.sort(key=lambda r: r.created_at, reverse=True)
+        return runs[:limit]
+    finally:
+        await backend.close()
+
+
+async def _get_run_detail(storage: str, run_id: str) -> None:
+    """Print detailed info for a single run."""
+    if _is_postgres_dsn(storage):
+        backend = PostgresBackend(storage)
+    else:
+        backend = SqliteBackend(storage)
+    await backend.initialize()
+    try:
+        run = await backend.get_run(run_id)
+        if run is None:
+            typer.echo(typer.style(f"Run not found: {run_id}", fg=typer.colors.RED))
+            raise typer.Exit(code=1)
+
+        console = Console()
+        console.print(f"\n[bold]Run:[/bold] {run.id}")
+        console.print(f"[bold]Process:[/bold] {run.process_id}")
+        console.print(f"[bold]Status:[/bold] {run.status}")
+        console.print(f"[bold]Current Node:[/bold] {run.current_node_id or '—'}")
+        console.print(f"[bold]Created:[/bold] {run.created_at}")
+        console.print(f"[bold]Updated:[/bold] {run.updated_at}")
+
+        # Work item state (truncated)
+        state_str = json.dumps(run.work_item_state)
+        if len(state_str) > 200:
+            state_str = state_str[:200] + "..."
+        console.print(f"\n[bold]Work Item State:[/bold] {state_str}")
+
+        # Recent history events
+        events = await backend.list_history_events(run.id)
+        if events:
+            console.print(f"\n[bold]Recent History ({len(events)} events):[/bold]")
+            table = Table()
+            table.add_column("Type")
+            table.add_column("Node")
+            table.add_column("Time")
+            for event in events[-10:]:
+                table.add_row(
+                    event.event_type,
+                    event.node_id or "—",
+                    str(event.created_at),
+                )
+            console.print(table)
+    finally:
+        await backend.close()
+
+
 @app.command()
-def status(ctx: typer.Context) -> None:
+def status(
+    ctx: typer.Context,
+    run_id: Optional[str] = typer.Argument(
+        None,
+        help="Run ID for detailed view. Omit to list all runs.",
+    ),
+    process: Optional[str] = typer.Option(
+        None,
+        "--process",
+        help="Filter by process ID.",
+    ),
+    status_filter: Optional[str] = typer.Option(
+        None,
+        "--status",
+        help="Filter by run status.",
+    ),
+    limit: int = typer.Option(
+        20,
+        "--limit",
+        help="Maximum number of runs to show.",
+    ),
+) -> None:
     """Show status of runs."""
-    typer.echo("status command (not yet implemented)")
+    import asyncio
+
+    storage = ctx.obj["storage"]
+
+    if run_id is not None:
+        asyncio.run(_get_run_detail(storage, run_id))
+        return
+
+    runs = asyncio.run(_list_runs(storage, process, status_filter, limit))
+
+    if not runs:
+        typer.echo("No runs found.")
+        return
+
+    console = Console()
+    table = Table()
+    table.add_column("run_id")
+    table.add_column("process_id")
+    table.add_column("status")
+    table.add_column("current_node")
+    table.add_column("created_at")
+    table.add_column("updated_at")
+
+    for r in runs:
+        table.add_row(
+            r.id,
+            r.process_id,
+            r.status,
+            r.current_node_id or "—",
+            str(r.created_at),
+            str(r.updated_at),
+        )
+
+    console.print(table)
 
 
-@app.command()
-def agents(ctx: typer.Context) -> None:
-    """List and inspect registered agents."""
-    typer.echo("agents command (not yet implemented)")
+async def _list_agents(storage: str) -> list[dict]:
+    """Fetch agents from storage."""
+    if _is_postgres_dsn(storage):
+        backend = PostgresBackend(storage)
+    else:
+        backend = SqliteBackend(storage)
+    await backend.initialize()
+    try:
+        return await backend.list_agents()
+    finally:
+        await backend.close()
+
+
+async def _check_agent_health(agents: list[dict]) -> list[dict]:
+    """Ping remote agents and return health results."""
+    results = []
+    for agent in agents:
+        agent_type = agent.get("type", "local")
+        callback_url = agent.get("callback_url")
+        entry = {
+            "name": agent.get("name", "unknown"),
+            "type": agent_type,
+            "callback_url": callback_url,
+        }
+        if agent_type != "remote" or not callback_url:
+            entry["status"] = "healthy"
+            entry["response_time_ms"] = None
+            results.append(entry)
+            continue
+
+        start = time.monotonic()
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                await client.get(callback_url)
+            elapsed_ms = (time.monotonic() - start) * 1000
+            entry["status"] = "healthy"
+            entry["response_time_ms"] = round(elapsed_ms, 2)
+        except Exception:
+            elapsed_ms = (time.monotonic() - start) * 1000
+            entry["status"] = "unhealthy"
+            entry["response_time_ms"] = round(elapsed_ms, 2)
+        results.append(entry)
+    return results
+
+
+@agents_app.callback(invoke_without_command=True)
+def agents_list(
+    ctx: typer.Context,
+) -> None:
+    """List all registered agents."""
+    if ctx.invoked_subcommand is not None:
+        return
+
+    import asyncio
+
+    storage = ctx.obj["storage"]
+    agent_list = asyncio.run(_list_agents(storage))
+
+    if not agent_list:
+        typer.echo("No agents registered.")
+        return
+
+    console = Console()
+    table = Table()
+    table.add_column("name")
+    table.add_column("type")
+    table.add_column("callback_url")
+    table.add_column("registered_at")
+
+    for a in agent_list:
+        table.add_row(
+            a.get("name", ""),
+            a.get("type", ""),
+            a.get("callback_url", "—") or "—",
+            a.get("created_at", "—"),
+        )
+
+    console.print(table)
+
+
+@agents_app.command()
+def health(
+    ctx: typer.Context,
+) -> None:
+    """Check health of all remote agents."""
+    import asyncio
+
+    storage = ctx.obj["storage"]
+    agent_list = asyncio.run(_list_agents(storage))
+
+    if not agent_list:
+        typer.echo("No agents registered.")
+        return
+
+    results = asyncio.run(_check_agent_health(agent_list))
+
+    console = Console()
+    table = Table()
+    table.add_column("name")
+    table.add_column("type")
+    table.add_column("status")
+    table.add_column("response_time_ms")
+
+    for r in results:
+        rt = str(r["response_time_ms"]) if r["response_time_ms"] is not None else "—"
+        table.add_row(r["name"], r["type"], r["status"], rt)
+
+    console.print(table)
 
 
 if __name__ == "__main__":
