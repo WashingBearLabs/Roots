@@ -39,11 +39,11 @@ The Roots CLI (`roots`) provides command-line access to process validation, serv
 - Helper function to create a `Roots` instance from CLI options (storage type auto-detected from DSN format)
 
 **Acceptance Criteria:**
-- [ ] `roots --help` shows all subcommands
-- [ ] `roots --version` shows version
-- [ ] Common options are available on all commands
-- [ ] Helper creates Roots instance from CLI options
-- [ ] Tests verify help output and option parsing
+- [x] `roots --help` shows all subcommands
+- [x] `roots --version` shows version
+- [x] Common options are available on all commands
+- [x] Helper creates Roots instance from CLI options
+- [x] Tests verify help output and option parsing
 
 ### US-002: `roots serve` Command
 
