@@ -125,12 +125,12 @@ The agent registry maps agent names to invocation strategies and provides a unif
 - The orchestrator uses this error type to trigger escalation (T2.1)
 
 **Acceptance Criteria:**
-- [ ] Input validation runs before invocation when input_schema is set
-- [ ] Output validation runs after invocation when output_schema is set
-- [ ] Schema validation failures raise AgentSchemaValidationError
-- [ ] Error includes agent name, direction (input/output), and specific field errors
-- [ ] No validation occurs when schemas are not set (permissive by default)
-- [ ] Tests cover: valid input/output, invalid input (blocks invocation), invalid output (post-invocation error)
+- [x] Input validation runs before invocation when input_schema is set
+- [x] Output validation runs after invocation when output_schema is set
+- [x] Schema validation failures raise AgentSchemaValidationError
+- [x] Error includes agent name, direction (input/output), and specific field errors
+- [x] No validation occurs when schemas are not set (permissive by default)
+- [x] Tests cover: valid input/output, invalid input (blocks invocation), invalid output (post-invocation error)
 
 ## Out of Scope
 
