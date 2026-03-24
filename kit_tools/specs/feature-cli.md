@@ -98,13 +98,13 @@ The Roots CLI (`roots`) provides command-line access to process validation, serv
 - Exit code: 0 if completed, 1 if failed, 2 if paused (hit checkpoint)
 
 **Acceptance Criteria:**
-- [ ] Run executes with process from file path or storage ID
-- [ ] Work item accepted as JSON string or file path
-- [ ] `--wait` blocks until completion and prints result
-- [ ] `--no-wait` prints run ID and exits
-- [ ] Events printed during execution
-- [ ] Exit codes reflect run outcome
-- [ ] Tests verify end-to-end execution via CLI
+- [x] Run executes with process from file path or storage ID
+- [x] Work item accepted as JSON string or file path
+- [x] `--wait` blocks until completion and prints result
+- [x] `--no-wait` prints run ID and exits
+- [x] Events printed during execution
+- [x] Exit codes reflect run outcome
+- [x] Tests verify end-to-end execution via CLI
 
 ### US-005: `roots status` and `roots agents` Commands
 
