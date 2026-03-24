@@ -173,11 +173,11 @@ The HTTP API is a FastAPI server exposing the full Roots framework via REST endp
 - Max 2 storage queries per endpoint
 
 **Acceptance Criteria:**
-- [ ] Process graph returns correct node/edge structure
-- [ ] Run graph returns execution state merged in
-- [ ] Node and edge status values match architecture doc
-- [ ] 404 on missing process/run
-- [ ] Tests verify structure matches expected format
+- [x] Process graph returns correct node/edge structure
+- [x] Run graph returns execution state merged in
+- [x] Node and edge status values match architecture doc
+- [x] 404 on missing process/run
+- [x] Tests verify structure matches expected format
 
 ### US-009: Graph Mutation Endpoints
 
