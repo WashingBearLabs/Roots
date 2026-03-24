@@ -128,12 +128,12 @@ The storage backend provides the persistence layer for all Roots state. It defin
 - **Enforcement:** `create_checkpoint` and `create_escalation` should check that no pending checkpoint/escalation already exists for this run. If one exists, raise `StorageError("Run {run_id} already has a pending checkpoint/escalation")`.
 
 **Acceptance Criteria:**
-- [ ] History events appended and retrievable in chronological order
-- [ ] Checkpoints: create (pending) → get_pending → resolve lifecycle works
-- [ ] Escalations: create (pending) → get_pending → resolve lifecycle works
-- [ ] Creating a second pending checkpoint/escalation raises StorageError
-- [ ] Resolution stores decision dict and timestamp
-- [ ] Tests cover both checkpoint and escalation lifecycles
+- [x] History events appended and retrievable in chronological order
+- [x] Checkpoints: create (pending) → get_pending → resolve lifecycle works
+- [x] Escalations: create (pending) → get_pending → resolve lifecycle works
+- [x] Creating a second pending checkpoint/escalation raises StorageError
+- [x] Resolution stores decision dict and timestamp
+- [x] Tests cover both checkpoint and escalation lifecycles
 
 ### US-005: SQLite — Decision History and Retry State
 
