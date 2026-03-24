@@ -194,13 +194,13 @@ The HTTP API is a FastAPI server exposing the full Roots framework via REST endp
 - Re-validation: after each mutation, run `validate_structure()`. If errors, roll back the change and return 400 with validation errors.
 
 **Acceptance Criteria:**
-- [ ] Nodes can be added, updated, and removed
-- [ ] Edges can be added and removed
-- [ ] Positions can be updated independently
-- [ ] Mutations trigger re-validation
-- [ ] Invalid mutations return 400 with validation errors
-- [ ] Removing a node also removes its edges
-- [ ] Tests cover each mutation type
+- [x] Nodes can be added, updated, and removed
+- [x] Edges can be added and removed
+- [x] Positions can be updated independently
+- [x] Mutations trigger re-validation
+- [x] Invalid mutations return 400 with validation errors
+- [x] Removing a node also removes its edges
+- [x] Tests cover each mutation type
 
 ## Out of Scope
 
