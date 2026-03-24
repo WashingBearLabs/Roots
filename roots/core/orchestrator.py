@@ -88,6 +88,10 @@ class ProcessRunner:
         self._escalated: bool = False
         self._decision_next_node: str | None = None
         self._join_metadata: dict[str, Any] | None = None
+        # Fork/join state (only valid within execute_run, not tick_all polling)
+        self._fork_branches: list[dict[str, Any]] = []
+        self._fork_join_node_id: str | None = None
+        self._fork_branch_results: list[Any] | None = None
 
     async def tick(self) -> bool:
         """Execute one node and return True if the run should continue."""
@@ -510,7 +514,7 @@ class ProcessRunner:
         state: dict[str, Any],
     ) -> dict[str, Any]:
         results = await asyncio.gather(
-            *[self._invoke_pool_agent(node, name, state) for name in agents],
+            *[self._invoke_pool_agent(node, name, copy.deepcopy(state)) for name in agents],
             return_exceptions=True,
         )
         successful: list[AgentOutput] = []
@@ -820,7 +824,28 @@ class ProcessRunner:
         state = branch_context["state"]
         start_time = time.monotonic()
 
+        if join_node_id is None:
+            raise OrchestrationError(
+                f"join_node_id is None for branch '{branch_id}' — "
+                "fork/join pairing may be broken"
+            )
+
+        visited: set[str] = set()
+        iterations = 0
+        max_iterations = 1000
+
         while current_node_id != join_node_id:
+            if current_node_id in visited:
+                raise OrchestrationError(
+                    f"Cycle detected in fork branch '{branch_id}' "
+                    f"at node '{current_node_id}'"
+                )
+            if iterations >= max_iterations:
+                raise OrchestrationError(
+                    f"Branch '{branch_id}' exceeded {max_iterations} iterations"
+                )
+            visited.add(current_node_id)
+            iterations += 1
             node = process.get_node(current_node_id)
             if node is None:
                 raise OrchestrationError(

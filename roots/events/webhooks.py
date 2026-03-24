@@ -9,6 +9,7 @@ import logging
 
 import httpx
 
+from roots.core.url_validator import SSRFError, validate_url
 from roots.events.sinks import EventSink
 from roots.events.types import EventEnvelope
 from roots.storage.base import StorageBackend
@@ -34,6 +35,11 @@ class WebhookDispatcher(EventSink):
 
     async def _deliver(self, url: str, body_bytes: bytes, secret: str | None) -> None:
         """POST event payload to a single webhook URL."""
+        try:
+            validate_url(url)
+        except SSRFError:
+            logger.warning("WebhookDispatcher skipping SSRF-blocked URL: %s", url)
+            return
         try:
             headers: dict[str, str] = {"Content-Type": "application/json"}
             if secret:

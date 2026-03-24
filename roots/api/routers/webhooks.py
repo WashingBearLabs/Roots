@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from roots import Roots
 from roots.api.deps import get_roots
 from roots.api.models import WebhookCreateRequest, WebhookResponse, WebhookTestResult
+from roots.core.url_validator import SSRFError, validate_url
 from roots.storage.base import WebhookRecord
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
@@ -78,6 +79,12 @@ async def test_webhook(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Webhook '{webhook_id}' not found",
         )
+
+    # Defense-in-depth SSRF check (URL was validated on creation, but may be stale)
+    try:
+        validate_url(webhook.url)
+    except SSRFError as exc:
+        return WebhookTestResult(status="failed", error=f"SSRF blocked: {exc}")
 
     # Send test event
     payload = {

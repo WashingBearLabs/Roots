@@ -8,9 +8,10 @@ import re
 from typing import Any
 
 import litellm
+import pydantic
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
-from pydantic import BaseModel, Field
 
 from roots.core.schema import DecisionEdge, DecisionMode, DecisionNodeConfig, NodeDefinition
 
@@ -238,9 +239,8 @@ def parse_ai_response(response: Any) -> AIDecisionResponse:
         try:
             args = json.loads(message.tool_calls[0].function.arguments)
             return AIDecisionResponse.model_validate(args)
-        except (json.JSONDecodeError, Exception) as exc:
-            # Fall through to text path
-            pass
+        except (json.JSONDecodeError, pydantic.ValidationError) as exc:
+            logger.debug("Tool call parsing failed, trying text fallback: %s", exc)
 
     # Fallback path: text content
     content = message.content
@@ -252,8 +252,8 @@ def parse_ai_response(response: Any) -> AIDecisionResponse:
         try:
             data = json.loads(content)
             return AIDecisionResponse.model_validate(data)
-        except (json.JSONDecodeError, Exception):
-            pass
+        except (json.JSONDecodeError, pydantic.ValidationError) as exc:
+            logger.debug("Text content parsing failed: %s", exc)
 
     # Both failed
     raw = getattr(message, "content", None) or str(message)

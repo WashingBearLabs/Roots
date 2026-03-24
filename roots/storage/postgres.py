@@ -158,7 +158,17 @@ class PostgresBackend(StorageBackend):
             await conn.execute(_SCHEMA_SQL)
 
     async def close(self) -> None:
-        for conn in self._lock_connections.values():
+        # Release advisory locks and clean up tracking table before closing
+        for run_id, conn in self._lock_connections.items():
+            try:
+                await conn.execute(
+                    "SELECT pg_advisory_unlock(hashtext($1))", run_id
+                )
+                await conn.execute(
+                    "DELETE FROM run_locks WHERE run_id = $1", run_id
+                )
+            except Exception:
+                pass  # Best-effort cleanup
             await self.pool.release(conn)
         self._lock_connections.clear()
         if self._pool is not None:
