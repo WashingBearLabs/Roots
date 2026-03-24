@@ -711,11 +711,99 @@ class ProcessRunner:
         # Look up the matching join node
         join_node_id = process.fork_join_map.get(node.id)
 
-        # Store branches on the runner for later execution (US-002)
+        # Store branches and join node on the runner
         self._fork_branches = branches
         self._fork_join_node_id = join_node_id
 
+        # Execute all branches concurrently
+        results = await asyncio.gather(
+            *[
+                self._execute_branch(ctx, join_node_id, process)
+                for ctx in branches
+            ],
+            return_exceptions=True,
+        )
+
+        # Store branch results for the join node
+        self._fork_branch_results = results
+
         return None
+
+    async def _execute_branch(
+        self,
+        branch_context: dict[str, Any],
+        join_node_id: str | None,
+        process: Any,
+    ) -> dict[str, Any]:
+        """Execute a single branch's mini execution loop.
+
+        Runs nodes sequentially from the branch's entry node until the
+        join node is reached (join node is NOT executed). Returns the
+        branch's final accumulated state dict.
+        """
+        branch_id = branch_context["branch_id"]
+        current_node_id = branch_context["entry_node_id"]
+        state = branch_context["state"]
+        start_time = time.monotonic()
+
+        while current_node_id != join_node_id:
+            node = process.get_node(current_node_id)
+            if node is None:
+                raise OrchestrationError(
+                    f"Node '{current_node_id}' not found in process "
+                    f"'{process.id}' (branch {branch_id})"
+                )
+
+            # Emit node.entered with branch_id
+            self._event_emitter.emit(
+                create_event(
+                    EventType.NODE_ENTERED,
+                    run_id=self.run_id,
+                    process_id=self._process_id or "",
+                    node_id=node.id,
+                    node_type=node.type.value,
+                    metadata={"branch_id": branch_id},
+                )
+            )
+
+            # Execute the node handler
+            node_start = time.monotonic()
+            output = await self._dispatch_node(node, state)
+
+            # Write output to state if applicable
+            if output is not None and hasattr(node.config, "output_key"):
+                state[node.config.output_key] = output
+
+            # Emit node.completed with branch_id and duration
+            elapsed_ms = int((time.monotonic() - node_start) * 1000)
+            self._event_emitter.emit(
+                create_event(
+                    EventType.NODE_COMPLETED,
+                    run_id=self.run_id,
+                    process_id=self._process_id or "",
+                    node_id=node.id,
+                    node_type=node.type.value,
+                    duration_ms=elapsed_ms,
+                    metadata={"branch_id": branch_id},
+                )
+            )
+
+            # Advance to next node via edge evaluation
+            edges = process.get_outbound_edges(node.id)
+            if not edges:
+                raise OrchestrationError(
+                    f"Node '{node.id}' has no outbound edges "
+                    f"(branch {branch_id})"
+                )
+            next_id = getattr(edges[0], "to_node", None)
+            current_node_id = next_id
+
+        # Record branch timing
+        branch_context["duration_ms"] = int(
+            (time.monotonic() - start_time) * 1000
+        )
+
+        return state
 
     async def _handle_join(
         self, node: NodeDefinition, state: dict[str, Any]

@@ -1,8 +1,10 @@
-"""Tests for fork/join branch creation (US-001)."""
+"""Tests for fork/join (US-001 branch creation, US-002 parallel execution)."""
 
 from __future__ import annotations
 
+import asyncio
 import copy
+import time
 from typing import Any
 
 import pytest
@@ -44,6 +46,17 @@ class CollectorSink(EventSink):
 
 async def echo_agent(input: dict[str, Any]) -> dict[str, Any]:
     return {"output": {"echo": input["work_item_state"]}, "escalate": False}
+
+
+async def slow_agent(input: dict[str, Any]) -> dict[str, Any]:
+    """Agent that sleeps 0.1s to verify concurrent execution."""
+    await asyncio.sleep(0.1)
+    return {"output": {"slow": True}, "escalate": False}
+
+
+async def failing_agent(input: dict[str, Any]) -> dict[str, Any]:
+    """Agent that always raises an exception."""
+    raise RuntimeError("branch failure")
 
 
 def make_fork_2_branch_process() -> ProcessDefinition:
@@ -199,6 +212,8 @@ async def sqlite_storage():
 def registry() -> AgentRegistry:
     reg = AgentRegistry()
     reg.register_local("echo", echo_agent)
+    reg.register_local("slow", slow_agent)
+    reg.register_local("failing", failing_agent)
     return reg
 
 
@@ -411,3 +426,322 @@ class TestForkBranchCreation:
             if e.event == "roots.node.completed" and e.node_id == "fork1"
         ]
         assert len(completed_events) == 1
+
+
+# --- US-002 Helpers ---
+
+
+def make_fork_slow_branches_process() -> ProcessDefinition:
+    """Fork → 2 slow agents → Join → End (for timing test)."""
+    return ProcessDefinition(
+        id="fork-slow",
+        name="Fork Slow Branches",
+        version="1.0.0",
+        nodes=[
+            NodeDefinition(
+                id="fork1",
+                type=NodeType.FORK,
+                label="Fork",
+                config=ForkNodeConfig(),
+            ),
+            NodeDefinition(
+                id="branch_a",
+                type=NodeType.AGENT,
+                label="Slow A",
+                config=AgentNodeConfig(agent="slow", output_key="a_out"),
+            ),
+            NodeDefinition(
+                id="branch_b",
+                type=NodeType.AGENT,
+                label="Slow B",
+                config=AgentNodeConfig(agent="slow", output_key="b_out"),
+            ),
+            NodeDefinition(
+                id="join1",
+                type=NodeType.JOIN,
+                label="Join",
+                config=JoinNodeConfig(),
+            ),
+            NodeDefinition(
+                id="done",
+                type=NodeType.END,
+                label="Done",
+                config=EndNodeConfig(status=EndStatus.COMPLETED),
+            ),
+        ],
+        edges=[
+            EdgeDefinition(from_node="fork1", to_node="branch_a"),
+            EdgeDefinition(from_node="fork1", to_node="branch_b"),
+            EdgeDefinition(from_node="branch_a", to_node="join1"),
+            EdgeDefinition(from_node="branch_b", to_node="join1"),
+            EdgeDefinition(from_node="join1", to_node="done"),
+        ],
+        entry_point="fork1",
+        fork_join_map={"fork1": "join1"},
+    )
+
+
+def make_fork_one_failing_process() -> ProcessDefinition:
+    """Fork → 1 echo + 1 failing agent → Join → End."""
+    return ProcessDefinition(
+        id="fork-fail",
+        name="Fork One Failing",
+        version="1.0.0",
+        nodes=[
+            NodeDefinition(
+                id="fork1",
+                type=NodeType.FORK,
+                label="Fork",
+                config=ForkNodeConfig(),
+            ),
+            NodeDefinition(
+                id="branch_a",
+                type=NodeType.AGENT,
+                label="Good Branch",
+                config=AgentNodeConfig(agent="echo", output_key="a_out"),
+            ),
+            NodeDefinition(
+                id="branch_b",
+                type=NodeType.AGENT,
+                label="Failing Branch",
+                config=AgentNodeConfig(agent="failing", output_key="b_out"),
+            ),
+            NodeDefinition(
+                id="join1",
+                type=NodeType.JOIN,
+                label="Join",
+                config=JoinNodeConfig(),
+            ),
+            NodeDefinition(
+                id="done",
+                type=NodeType.END,
+                label="Done",
+                config=EndNodeConfig(status=EndStatus.COMPLETED),
+            ),
+        ],
+        edges=[
+            EdgeDefinition(from_node="fork1", to_node="branch_a"),
+            EdgeDefinition(from_node="fork1", to_node="branch_b"),
+            EdgeDefinition(from_node="branch_a", to_node="join1"),
+            EdgeDefinition(from_node="branch_b", to_node="join1"),
+            EdgeDefinition(from_node="join1", to_node="done"),
+        ],
+        entry_point="fork1",
+        fork_join_map={"fork1": "join1"},
+    )
+
+
+# --- US-002 Tests ---
+
+
+class TestParallelBranchExecution:
+    """US-002: Parallel Branch Execution."""
+
+    async def test_branches_execute_concurrently_via_gather(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """All branches execute concurrently — total time < 2x single branch."""
+        proc, run_id = await _setup_run(
+            sqlite_storage, make_fork_slow_branches_process()
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        start = time.monotonic()
+        await runner.tick()  # fork tick executes branches
+        elapsed = time.monotonic() - start
+
+        # Both branches sleep 0.1s. If sequential, total >= 0.2s.
+        # If concurrent, total should be ~0.1s (plus overhead).
+        # Use 0.19s as threshold to confirm concurrency.
+        assert elapsed < 0.19, (
+            f"Branches took {elapsed:.3f}s — expected concurrent (<0.19s)"
+        )
+
+    async def test_each_branch_maintains_independent_state(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Each branch operates on its own state copy."""
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_fork_2_branch_process(),
+            {"input": "hello", "shared": {"counter": 0}},
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        await runner.tick()
+
+        results = runner._fork_branch_results
+        assert len(results) == 2
+        # Both branches should return dicts (not exceptions)
+        for r in results:
+            assert isinstance(r, dict)
+        # States are independent — not the same object
+        assert results[0] is not results[1]
+
+    async def test_branch_execution_stops_at_join_node(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+        sink: CollectorSink,
+    ) -> None:
+        """Branch execution stops at the join node — join is NOT executed."""
+        proc, run_id = await _setup_run(
+            sqlite_storage, make_fork_2_branch_process()
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        await runner.tick()
+
+        # Join node should NOT have been entered during branch execution
+        join_entered = [
+            e for e in sink.events
+            if e.event == "roots.node.entered" and e.node_id == "join1"
+        ]
+        assert len(join_entered) == 0
+
+        # Branch agent nodes SHOULD have been entered
+        branch_entered = [
+            e for e in sink.events
+            if e.event == "roots.node.entered"
+            and e.node_id in ("branch_a", "branch_b")
+        ]
+        assert len(branch_entered) == 2
+
+    async def test_branch_results_collected(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Branch results (state dicts) are collected after execution."""
+        proc, run_id = await _setup_run(
+            sqlite_storage, make_fork_2_branch_process()
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        await runner.tick()
+
+        results = runner._fork_branch_results
+        assert len(results) == 2
+        # Echo agent writes output under the output_key
+        # branch_a uses output_key="a_out", branch_b uses "b_out"
+        assert isinstance(results[0], dict)
+        assert "a_out" in results[0]
+        assert isinstance(results[1], dict)
+        assert "b_out" in results[1]
+
+    async def test_branch_exceptions_captured_not_raised(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Branch exceptions are captured by return_exceptions=True."""
+        proc, run_id = await _setup_run(
+            sqlite_storage, make_fork_one_failing_process()
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        # Should NOT raise — exceptions captured
+        await runner.tick()
+
+        results = runner._fork_branch_results
+        assert len(results) == 2
+        # First branch (echo) succeeds
+        assert isinstance(results[0], dict)
+        # Second branch (failing) is an exception
+        assert isinstance(results[1], BaseException)
+
+    async def test_events_include_branch_id_in_metadata(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+        sink: CollectorSink,
+    ) -> None:
+        """Events emitted during branch execution include branch_id."""
+        proc, run_id = await _setup_run(
+            sqlite_storage, make_fork_2_branch_process()
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        await runner.tick()
+
+        # Get all branch node events (entered + completed for each branch agent)
+        branch_events = [
+            e for e in sink.events
+            if e.node_id in ("branch_a", "branch_b")
+            and e.event in (
+                "roots.node.entered",
+                "roots.node.completed",
+            )
+        ]
+        # 2 branches × 2 events (entered + completed) = 4
+        assert len(branch_events) == 4
+
+        # Every branch event must have branch_id in metadata
+        for event in branch_events:
+            assert "branch_id" in event.metadata, (
+                f"Event {event.event} for {event.node_id} "
+                f"missing branch_id in metadata"
+            )
+
+        # Verify correct branch_id mapping
+        branch_a_events = [
+            e for e in branch_events if e.node_id == "branch_a"
+        ]
+        branch_b_events = [
+            e for e in branch_events if e.node_id == "branch_b"
+        ]
+        for e in branch_a_events:
+            assert e.metadata["branch_id"] == "branch-0"
+        for e in branch_b_events:
+            assert e.metadata["branch_id"] == "branch-1"
+
+    async def test_concurrent_execution_with_timing(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Timing data is recorded per branch."""
+        proc, run_id = await _setup_run(
+            sqlite_storage, make_fork_slow_branches_process()
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        await runner.tick()
+
+        # Branch contexts should have duration_ms populated
+        for branch in runner._fork_branches:
+            assert "duration_ms" in branch
+            assert isinstance(branch["duration_ms"], int)
+            assert branch["duration_ms"] >= 0
