@@ -67,11 +67,11 @@ The decision engine evaluates decision nodes across all four modes: deterministi
 - Define `DecisionEvaluationError(Exception)`: includes node_id, expression, context
 
 **Acceptance Criteria:**
-- [ ] First matching edge is selected
-- [ ] `confidence` is always 1.0 for deterministic
-- [ ] No-match raises DecisionEvaluationError with helpful context
-- [ ] Edge order matters (first match wins)
-- [ ] Tests cover: single match, first-of-multiple match, no match
+- [x] First matching edge is selected
+- [x] `confidence` is always 1.0 for deterministic
+- [x] No-match raises DecisionEvaluationError with helpful context
+- [x] Edge order matters (first match wins)
+- [x] Tests cover: single match, first-of-multiple match, no match
 
 ### US-003: AI Decision Response Model
 
