@@ -120,3 +120,28 @@ class AgentHealthResponse(BaseModel):
     status: str
     response_time_ms: float | None = None
     error: str | None = None
+
+
+# --- Webhook models ---
+
+
+class WebhookCreateRequest(BaseModel):
+    """Body for POST /webhooks."""
+
+    url: str
+    events: list[str] = ["roots.run.*"]
+    secret: str | None = None
+
+
+class WebhookResponse(BaseModel):
+    id: str
+    url: str
+    events: list[str]
+    secret: str | None = None
+    created_at: datetime
+
+
+class WebhookTestResult(BaseModel):
+    status: str  # "delivered" | "failed"
+    response_code: int | None = None
+    error: str | None = None
