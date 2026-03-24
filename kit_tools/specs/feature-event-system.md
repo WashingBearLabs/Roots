@@ -86,12 +86,12 @@ The event system provides structured JSON event emission at all process lifecycl
 - Both sinks should handle serialization errors gracefully (log and skip)
 
 **Acceptance Criteria:**
-- [ ] StdoutSink prints events to stdout
-- [ ] StdoutSink compact mode prints single-line JSON
-- [ ] FileSink appends events as JSON lines to file
-- [ ] FileSink creates file if it doesn't exist
-- [ ] Both handle serialization errors without crashing
-- [ ] Tests capture stdout output and verify file contents
+- [x] StdoutSink prints events to stdout
+- [x] StdoutSink compact mode prints single-line JSON
+- [x] FileSink appends events as JSON lines to file
+- [x] FileSink creates file if it doesn't exist
+- [x] Both handle serialization errors without crashing
+- [x] Tests capture stdout output and verify file contents
 
 ### US-004: HttpSink
 
