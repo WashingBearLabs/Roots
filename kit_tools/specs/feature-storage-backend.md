@@ -210,12 +210,12 @@ The storage backend provides the persistence layer for all Roots state. It defin
 - Mark tests with `@pytest.mark.skipif(not os.environ.get("ROOTS_POSTGRES_DSN"), reason="PostgreSQL not available")`
 
 **Acceptance Criteria:**
-- [ ] Schema creation with CREATE TABLE IF NOT EXISTS
-- [ ] Process and agent CRUD matches SQLite behavior
-- [ ] Run lifecycle operations match SQLite behavior
-- [ ] Work item state operations match SQLite behavior
-- [ ] JSONB used for all JSON columns
-- [ ] Tests skipped when ROOTS_POSTGRES_DSN not set
+- [x] Schema creation with CREATE TABLE IF NOT EXISTS
+- [x] Process and agent CRUD matches SQLite behavior
+- [x] Run lifecycle operations match SQLite behavior
+- [x] Work item state operations match SQLite behavior
+- [x] JSONB used for all JSON columns
+- [x] Tests skipped when ROOTS_POSTGRES_DSN not set
 
 ### US-009: PostgreSQL Backend — History, Locking, and Remaining Methods
 
