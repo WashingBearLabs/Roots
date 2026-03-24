@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -320,3 +321,257 @@ class TestClose:
         gateway = MCPGateway()
         await gateway.close()
         assert len(gateway._connections) == 0
+
+
+class TestConnectCommand:
+    @pytest.mark.asyncio
+    async def test_connect_command_creates_connection(self) -> None:
+        gateway = MCPGateway()
+        mock_session = _make_mock_session()
+
+        mock_stdio_cm = AsyncMock()
+        mock_stdio_cm.__aenter__ = AsyncMock(
+            return_value=(MagicMock(), MagicMock())
+        )
+        mock_stdio_cm.__aexit__ = AsyncMock(return_value=False)
+
+        mock_session_cm = AsyncMock()
+        mock_session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_cm.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch(
+                "roots.agents.mcp_gateway.stdio_client",
+                return_value=mock_stdio_cm,
+            ),
+            patch(
+                "roots.agents.mcp_gateway.ClientSession",
+                return_value=mock_session_cm,
+            ),
+        ):
+            connection = await gateway.connect_command(
+                ["python3", "-m", "my_mcp_server"]
+            )
+
+        assert isinstance(connection, MCPConnection)
+        assert connection.command == ["python3", "-m", "my_mcp_server"]
+        assert connection.session is mock_session
+        mock_session.initialize.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_connect_command_caches_connection(self) -> None:
+        gateway = MCPGateway()
+        mock_session = _make_mock_session()
+
+        mock_stdio_cm = AsyncMock()
+        mock_stdio_cm.__aenter__ = AsyncMock(
+            return_value=(MagicMock(), MagicMock())
+        )
+        mock_stdio_cm.__aexit__ = AsyncMock(return_value=False)
+
+        mock_session_cm = AsyncMock()
+        mock_session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_cm.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch(
+                "roots.agents.mcp_gateway.stdio_client",
+                return_value=mock_stdio_cm,
+            ),
+            patch(
+                "roots.agents.mcp_gateway.ClientSession",
+                return_value=mock_session_cm,
+            ),
+        ):
+            conn1 = await gateway.connect_command(["my-server"])
+            conn2 = await gateway.connect_command(["my-server"])
+
+        assert conn1 is conn2
+
+    @pytest.mark.asyncio
+    async def test_connect_command_failure_raises_invocation_error(self) -> None:
+        gateway = MCPGateway()
+
+        with patch(
+            "roots.agents.mcp_gateway.stdio_client",
+            side_effect=FileNotFoundError("not found"),
+        ):
+            with pytest.raises(
+                AgentInvocationError, match="Failed to start MCP subprocess"
+            ) as exc_info:
+                await gateway.connect_command(["nonexistent-cmd"])
+
+        assert isinstance(exc_info.value.original, FileNotFoundError)
+
+    @pytest.mark.asyncio
+    async def test_connect_command_passes_server_params(self) -> None:
+        gateway = MCPGateway()
+        mock_session = _make_mock_session()
+
+        mock_stdio_cm = AsyncMock()
+        mock_stdio_cm.__aenter__ = AsyncMock(
+            return_value=(MagicMock(), MagicMock())
+        )
+        mock_stdio_cm.__aexit__ = AsyncMock(return_value=False)
+
+        mock_session_cm = AsyncMock()
+        mock_session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_cm.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch(
+                "roots.agents.mcp_gateway.stdio_client",
+                return_value=mock_stdio_cm,
+            ) as mock_stdio_fn,
+            patch(
+                "roots.agents.mcp_gateway.ClientSession",
+                return_value=mock_session_cm,
+            ),
+        ):
+            await gateway.connect_command(["python3", "-m", "server", "--port", "8080"])
+
+        call_args = mock_stdio_fn.call_args[0][0]
+        assert call_args.command == "python3"
+        assert call_args.args == ["-m", "server", "--port", "8080"]
+
+
+class TestDisconnectCommand:
+    @pytest.mark.asyncio
+    async def test_disconnect_command_removes_from_cache(self) -> None:
+        gateway = MCPGateway()
+        connection = MCPConnection(
+            url="my-server",
+            session=AsyncMock(),
+            command=["my-server"],
+        )
+        gateway._command_connections["my-server"] = connection
+
+        await gateway.disconnect_command(connection)
+
+        assert "my-server" not in gateway._command_connections
+
+    @pytest.mark.asyncio
+    async def test_disconnect_command_calls_cleanup(self) -> None:
+        gateway = MCPGateway()
+        mock_session_cm = AsyncMock()
+        mock_session_cm.__aexit__ = AsyncMock(return_value=False)
+        mock_stdio_cm = AsyncMock()
+        mock_stdio_cm.__aexit__ = AsyncMock(return_value=False)
+
+        connection = MCPConnection(
+            url="my-server --flag",
+            session=AsyncMock(),
+            _cleanup=(mock_session_cm, mock_stdio_cm),
+            command=["my-server", "--flag"],
+        )
+        gateway._command_connections["my-server --flag"] = connection
+
+        await gateway.disconnect_command(connection)
+
+        mock_session_cm.__aexit__.assert_awaited_once()
+        mock_stdio_cm.__aexit__.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_disconnect_command_terminates_process(self) -> None:
+        gateway = MCPGateway()
+        mock_process = AsyncMock()
+        mock_process.returncode = None
+        mock_process.terminate = MagicMock()
+        mock_process.wait = AsyncMock()
+
+        connection = MCPConnection(
+            url="my-server",
+            session=AsyncMock(),
+            command=["my-server"],
+            process=mock_process,
+        )
+
+        await gateway.disconnect_command(connection)
+
+        mock_process.terminate.assert_called_once()
+        mock_process.wait.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_disconnect_command_force_kills_after_timeout(self) -> None:
+        gateway = MCPGateway()
+        mock_process = AsyncMock()
+        mock_process.returncode = None
+        mock_process.terminate = MagicMock()
+        mock_process.kill = MagicMock()
+        mock_process.wait = AsyncMock()
+
+        connection = MCPConnection(
+            url="my-server",
+            session=AsyncMock(),
+            command=["my-server"],
+            process=mock_process,
+        )
+
+        with patch(
+            "roots.agents.mcp_gateway.asyncio.wait_for",
+            side_effect=asyncio.TimeoutError(),
+        ):
+            await gateway.disconnect_command(connection)
+
+        mock_process.terminate.assert_called_once()
+        mock_process.kill.assert_called_once()
+        # wait() called once after kill
+        mock_process.wait.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_disconnect_command_skips_terminated_process(self) -> None:
+        gateway = MCPGateway()
+        mock_process = AsyncMock()
+        mock_process.returncode = 0  # Already exited
+
+        connection = MCPConnection(
+            url="my-server",
+            session=AsyncMock(),
+            command=["my-server"],
+            process=mock_process,
+        )
+
+        await gateway.disconnect_command(connection)
+
+        mock_process.terminate.assert_not_called()
+
+
+class TestCloseWithCommands:
+    @pytest.mark.asyncio
+    async def test_close_disconnects_url_and_command_connections(self) -> None:
+        gateway = MCPGateway()
+        url_conn = MCPConnection(
+            url="http://host:8000/sse", session=AsyncMock()
+        )
+        cmd_conn = MCPConnection(
+            url="my-server",
+            session=AsyncMock(),
+            command=["my-server"],
+        )
+        gateway._connections["http://host:8000/sse"] = url_conn
+        gateway._command_connections["my-server"] = cmd_conn
+
+        await gateway.close()
+
+        assert len(gateway._connections) == 0
+        assert len(gateway._command_connections) == 0
+
+    @pytest.mark.asyncio
+    async def test_close_with_only_command_connections(self) -> None:
+        gateway = MCPGateway()
+        cmd_conn1 = MCPConnection(
+            url="server-a",
+            session=AsyncMock(),
+            command=["server-a"],
+        )
+        cmd_conn2 = MCPConnection(
+            url="server-b",
+            session=AsyncMock(),
+            command=["server-b"],
+        )
+        gateway._command_connections["server-a"] = cmd_conn1
+        gateway._command_connections["server-b"] = cmd_conn2
+
+        await gateway.close()
+
+        assert len(gateway._command_connections) == 0

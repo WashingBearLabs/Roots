@@ -1,14 +1,18 @@
-"""MCP Gateway for URL-based MCP server connections and tool discovery."""
+"""MCP Gateway for MCP server connections and tool discovery."""
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
 from mcp import ClientSession
 from mcp.client.sse import sse_client
+from mcp.client.stdio import StdioServerParameters, stdio_client
 
 from roots.agents.invoker import AgentInvocationError
+
+SUBPROCESS_SHUTDOWN_TIMEOUT = 5
 
 
 @dataclass
@@ -18,6 +22,8 @@ class MCPConnection:
     url: str
     session: ClientSession
     _cleanup: Any = field(repr=False, default=None)
+    command: list[str] | None = field(repr=False, default=None)
+    process: asyncio.subprocess.Process | None = field(repr=False, default=None)
 
 
 class MCPGateway:
@@ -25,6 +31,7 @@ class MCPGateway:
 
     def __init__(self) -> None:
         self._connections: dict[str, MCPConnection] = {}
+        self._command_connections: dict[str, MCPConnection] = {}
 
     async def connect_url(self, url: str) -> MCPConnection:
         """Connect to a URL-based MCP server via SSE.
@@ -58,6 +65,80 @@ class MCPGateway:
                 message=f"Failed to connect to MCP server at {url}: {exc}",
                 original=exc,
             ) from exc
+
+    async def connect_command(self, command: list[str]) -> MCPConnection:
+        """Connect to a command-based MCP server via stdio subprocess.
+
+        Returns a cached connection if one already exists for the command.
+        Raises AgentInvocationError on connection failure.
+        """
+        cmd_key = " ".join(command)
+        if cmd_key in self._command_connections:
+            return self._command_connections[cmd_key]
+
+        try:
+            server_params = StdioServerParameters(
+                command=command[0],
+                args=command[1:],
+            )
+
+            stdio_cm = stdio_client(server_params)
+            streams = await stdio_cm.__aenter__()
+
+            session_cm = ClientSession(*streams)
+            session = await session_cm.__aenter__()
+
+            await session.initialize()
+
+            connection = MCPConnection(
+                url=cmd_key,
+                session=session,
+                _cleanup=(session_cm, stdio_cm),
+                command=command,
+            )
+            self._command_connections[cmd_key] = connection
+            return connection
+
+        except Exception as exc:
+            raise AgentInvocationError(
+                agent_name="mcp",
+                message=(
+                    f"Failed to start MCP subprocess "
+                    f"'{cmd_key}': {exc}"
+                ),
+                original=exc,
+            ) from exc
+
+    async def disconnect_command(self, connection: MCPConnection) -> None:
+        """Disconnect a command-based MCP server and terminate its subprocess.
+
+        Sends MCP shutdown, terminates subprocess gracefully, and force-kills
+        after SUBPROCESS_SHUTDOWN_TIMEOUT seconds if still running.
+        """
+        cmd_key = " ".join(connection.command or [])
+        self._command_connections.pop(cmd_key, None)
+
+        if connection._cleanup:
+            session_cm, stdio_cm = connection._cleanup
+            try:
+                await session_cm.__aexit__(None, None, None)
+            except Exception:
+                pass
+            try:
+                await stdio_cm.__aexit__(None, None, None)
+            except Exception:
+                pass
+
+        if connection.process and connection.process.returncode is None:
+            connection.process.terminate()
+            try:
+                await asyncio.wait_for(
+                    connection.process.wait(),
+                    timeout=SUBPROCESS_SHUTDOWN_TIMEOUT,
+                )
+            except asyncio.TimeoutError:
+                connection.process.kill()
+                await connection.process.wait()
 
     async def discover_tools(
         self, connection: MCPConnection
@@ -133,7 +214,11 @@ class MCPGateway:
                 pass
 
     async def close(self) -> None:
-        """Disconnect all connections."""
+        """Disconnect all connections and terminate all subprocesses."""
         connections = list(self._connections.values())
         for conn in connections:
             await self.disconnect(conn)
+
+        cmd_connections = list(self._command_connections.values())
+        for conn in cmd_connections:
+            await self.disconnect_command(conn)
