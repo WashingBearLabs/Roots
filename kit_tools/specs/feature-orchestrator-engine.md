@@ -170,13 +170,13 @@ The orchestrator is the heart of Roots. It is stateless between ticks — each t
 - Define `OrchestrationError(Exception)` in `roots/core/orchestrator.py`
 
 **Acceptance Criteria:**
-- [ ] Decision node next node comes from handler return value
-- [ ] Non-decision nodes advance via first outbound edge
-- [ ] Missing outbound edge raises OrchestrationError
-- [ ] Output written to `state[output_key]` as full dict
-- [ ] State accumulates across multiple nodes (each gets its own key)
-- [ ] Nodes without output_key don't modify state
-- [ ] Tests verify 3-node process with state accumulation: node1 writes to key1, node2 reads key1 from state
+- [x] Decision node next node comes from handler return value
+- [x] Non-decision nodes advance via first outbound edge
+- [x] Missing outbound edge raises OrchestrationError
+- [x] Output written to `state[output_key]` as full dict
+- [x] State accumulates across multiple nodes (each gets its own key)
+- [x] Nodes without output_key don't modify state
+- [x] Tests verify 3-node process with state accumulation: node1 writes to key1, node2 reads key1 from state
 
 ### US-006: Orchestrator Class
 
