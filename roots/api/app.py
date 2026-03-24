@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from roots.api.deps import get_roots  # noqa: F401 — re-export for backwards compat
 from roots.api.routers.agents import router as agents_router
 from roots.api.routers.processes import router as processes_router
 from roots.api.routers.runs import router as runs_router
@@ -14,11 +15,6 @@ from roots.api.routers.webhooks import router as webhooks_router
 
 if TYPE_CHECKING:
     from roots import Roots
-
-
-async def get_roots(request: Request) -> "Roots":
-    """Dependency: retrieve the Roots instance from app state."""
-    return request.app.state.roots  # type: ignore[no-any-return]
 
 
 def create_app(roots: "Roots") -> FastAPI:

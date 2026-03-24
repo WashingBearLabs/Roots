@@ -1,0 +1,48 @@
+"""Request and response models for the Roots HTTP API."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel
+
+
+# --- Process models ---
+
+
+class ProcessCreateRequest(BaseModel):
+    """Body for POST /processes — a raw process definition dict."""
+
+    definition: dict[str, Any]
+
+
+class ProcessCreateResponse(BaseModel):
+    id: str
+    name: str
+    version: str
+    created_at: datetime
+
+
+class ProcessSummary(BaseModel):
+    id: str
+    name: str
+    version: str
+    description: str | None = None
+
+
+class ProcessDetail(BaseModel):
+    """Full process definition returned as JSON."""
+
+    id: str
+    name: str
+    version: str
+    description: str | None = None
+    entry_point: str
+    nodes: list[dict[str, Any]]
+    edges: list[dict[str, Any]]
+
+
+class ProcessValidationResponse(BaseModel):
+    valid: bool
+    errors: list[str]
