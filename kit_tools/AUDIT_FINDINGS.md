@@ -10,7 +10,7 @@
 > **TEMPLATE_INTENT:** Persistent record of code quality, security, and intent alignment findings from automated validation. Tracks findings across sessions with status tracking and archival.
 
 > Last updated: 2026-03-24
-> Updated by: Claude (validate-feature — cli)
+> Updated by: Claude (validate-feature — mcp-invocation)
 
 ---
 
@@ -36,6 +36,101 @@
 
 <!-- Newest findings at top. Each entry has a unique ID: YYYY-MM-DD-NNN -->
 <!-- Findings are added by /kit-tools:validate-feature -->
+
+### 2026-03-24 — MCP Invocation Validation
+
+| ID | Category | Severity | File | Status |
+|----|----------|----------|------|--------|
+| 2026-03-24-080 | compliance | critical | `roots/agents/mcp_gateway.py` | resolved |
+| 2026-03-24-081 | security | critical | `roots/agents/mcp_gateway.py` | resolved |
+| 2026-03-24-082 | security | critical | `roots/api/app.py` | open |
+| 2026-03-24-083 | quality | warning | `roots/agents/mcp_gateway.py` | open |
+| 2026-03-24-084 | quality | warning | `roots/agents/mcp_gateway.py` | open |
+| 2026-03-24-085 | quality | warning | `roots/agents/mcp_gateway.py` | open |
+| 2026-03-24-086 | quality | warning | `roots/__init__.py` | open |
+| 2026-03-24-087 | quality | warning | `roots/__init__.py` | open |
+| 2026-03-24-088 | quality | warning | `roots/agents/invoker.py` | open |
+| 2026-03-24-089 | security | warning | `roots/api/app.py` | open |
+| 2026-03-24-090 | security | warning | `roots/api/routers/webhooks.py` | open |
+| 2026-03-24-091 | security | warning | `roots/agents/invoker.py` | open |
+| 2026-03-24-092 | security | warning | `roots/agents/invoker.py` | open |
+| 2026-03-24-093 | security | warning | `roots/api/routers/webhooks.py` | open |
+| 2026-03-24-094 | quality | info | `roots/agents/mcp_gateway.py` | open |
+| 2026-03-24-095 | quality | info | `roots/agents/invoker.py` | open |
+| 2026-03-24-096 | quality | info | `roots/core/orchestrator.py` | open |
+| 2026-03-24-097 | quality | info | `tests/test_agent_invoker.py` | open |
+| 2026-03-24-098 | security | info | `roots/storage/sqlite.py` | open |
+| 2026-03-24-099 | security | info | `roots/api/models.py` | open |
+| 2026-03-24-100 | security | info | `roots/core/decision.py` | open |
+| 2026-03-24-101 | testing | info | `test suite` | open |
+
+**2026-03-24-080** — MCP package imported unconditionally, violating spec requirement for optional dependency. `import roots` would crash without the `mcp` package installed.
+> Recommendation: Fixed — wrapped imports in try/except ImportError with `_has_mcp` sentinel and `_require_mcp()` guard.
+
+**2026-03-24-081** — `connect_command` spawned arbitrary subprocess commands with no validation, enabling command injection.
+> Recommendation: Fixed — added `_validate_command()` rejecting empty commands, path traversal, and shell metacharacters.
+
+**2026-03-24-082** — All API endpoints have zero authentication or authorization. Combined with MCP command execution, this could enable unauthenticated RCE.
+> Recommendation: Add authentication middleware (API key, JWT, or OAuth2) before shipping. Requires a separate feature spec for auth model design.
+
+**2026-03-24-083** — Bare `except Exception: pass` blocks in `disconnect` and `disconnect_command` silently swallow all cleanup errors, making debugging connection leaks difficult.
+> Recommendation: Add `logging.debug` calls in these except blocks.
+
+**2026-03-24-084** — `connect_url` and `connect_command` manually call `__aenter__`/`__aexit__` on async context managers. If a later step fails, previously entered context managers leak.
+> Recommendation: Add try/except cleanup logic to exit previously entered context managers on failure.
+
+**2026-03-24-085** — `_cleanup` field on `MCPConnection` is typed as `Any` and stores a tuple unpacked by positional convention. Fragile and not self-documenting.
+> Recommendation: Use a NamedTuple or dataclass for the cleanup pair.
+
+**2026-03-24-086** — `resolve_checkpoint` method (~130 lines) has substantial duplication across approve/reject/redirect branches.
+> Recommendation: Extract common resolution logic into a helper method.
+
+**2026-03-24-087** — `get_run_graph` method (~95 lines) combines querying, status derivation, and response building in a single method.
+> Recommendation: Extract node/edge status derivation into separate private methods.
+
+**2026-03-24-088** — `_invoke_local`, `_invoke_remote`, and `_invoke_mcp` each re-fetch registration via `self._registry.get()` and use `assert` for validation. Registration was already fetched in `invoke()`.
+> Recommendation: Pass the already-fetched registration as a parameter; use `if ... raise` instead of `assert`.
+
+**2026-03-24-089** — CORS configured with `allow_origins=["*"]`, allowing any origin to make cross-origin requests.
+> Recommendation: Restrict to specific trusted origins or use an env var toggle.
+
+**2026-03-24-090** — `WebhookResponse` includes the secret field, exposing HMAC signing keys in list/read API responses.
+> Recommendation: Mask the secret or exclude it from responses after creation.
+
+**2026-03-24-091** — `_invoke_remote` makes HTTP POST to arbitrary `callback_url` with no URL validation (SSRF vector). Same for agent health check in `routers/agents.py`.
+> Recommendation: Validate callback URLs at registration: reject private IP ranges, enforce HTTPS.
+
+**2026-03-24-092** — No rate limiting on outbound HTTP requests for remote agents and webhooks. Could be used as a request amplifier.
+> Recommendation: Add rate limiting and circuit breaker patterns for outbound requests.
+
+**2026-03-24-093** — Webhook URL accepted with no validation (SSRF vector via `events/webhooks.py`).
+> Recommendation: Validate webhook URLs with same restrictions as agent callback URLs.
+
+**2026-03-24-094** — Command-based connection cache key uses `" ".join(command)`, creating ambiguity (e.g., `["my", "server"]` vs `["my server"]`).
+> Recommendation: Use `tuple(command)` as the dict key instead.
+
+**2026-03-24-095** — Parameter name `input` in `invoke` shadows Python built-in `input()`.
+> Recommendation: Rename to `agent_input`.
+
+**2026-03-24-096** — `Orchestrator.__init__` creates its own `AgentInvoker` without `mcp_gateway`, so direct orchestrator usage will fail for MCP agents.
+> Recommendation: Accept an `AgentInvoker` instance or pass `MCPGateway` through.
+
+**2026-03-24-097** — Line 423 in test contains a no-op assertion: `assert isinstance(result, AgentInput.__class__.__mro__[0]) or True` — always evaluates to True.
+> Recommendation: Replace with a meaningful assertion or remove.
+
+**2026-03-24-098** — Webhook secrets stored in plaintext in SQLite.
+> Recommendation: Consider application-level encryption at rest for defense-in-depth.
+
+**2026-03-24-099** — `AgentRegisterRequest` has no validation constraints on name, callback_url, or timeout_seconds fields.
+> Recommendation: Add Pydantic validators: alphanumeric name, HttpUrl type, max timeout cap.
+
+**2026-03-24-100** — `EvalWithCompoundTypes` used in decision engine expands attack surface if process definitions become user-supplied.
+> Recommendation: Acceptable for current trust model; revisit if untrusted process definitions are allowed.
+
+**2026-03-24-101** — Full test suite: 916 passed, 80 skipped (PostgreSQL tests), 50 warnings. All tests pass.
+> Recommendation: No action required.
+
+---
 
 ### 2026-03-24 — CLI Validation
 

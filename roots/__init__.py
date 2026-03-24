@@ -7,7 +7,7 @@ from typing import Any, Callable
 
 from roots.agents.registry import AgentRegistry
 from roots.agents.invoker import AgentInvoker
-from roots.agents.mcp_gateway import MCPGateway
+from roots.agents.mcp_gateway import MCPGateway  # noqa: F401
 from roots.agents.types import AgentRegistration, AgentType
 from roots.core.decision import DecisionEngine
 from roots.core.orchestrator import Orchestrator, OrchestrationError

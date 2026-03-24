@@ -6,14 +6,20 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
-try:
-    from mcp import ClientSession
-    from mcp.client.sse import sse_client
-    from mcp.client.stdio import StdioServerParameters, stdio_client
+ClientSession: Any = None
+sse_client: Any = None
+StdioServerParameters: Any = None
+stdio_client: Any = None
+_has_mcp = False
 
-    HAS_MCP = True
+try:
+    from mcp import ClientSession  # type: ignore[no-redef]
+    from mcp.client.sse import sse_client  # type: ignore[no-redef]
+    from mcp.client.stdio import StdioServerParameters, stdio_client  # type: ignore[no-redef]
+
+    _has_mcp = True
 except ImportError:
-    HAS_MCP = False
+    pass
 
 from roots.agents.invoker import AgentInvocationError
 
@@ -23,7 +29,7 @@ _UNSAFE_COMMAND_CHARS = set(";|&$`\"'\\!#~<>{}()*?[]")
 
 def _require_mcp() -> None:
     """Raise a clear error if the mcp package is not installed."""
-    if not HAS_MCP:
+    if not _has_mcp:
         raise RuntimeError(
             "The 'mcp' package is required for MCP features. "
             "Install it with: pip install mcp"
