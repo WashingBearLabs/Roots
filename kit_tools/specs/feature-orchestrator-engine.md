@@ -295,13 +295,13 @@ The orchestrator is the heart of Roots. It is stateless between ticks — each t
   - Emit appropriate resolved event
 
 **Acceptance Criteria:**
-- [ ] `get_run_graph` returns correct JSON structure matching architecture doc
-- [ ] Node statuses derived correctly from execution history
-- [ ] Edge statuses derived from traversal history
-- [ ] Graph loads in max 2 storage queries
-- [ ] `resolve_checkpoint` handles approve/reject/redirect
-- [ ] Approve resumes run, reject fails run, redirect redirects
-- [ ] Tests verify graph structure for a partially-completed run
+- [x] `get_run_graph` returns correct JSON structure matching architecture doc
+- [x] Node statuses derived correctly from execution history
+- [x] Edge statuses derived from traversal history
+- [x] Graph loads in max 2 storage queries
+- [x] `resolve_checkpoint` handles approve/reject/redirect
+- [x] Approve resumes run, reject fails run, redirect redirects
+- [x] Tests verify graph structure for a partially-completed run
 
 ### US-009: Example Process YAML Files
 
