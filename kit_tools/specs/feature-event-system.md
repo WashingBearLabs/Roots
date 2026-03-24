@@ -130,14 +130,14 @@ The event system provides structured JSON event emission at all process lifecycl
 - Usage: `EventEmitter(sinks=[StdoutSink(), WebhookDispatcher(storage)])` — no special wiring needed
 
 **Acceptance Criteria:**
-- [ ] WebhookDispatcher implements EventSink interface
-- [ ] Adding it to emitter's sinks list triggers webhook delivery
-- [ ] Events dispatched to webhooks matching event type pattern
-- [ ] HMAC-SHA256 signature included when webhook has secret
-- [ ] Signature header is `X-Roots-Signature`
-- [ ] Delivery failures logged, not retried
-- [ ] Emitter works fine without WebhookDispatcher
-- [ ] Tests verify: pattern matching, HMAC computation, delivery, integration with emitter
+- [x] WebhookDispatcher implements EventSink interface
+- [x] Adding it to emitter's sinks list triggers webhook delivery
+- [x] Events dispatched to webhooks matching event type pattern
+- [x] HMAC-SHA256 signature included when webhook has secret
+- [x] Signature header is `X-Roots-Signature`
+- [x] Delivery failures logged, not retried
+- [x] Emitter works fine without WebhookDispatcher
+- [x] Tests verify: pattern matching, HMAC computation, delivery, integration with emitter
 
 ## Out of Scope
 
