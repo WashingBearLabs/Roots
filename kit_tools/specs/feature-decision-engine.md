@@ -45,14 +45,14 @@ The decision engine evaluates decision nodes across all four modes: deterministi
 - Wrap the whole evaluation in try/except to catch any simpleeval exceptions and provide context
 
 **Acceptance Criteria:**
-- [ ] Dot notation traverses nested dicts correctly
-- [ ] All comparison operators work with strings and numbers
-- [ ] `in` operator works with lists
-- [ ] Boolean operators combine conditions correctly
-- [ ] Missing keys produce clear error with field path
-- [ ] No access to Python builtins or functions
-- [ ] Array index access via dot notation works (e.g., `results.0.name`)
-- [ ] Tests cover: nested access, array indexing, all operators, missing keys, type mismatches, boolean logic
+- [x] Dot notation traverses nested dicts correctly
+- [x] All comparison operators work with strings and numbers
+- [x] `in` operator works with lists
+- [x] Boolean operators combine conditions correctly
+- [x] Missing keys produce clear error with field path
+- [x] No access to Python builtins or functions
+- [x] Array index access via dot notation works (e.g., `results.0.name`)
+- [x] Tests cover: nested access, array indexing, all operators, missing keys, type mismatches, boolean logic
 
 ### US-002: Deterministic Decision Mode
 
