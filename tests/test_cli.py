@@ -1,6 +1,8 @@
-"""Tests for CLI (US-001 scaffolding + US-002 serve command + US-003 validate)."""
+"""Tests for CLI (US-001 scaffolding + US-002 serve + US-003 validate + US-004 run)."""
 
 from __future__ import annotations
+
+import json
 
 import pytest
 import yaml
@@ -347,3 +349,208 @@ def test_validate_error_includes_node_context(tmp_path):
     result = runner.invoke(app, ["validate", str(f)])
     assert result.exit_code == 1
     assert "start" in result.output or "agent" in result.output
+
+
+# --- US-004: roots run Command ---
+
+
+def _make_mock_roots(final_status="completed"):
+    """Return a mock Roots instance for run tests."""
+    mock = AsyncMock()
+    mock.load_process = AsyncMock()
+    mock.start_run = AsyncMock(
+        return_value=MagicMock(id="run-123")
+    )
+    mock.execute_run = AsyncMock()
+    mock.get_run = AsyncMock(
+        return_value=MagicMock(status=final_status)
+    )
+    mock.close = AsyncMock()
+    return mock
+
+
+def _patch_run(mock_roots):
+    """Return a context manager that patches Roots construction and backends."""
+    return patch(
+        "roots.cli.main._run_process",
+        side_effect=None,
+    )
+
+
+def _write_process_yaml(tmp_path):
+    """Write a minimal valid process YAML file and return its path."""
+    f = tmp_path / "proc.yaml"
+    f.write_text(yaml.dump(_valid_process_dict()))
+    return f
+
+
+def test_run_with_file_path(tmp_path):
+    """run loads process from file path and executes."""
+    proc_file = _write_process_yaml(tmp_path)
+    mock_roots = _make_mock_roots("completed")
+
+    with (
+        patch("roots.cli.main.SqliteBackend") as mock_backend_cls,
+        patch("roots.cli.main.Roots", return_value=mock_roots),
+    ):
+        mock_backend = AsyncMock()
+        mock_backend_cls.return_value = mock_backend
+
+        result = runner.invoke(app, ["run", str(proc_file)])
+        assert result.exit_code == 0
+        mock_roots.load_process.assert_awaited_once_with(str(proc_file))
+        mock_roots.start_run.assert_awaited_once()
+        mock_roots.execute_run.assert_awaited_once_with("run-123")
+        mock_roots.close.assert_awaited_once()
+
+
+def test_run_with_process_id():
+    """run looks up process by ID when argument is not a file path."""
+    mock_roots = _make_mock_roots("completed")
+
+    with (
+        patch("roots.cli.main.SqliteBackend") as mock_backend_cls,
+        patch("roots.cli.main.Roots", return_value=mock_roots),
+    ):
+        mock_backend = AsyncMock()
+        mock_backend_cls.return_value = mock_backend
+
+        result = runner.invoke(app, ["run", "my-process-id"])
+        assert result.exit_code == 0
+        mock_roots.load_process.assert_not_awaited()
+        mock_roots.start_run.assert_awaited_once()
+        args = mock_roots.start_run.call_args
+        assert args[0][0] == "my-process-id"
+
+
+def test_run_work_item_json_string():
+    """run accepts --work-item as JSON string."""
+    mock_roots = _make_mock_roots("completed")
+
+    with (
+        patch("roots.cli.main.SqliteBackend") as mock_backend_cls,
+        patch("roots.cli.main.Roots", return_value=mock_roots),
+    ):
+        mock_backend = AsyncMock()
+        mock_backend_cls.return_value = mock_backend
+
+        result = runner.invoke(
+            app, ["run", "proc-1", "--work-item", '{"key": "value"}']
+        )
+        assert result.exit_code == 0
+        args = mock_roots.start_run.call_args
+        assert args[0][1] == {"key": "value"}
+
+
+def test_run_work_item_from_file(tmp_path):
+    """run accepts --work-item as path to a JSON file."""
+    mock_roots = _make_mock_roots("completed")
+    wi_file = tmp_path / "work.json"
+    wi_file.write_text(json.dumps({"from": "file"}))
+
+    with (
+        patch("roots.cli.main.SqliteBackend") as mock_backend_cls,
+        patch("roots.cli.main.Roots", return_value=mock_roots),
+    ):
+        mock_backend = AsyncMock()
+        mock_backend_cls.return_value = mock_backend
+
+        result = runner.invoke(
+            app, ["run", "proc-1", "--work-item", str(wi_file)]
+        )
+        assert result.exit_code == 0
+        args = mock_roots.start_run.call_args
+        assert args[0][1] == {"from": "file"}
+
+
+def test_run_wait_blocks_and_prints_result():
+    """run --wait (default) blocks until completion and prints result."""
+    mock_roots = _make_mock_roots("completed")
+
+    with (
+        patch("roots.cli.main.SqliteBackend") as mock_backend_cls,
+        patch("roots.cli.main.Roots", return_value=mock_roots),
+    ):
+        mock_backend = AsyncMock()
+        mock_backend_cls.return_value = mock_backend
+
+        result = runner.invoke(app, ["run", "proc-1"])
+        assert result.exit_code == 0
+        assert "run-123" in result.output
+        assert "completed" in result.output
+        mock_roots.execute_run.assert_awaited_once()
+
+
+def test_run_no_wait_prints_id_and_exits():
+    """run --no-wait prints run ID and exits immediately."""
+    mock_roots = _make_mock_roots("completed")
+
+    with (
+        patch("roots.cli.main.SqliteBackend") as mock_backend_cls,
+        patch("roots.cli.main.Roots", return_value=mock_roots),
+    ):
+        mock_backend = AsyncMock()
+        mock_backend_cls.return_value = mock_backend
+
+        result = runner.invoke(app, ["run", "proc-1", "--no-wait"])
+        assert result.exit_code == 0
+        assert "run-123" in result.output
+        mock_roots.execute_run.assert_not_awaited()
+
+
+def test_run_exit_code_failed():
+    """run exits with code 1 when run fails."""
+    mock_roots = _make_mock_roots("failed")
+
+    with (
+        patch("roots.cli.main.SqliteBackend") as mock_backend_cls,
+        patch("roots.cli.main.Roots", return_value=mock_roots),
+    ):
+        mock_backend = AsyncMock()
+        mock_backend_cls.return_value = mock_backend
+
+        result = runner.invoke(app, ["run", "proc-1"])
+        assert result.exit_code == 1
+
+
+def test_run_exit_code_paused():
+    """run exits with code 2 when run is paused (checkpoint)."""
+    mock_roots = _make_mock_roots("paused")
+
+    with (
+        patch("roots.cli.main.SqliteBackend") as mock_backend_cls,
+        patch("roots.cli.main.Roots", return_value=mock_roots),
+    ):
+        mock_backend = AsyncMock()
+        mock_backend_cls.return_value = mock_backend
+
+        result = runner.invoke(app, ["run", "proc-1"])
+        assert result.exit_code == 2
+
+
+def test_run_events_use_stdout_sink():
+    """run creates Roots with StdoutSink for event output."""
+    mock_roots = _make_mock_roots("completed")
+
+    with (
+        patch("roots.cli.main.SqliteBackend") as mock_backend_cls,
+        patch("roots.cli.main.Roots", return_value=mock_roots) as mock_roots_cls,
+    ):
+        mock_backend = AsyncMock()
+        mock_backend_cls.return_value = mock_backend
+
+        result = runner.invoke(app, ["run", "proc-1"])
+        assert result.exit_code == 0
+        call_kwargs = mock_roots_cls.call_args[1]
+        sinks = call_kwargs["event_sinks"]
+        assert len(sinks) == 1
+        from roots.events.sinks import StdoutSink
+
+        assert isinstance(sinks[0], StdoutSink)
+
+
+def test_run_help():
+    """roots run --help works."""
+    result = runner.invoke(app, ["run", "--help"])
+    assert result.exit_code == 0
+    assert "Execute a process run" in result.output

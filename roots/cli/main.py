@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Optional
 
 import typer
@@ -9,6 +10,7 @@ import uvicorn
 
 from roots import Roots, __version__
 from roots.api.app import create_app
+from roots.events.sinks import StdoutSink
 from roots.storage.sqlite import SqliteBackend
 from roots.storage.postgres import PostgresBackend
 
@@ -145,10 +147,89 @@ def validate(
         raise typer.Exit(code=1)
 
 
+def _parse_work_item(value: str) -> dict:
+    """Parse a work item from a JSON string or file path."""
+    from pathlib import Path as _Path
+
+    path = _Path(value)
+    if path.is_file():
+        return json.loads(path.read_text(encoding="utf-8"))
+    return json.loads(value)
+
+
+async def _run_process(
+    storage: str, process_arg: str, work_item_str: str, wait: bool
+) -> None:
+    """Execute a process run asynchronously."""
+    from pathlib import Path as _Path
+
+    work_item_data = _parse_work_item(work_item_str)
+
+    if _is_postgres_dsn(storage):
+        backend = PostgresBackend(storage)
+    else:
+        backend = SqliteBackend(storage)
+    await backend.initialize()
+
+    roots_instance = Roots(storage=backend, event_sinks=[StdoutSink(compact=True)])
+
+    try:
+        target = _Path(process_arg)
+        if target.is_file():
+            await roots_instance.load_process(str(target))
+            from roots.core.validator import load_process_yaml
+
+            process_def = load_process_yaml(str(target))
+            process_id = process_def.id
+        else:
+            process_id = process_arg
+
+        run_record = await roots_instance.start_run(process_id, work_item_data)
+
+        if not wait:
+            typer.echo(run_record.id)
+            return
+
+        await roots_instance.execute_run(run_record.id)
+
+        final_run = await roots_instance.get_run(run_record.id)
+        assert final_run is not None
+        final_status = final_run.status
+
+        typer.echo(f"Run {run_record.id} {final_status}")
+
+        if final_status == "completed":
+            raise typer.Exit(code=0)
+        elif final_status == "paused":
+            raise typer.Exit(code=2)
+        else:
+            raise typer.Exit(code=1)
+    finally:
+        await roots_instance.close()
+
+
 @app.command()
-def run(ctx: typer.Context) -> None:
+def run(
+    ctx: typer.Context,
+    process: str = typer.Argument(
+        ...,
+        help="Process ID or path to a YAML process definition file.",
+    ),
+    work_item: str = typer.Option(
+        "{}",
+        "--work-item",
+        help="Work item as a JSON string or path to a JSON file.",
+    ),
+    wait: bool = typer.Option(
+        True,
+        "--wait/--no-wait",
+        help="Block until run completes (default) or exit immediately.",
+    ),
+) -> None:
     """Execute a process run."""
-    typer.echo("run command (not yet implemented)")
+    import asyncio
+
+    asyncio.run(_run_process(ctx.obj["storage"], process, work_item, wait))
 
 
 @app.command()
