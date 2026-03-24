@@ -184,3 +184,33 @@
 - Learnings: to_decision_record() takes input_state as a parameter since DecisionResult doesn't store the work item state; Optional fields (checkpoint_prompt, ai_recommendation) are only included in the record when present, keeping deterministic records clean; Verifier note: Clean implementation. The to_decision_record() method is straightforward and well-tested. All modes are covered with specific test cases. No scope creep or side effects observed.
 - Committed: feat(decision-engine): US-006 - Decision History Recording
 
+### US-001: Event Type Catalog and Envelope Model (Attempt 1) — PASS
+- Completed: 2026-03-24T05:42:59Z
+- Verified by: independent verifier session
+- Learnings: The spec says 18 event types but the actual enumerated list has 19 (5+4+3+3+2+2) — implemented all 19 from the list; Pydantic BaseModel with model_dump_json() serializes datetime as ISO string by default (e.g. 2026-03-23T12:00:00Z); EventType uses StrEnum consistent with NodeType and other enums in roots.core.schema; Issue: Acceptance criteria says '18 event types' but the enumerated list in the story has 19 events — implemented all 19 from the list; Verifier note: Clean implementation. All 24 tests pass in 0.02s. Code is minimal and matches the spec precisely. Minor cosmetic issue: test method named 'test_all_18_event_types_defined' asserts len == 19, but this is because the spec's criterion text says '18' while the implementation hints actually list 19 types. The code correctly implements all 19 types from the hints.
+- Committed: feat(event-system): US-001 - Event Type Catalog and Envelope Model
+
+### US-002: Event Emitter with Bounded Buffer (Attempt 1) — PASS
+- Completed: 2026-03-24T05:45:50Z
+- Verified by: independent verifier session
+- Learnings: OrderedDict provides natural FIFO ordering for task shedding — simpler than maintaining a separate deque of task IDs; asyncio.wait() with timeout handles graceful shutdown cleanly — tasks that don't complete within timeout are simply left (not cancelled) per the spec's 'wait with timeout' requirement; Verifier note: Clean implementation. EventSink is an ABC with a single async emit method. EventEmitter uses OrderedDict for FIFO task tracking, asyncio.create_task for async dispatch, and proper exception isolation. All acceptance criteria are met with comprehensive tests.
+- Committed: feat(event-system): US-002 - Event Emitter with Bounded Buffer
+
+### US-003: StdoutSink and FileSink (Attempt 1) — PASS
+- Completed: 2026-03-24T05:47:57Z
+- Verified by: independent verifier session
+- Learnings: asyncio.to_thread wraps synchronous file I/O for non-blocking writes without adding aiofiles dependency; capsys fixture works with async pytest tests under asyncio_mode=auto for capturing stdout; Verifier note: Clean implementation following the spec hints closely. StdoutSink and FileSink are well-structured with proper error handling. Tests are comprehensive, covering normal operation, compact mode, multi-event append, file creation, string path acceptance, and error resilience. All 9 tests pass in 0.03s.
+- Committed: feat(event-system): US-003 - StdoutSink and FileSink
+
+### US-004: HttpSink (Attempt 1) — PASS
+- Completed: 2026-03-24T05:50:14Z
+- Verified by: independent verifier session
+- Learnings: httpx.MockTransport is the idiomatic way to test httpx-based HTTP clients — inject it via _client to avoid real network calls; httpx.AsyncClient(timeout=N) sets all timeout values (connect, read, write, pool) to N seconds; httpx.HTTPStatusError is raised by response.raise_for_status() and includes the response object with status_code; Verifier note: Clean implementation. All 9 HttpSink tests pass, and existing 9 sinks tests pass with no regressions. Code follows project conventions (abc base class, logger.warning for errors, lazy client initialization). Constructor signature matches spec (url, headers with None default instead of mutable dict default, timeout_seconds=10).
+- Committed: feat(event-system): US-004 - HttpSink
+
+### US-005: WebhookDispatcher (as EventSink) (Attempt 1) — PASS
+- Completed: 2026-03-24T05:52:52Z
+- Verified by: independent verifier session
+- Learnings: asyncio.create_task for fire-and-forget webhook delivery within an EventSink.emit — tasks are collected by the emitter's own buffer management; hmac.new(secret.encode(), body_bytes, hashlib.sha256).hexdigest() computes HMAC-SHA256 on the exact JSON bytes sent in the POST body; httpx.MockTransport with request capture list is the standard test pattern for verifying HTTP calls including headers and body content; Verifier note: Clean implementation. WebhookDispatcher correctly subclasses EventSink, uses fire-and-forget asyncio.create_task for delivery, computes HMAC-SHA256 per spec, and handles failures gracefully. Tests are thorough with good coverage of edge cases.
+- Committed: feat(event-system): US-005 - WebhookDispatcher (as EventSink)
+

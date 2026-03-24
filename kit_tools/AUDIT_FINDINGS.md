@@ -10,7 +10,7 @@
 > **TEMPLATE_INTENT:** Persistent record of code quality, security, and intent alignment findings from automated validation. Tracks findings across sessions with status tracking and archival.
 
 > Last updated: 2026-03-23
-> Updated by: Claude (validate-feature)
+> Updated by: Claude (validate-feature — event-system)
 
 ---
 
@@ -36,6 +36,85 @@
 
 <!-- Newest findings at top. Each entry has a unique ID: YYYY-MM-DD-NNN -->
 <!-- Findings are added by /kit-tools:validate-feature -->
+
+### 2026-03-23 — Event System Validation
+
+| ID | Category | Severity | File | Status |
+|----|----------|----------|------|--------|
+| 2026-03-23-057 | quality | critical | `roots/events/webhooks.py` | resolved |
+| 2026-03-23-058 | security | critical | `roots/events/webhooks.py` | resolved |
+| 2026-03-23-059 | quality | warning | `tests/test_events.py` | open |
+| 2026-03-23-060 | quality | warning | `roots/events/webhooks.py` | open |
+| 2026-03-23-061 | quality | warning | `roots/events/sinks.py` | open |
+| 2026-03-23-062 | quality | warning | `roots/events/__init__.py` | open |
+| 2026-03-23-063 | quality | warning | `tests/test_webhooks.py` | open |
+| 2026-03-23-064 | security | warning | `roots/events/webhooks.py` | open |
+| 2026-03-23-065 | security | warning | `roots/events/sinks.py` | open |
+| 2026-03-23-066 | security | warning | `roots/events/sinks.py` | open |
+| 2026-03-23-067 | quality | info | `tests/test_emitter.py` | open |
+| 2026-03-23-068 | quality | info | `roots/events/sinks.py` | open |
+| 2026-03-23-069 | quality | info | `tests/test_http_sink.py` | open |
+| 2026-03-23-070 | security | info | `roots/events/sinks.py` | open |
+| 2026-03-23-071 | security | info | `roots/events/types.py` | open |
+| 2026-03-23-072 | security | info | `roots/events/webhooks.py` | open |
+| 2026-03-23-073 | compliance | info | `tests/test_events.py` | open |
+| 2026-03-23-074 | testing | info | `test suite` | open |
+
+**2026-03-23-057** — `asyncio.create_task()` in `WebhookDispatcher.emit()` without saving task references. Python GC may collect and cancel untracked tasks.
+> Recommendation: Track tasks in a set with `add_done_callback` for cleanup. **RESOLVED:** Tasks now tracked in `_background_tasks` set.
+
+**2026-03-23-058** — Webhook delivery response silently ignored — HTTP errors (401/403/500) not logged, making it impossible to diagnose failed deliveries.
+> Recommendation: Log non-2xx status codes, consistent with HttpSink pattern. **RESOLVED:** Response status now checked and logged for 4xx/5xx.
+
+**2026-03-23-059** — Test method `test_all_18_event_types_defined` asserts `len(EventType) == 19`. Method name doesn't match assertion.
+> Recommendation: Rename to `test_all_19_event_types_defined`.
+
+**2026-03-23-060** — Magic number `10` for timeout in `WebhookDispatcher`. Same value duplicated in `HttpSink`. Not configurable on `WebhookDispatcher`.
+> Recommendation: Define a module-level constant and add `timeout_seconds` constructor parameter.
+
+**2026-03-23-061** — `HttpSink` creates lazy `httpx.AsyncClient` but provides no `close()` method. Same issue in `WebhookDispatcher`. Resource leak risk.
+> Recommendation: Add `async def close()` to both classes that calls `await self._client.aclose()`.
+
+**2026-03-23-062** — `roots/events/__init__.py` is empty, exports nothing. Inconsistent with `roots/__init__.py` which re-exports symbols.
+> Recommendation: Add public API re-exports for key types.
+
+**2026-03-23-063** — `FakeStorage` in test_webhooks.py doesn't extend `StorageBackend`. Type annotation mismatch with `WebhookDispatcher.__init__`.
+> Recommendation: Make `FakeStorage` extend `StorageBackend` or narrow the type hint.
+
+**2026-03-23-064** — `WebhookDispatcher.emit()` spawns untracked sub-tasks for each matching webhook, bypassing the `EventEmitter`'s `max_pending` buffer. Potential resource exhaustion.
+> Recommendation: Consider a semaphore or bounded task set within WebhookDispatcher.
+
+**2026-03-23-065** — `FileSink` accepts arbitrary path with no validation. Could write to unintended locations if path is user-influenced.
+> Recommendation: Validate path is within a safe directory if user-controlled.
+
+**2026-03-23-066** — `HttpSink` and `WebhookDispatcher` httpx clients never explicitly closed. Connection pool resource leak risk.
+> Recommendation: Add `close()` methods and call from `EventEmitter.close()`.
+
+**2026-03-23-067** — `test_emitter.py` uses redundant `@pytest.mark.asyncio` decorators while other test files rely on `asyncio_mode = "auto"`.
+> Recommendation: Remove decorators for consistency.
+
+**2026-03-23-068** — `_get_client()` lazy-init pattern duplicated identically in `HttpSink` and `WebhookDispatcher`.
+> Recommendation: Consider extracting a shared mixin.
+
+**2026-03-23-069** — `_mock_transport` helper has unused `handler` parameter.
+> Recommendation: Simplify to only accept `status_code`.
+
+**2026-03-23-070** — `HttpSink` and `WebhookDispatcher` URLs not validated for HTTPS. Event payloads may contain sensitive metadata.
+> Recommendation: Log warning or validate HTTPS scheme.
+
+**2026-03-23-071** — `EventEnvelope.metadata` field (`dict[str, Any]`) has no size constraints. Extremely large metadata could cause memory issues.
+> Recommendation: Consider Pydantic validator for max size.
+
+**2026-03-23-072** — `X-Roots-Signature` sends bare hex digest without algorithm prefix. Industry standard uses `sha256=` prefix.
+> Recommendation: Prefix signature with `sha256=` for future-proofing.
+
+**2026-03-23-073** — Feature spec says "All 18 event types" but lists 19. Implementation correctly defines 19. Spec text has a typo.
+> Recommendation: Update spec to say "All 19 event types".
+
+**2026-03-23-074** — All 64 event-system tests pass (0.66s).
+> Recommendation: None — tests healthy.
+
+---
 
 ### 2026-03-23 — Decision Engine Validation
 
