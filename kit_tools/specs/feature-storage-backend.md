@@ -106,13 +106,13 @@ The storage backend provides the persistence layer for all Roots state. It defin
 - `update_work_item_state(run_id, state)`: UPDATE work_item_state_json with `json.dumps(state)`, set updated_at
 
 **Acceptance Criteria:**
-- [ ] Creating a run returns RunRecord with pending status and generated ID
-- [ ] Run status updates are persisted and retrievable
-- [ ] Work item state can be read and updated independently
-- [ ] List runs filters correctly by process_id and status (both, either, neither)
-- [ ] Non-existent run_id returns None (not exception)
-- [ ] `update_run_atomically` updates state+status+node in a single operation
-- [ ] Tests cover full lifecycle: create → update to running → atomic update → complete
+- [x] Creating a run returns RunRecord with pending status and generated ID
+- [x] Run status updates are persisted and retrievable
+- [x] Work item state can be read and updated independently
+- [x] List runs filters correctly by process_id and status (both, either, neither)
+- [x] Non-existent run_id returns None (not exception)
+- [x] `update_run_atomically` updates state+status+node in a single operation
+- [x] Tests cover full lifecycle: create → update to running → atomic update → complete
 
 ### US-004: SQLite — History, Checkpoints, Escalations
 
