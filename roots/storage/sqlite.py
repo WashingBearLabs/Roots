@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -711,24 +711,16 @@ class SqliteBackend(StorageBackend):
         stale_timeout_seconds: int = 300,
     ) -> bool:
         now = utcnow()
+        stale_threshold = (
+            now - timedelta(seconds=stale_timeout_seconds)
+        ).isoformat()
         cursor = await self.db.execute(
-            "SELECT locked_by, locked_at FROM runs WHERE id = ?", (run_id,)
-        )
-        row = await cursor.fetchone()
-        if row is None:
-            return False
-        locked_by, locked_at = row[0], row[1]
-        if locked_by is not None and locked_at is not None:
-            lock_time = datetime.fromisoformat(locked_at)
-            elapsed = (now - lock_time).total_seconds()
-            if elapsed < stale_timeout_seconds:
-                return False
-        await self.db.execute(
-            "UPDATE runs SET locked_by = ?, locked_at = ? WHERE id = ?",
-            (owner_id, now.isoformat(), run_id),
+            "UPDATE runs SET locked_by = ?, locked_at = ? "
+            "WHERE id = ? AND (locked_by IS NULL OR locked_at < ?)",
+            (owner_id, now.isoformat(), run_id, stale_threshold),
         )
         await self.db.commit()
-        return True
+        return cursor.rowcount == 1
 
     async def release_run_lock(self, run_id: str, owner_id: str) -> None:
         await self.db.execute(
