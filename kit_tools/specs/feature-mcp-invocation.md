@@ -128,12 +128,12 @@ MCP agent invocation extends the agent registry with a third invocation type. MC
   - Return list of registered agent names
 
 **Acceptance Criteria:**
-- [ ] Tools auto-discovered and registered
-- [ ] tool_filter limits registration
-- [ ] Agent names use prefix + sanitized tool name
-- [ ] Input schemas populated from MCP tool definitions
-- [ ] Returns list of names
-- [ ] Tests verify auto-registration
+- [x] Tools auto-discovered and registered
+- [x] tool_filter limits registration
+- [x] Agent names use prefix + sanitized tool name
+- [x] Input schemas populated from MCP tool definitions
+- [x] Returns list of names
+- [x] Tests verify auto-registration
 
 ## Out of Scope
 
