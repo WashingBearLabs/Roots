@@ -7,12 +7,12 @@ import logging
 import re
 from typing import Any
 
-import litellm
 import pydantic
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
+from roots.core.llm import LLMCompletionFunc, LLMConfig, LLMResponse, openai_chat_completion
 from roots.core.schema import DecisionEdge, DecisionMode, DecisionNodeConfig, NodeDefinition
 
 from simpleeval import (  # type: ignore[import-untyped]
@@ -224,7 +224,7 @@ def resolve_model(node_config: DecisionNodeConfig, default_model: str) -> str:
     return node_config.model or default_model
 
 
-def parse_ai_response(response: Any) -> AIDecisionResponse:
+def parse_ai_response(response: LLMResponse) -> AIDecisionResponse:
     """Parse an LLM response into AIDecisionResponse.
 
     Tries tool_calls first, then falls back to parsing text content as JSON.
@@ -232,18 +232,16 @@ def parse_ai_response(response: Any) -> AIDecisionResponse:
     Raises:
         DecisionEvaluationError: If neither path produces a valid response.
     """
-    message = response.choices[0].message
-
     # Primary path: tool call
-    if message.tool_calls:
+    if response.tool_calls:
         try:
-            args = json.loads(message.tool_calls[0].function.arguments)
+            args = json.loads(response.tool_calls[0].arguments)
             return AIDecisionResponse.model_validate(args)
         except (json.JSONDecodeError, pydantic.ValidationError) as exc:
             logger.debug("Tool call parsing failed, trying text fallback: %s", exc)
 
     # Fallback path: text content
-    content = message.content
+    content = response.content
     if content:
         # Strip markdown fences if present
         fence_match = _MARKDOWN_FENCE_RE.search(content)
@@ -256,7 +254,7 @@ def parse_ai_response(response: Any) -> AIDecisionResponse:
             logger.debug("Text content parsing failed: %s", exc)
 
     # Both failed
-    raw = getattr(message, "content", None) or str(message)
+    raw = response.content or str(response)
     raise DecisionEvaluationError(
         expression="AI response parsing",
         message=f"Could not parse AI response as AIDecisionResponse. Raw: {raw}",
@@ -266,8 +264,33 @@ def parse_ai_response(response: Any) -> AIDecisionResponse:
 class DecisionEngine:
     """Evaluates decision nodes to determine execution routing."""
 
-    def __init__(self, default_model: str) -> None:
+    def __init__(
+        self,
+        default_model: str,
+        llm_callable: LLMCompletionFunc | None = None,
+        llm_config: LLMConfig | None = None,
+    ) -> None:
         self._default_model = default_model
+        if llm_callable is not None:
+            self._llm_callable = llm_callable
+        else:
+            _config = llm_config or LLMConfig()
+
+            async def _default_llm(
+                model: str,
+                messages: list[dict[str, Any]],
+                tools: list[dict[str, Any]] | None = None,
+                tool_choice: dict[str, Any] | str | None = None,
+            ) -> LLMResponse:
+                return await openai_chat_completion(
+                    model=model,
+                    messages=messages,
+                    tools=tools,
+                    tool_choice=tool_choice,
+                    config=_config,
+                )
+
+            self._llm_callable = _default_llm
 
     async def evaluate(
         self, node: NodeDefinition, work_item_state: dict[str, Any]
@@ -333,7 +356,7 @@ class DecisionEngine:
     async def _call_ai_decision(
         self, node: NodeDefinition, work_item_state: dict[str, Any]
     ) -> AIDecisionResponse:
-        """Call LiteLLM and parse the AI response.
+        """Call the LLM and parse the AI response.
 
         Returns the parsed AIDecisionResponse.  Edge-target validation
         is performed by the caller so that invalid targets can be
@@ -346,7 +369,7 @@ class DecisionEngine:
             work_item_state,
             node.config.edges,
         )
-        response = await litellm.acompletion(
+        response = await self._llm_callable(
             model=model,
             messages=messages,
             tools=[DECISION_TOOL],

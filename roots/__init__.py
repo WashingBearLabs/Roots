@@ -11,6 +11,7 @@ from roots.agents.mcp_gateway import MCPGateway  # noqa: F401
 from roots.agents.types import AgentRegistration, AgentType
 from roots.core.checkpoint import ResolutionDecision, ResolutionError, resolve_pending
 from roots.core.decision import DecisionEngine
+from roots.core.llm import LLMCompletionFunc, LLMConfig, LLMResponse
 from roots.core.orchestrator import Orchestrator, OrchestrationError
 from roots.core.validator import load_process_yaml
 from roots.events.emitter import EventEmitter
@@ -24,6 +25,9 @@ __version__ = "0.1.0"
 
 __all__ = [
     "Roots",
+    "LLMConfig",
+    "LLMCompletionFunc",
+    "LLMResponse",
     "SqliteBackend",
     "PostgresBackend",
     "StdoutSink",
@@ -43,7 +47,9 @@ class Roots:
         self,
         storage: StorageBackend,
         event_sinks: list[EventSink] | None = None,
-        default_model: str = "openai/gpt-4o-mini",
+        default_model: str = "gpt-4o-mini",
+        llm_callable: LLMCompletionFunc | None = None,
+        llm_config: LLMConfig | None = None,
     ) -> None:
         self.storage = storage
         self._agent_registry = AgentRegistry()
@@ -51,7 +57,11 @@ class Roots:
         self._agent_invoker = AgentInvoker(
             self._agent_registry, mcp_gateway=self._mcp_gateway
         )
-        self._decision_engine = DecisionEngine(default_model=default_model)
+        self._decision_engine = DecisionEngine(
+            default_model=default_model,
+            llm_callable=llm_callable,
+            llm_config=llm_config,
+        )
         self._event_emitter = EventEmitter(sinks=event_sinks or [])
         self._orchestrator = Orchestrator(
             storage,
