@@ -1,16 +1,19 @@
-"""Agent invocation for Roots agent registry (local and remote)."""
+"""Agent invocation for Roots agent registry (local, remote, and MCP)."""
 
 from __future__ import annotations
 
 import asyncio
 import inspect
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import jsonschema
 
 from roots.agents.registry import AgentRegistry
 from roots.agents.types import AgentInput, AgentOutput, AgentRegistration, AgentType
+
+if TYPE_CHECKING:
+    from roots.agents.mcp_gateway import MCPGateway
 
 
 class AgentNotFoundError(Exception):
@@ -63,9 +66,11 @@ class AgentInvoker:
         self,
         registry: AgentRegistry,
         http_client: httpx.AsyncClient | None = None,
+        mcp_gateway: MCPGateway | None = None,
     ) -> None:
         self._registry = registry
         self._http_client = http_client or httpx.AsyncClient()
+        self._mcp_gateway = mcp_gateway
 
     async def invoke(self, agent_name: str, input: AgentInput) -> AgentOutput:
         """Invoke a registered agent by name.
@@ -83,7 +88,9 @@ class AgentInvoker:
                 agent_name, "input", input.work_item_state, registration.input_schema
             )
 
-        if registration.agent_type == AgentType.REMOTE:
+        if registration.agent_type == AgentType.MCP:
+            result = await self._invoke_mcp(agent_name, input)
+        elif registration.agent_type == AgentType.REMOTE:
             result = await self._invoke_remote(agent_name, input)
         else:
             result = await self._invoke_local(agent_name, input)
@@ -183,3 +190,61 @@ class AgentInvoker:
             ) from exc
 
         return AgentOutput(**response.json())
+
+    async def _invoke_mcp(
+        self, agent_name: str, input: AgentInput
+    ) -> AgentOutput:
+        if self._mcp_gateway is None:
+            raise AgentInvocationError(
+                agent_name=agent_name,
+                message="MCPGateway is required for MCP agent invocation",
+                original=ValueError("MCPGateway not provided"),
+            )
+
+        registration = self._registry.get(agent_name)
+        assert registration is not None
+        assert registration.mcp_tool_name is not None
+
+        try:
+            if registration.mcp_server_url is not None:
+                connection = await self._mcp_gateway.connect_url(
+                    registration.mcp_server_url
+                )
+            else:
+                assert registration.mcp_server_command is not None
+                connection = await self._mcp_gateway.connect_command(
+                    registration.mcp_server_command
+                )
+
+            arguments = input.work_item_state
+
+            result = await asyncio.wait_for(
+                self._mcp_gateway.call_tool(
+                    connection, registration.mcp_tool_name, arguments
+                ),
+                timeout=registration.timeout_seconds,
+            )
+
+            if result.get("isError"):
+                raise AgentInvocationError(
+                    agent_name=agent_name,
+                    message=f"MCP tool '{registration.mcp_tool_name}' returned an error",
+                    original=RuntimeError(str(result)),
+                )
+
+            return AgentOutput(output=result)
+
+        except AgentInvocationError:
+            raise
+        except asyncio.TimeoutError as exc:
+            raise AgentInvocationError(
+                agent_name=agent_name,
+                message=f"MCP tool call timed out after {registration.timeout_seconds}s",
+                original=exc,
+            ) from exc
+        except Exception as exc:
+            raise AgentInvocationError(
+                agent_name=agent_name,
+                message=str(exc),
+                original=exc,
+            ) from exc
