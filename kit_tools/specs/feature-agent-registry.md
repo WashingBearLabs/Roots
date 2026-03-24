@@ -82,12 +82,12 @@ The agent registry maps agent names to invocation strategies and provides a unif
 - Define `AgentNotFoundError(Exception)`: when agent_name not in registry
 
 **Acceptance Criteria:**
-- [ ] Sync callables are invoked without blocking the event loop
-- [ ] Async callables are awaited directly
-- [ ] Callable return dict is wrapped into AgentOutput
-- [ ] Exceptions from callables are caught and wrapped in AgentInvocationError
-- [ ] Unknown agent names raise AgentNotFoundError
-- [ ] Tests cover sync callable, async callable, exception handling
+- [x] Sync callables are invoked without blocking the event loop
+- [x] Async callables are awaited directly
+- [x] Callable return dict is wrapped into AgentOutput
+- [x] Exceptions from callables are caught and wrapped in AgentInvocationError
+- [x] Unknown agent names raise AgentNotFoundError
+- [x] Tests cover sync callable, async callable, exception handling
 
 ### US-004: Remote HTTP Invocation
 
