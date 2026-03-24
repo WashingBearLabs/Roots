@@ -80,12 +80,12 @@ The process schema layer is the foundation of Roots. It defines the Pydantic v2 
   - Validator on `DecisionEdge`: if parent mode is `deterministic`, `condition` must be non-empty string
 
 **Acceptance Criteria:**
-- [ ] `AgentNodeConfig` requires agent and output_key
-- [ ] `AgentPoolNodeConfig` requires at least one agent
-- [ ] `DecisionEdge` model with all fields
-- [ ] Deterministic mode requires condition on every edge
-- [ ] AI modes require confidence_threshold
-- [ ] Tests cover valid configs and each validation failure case
+- [x] `AgentNodeConfig` requires agent and output_key
+- [x] `AgentPoolNodeConfig` requires at least one agent
+- [x] `DecisionEdge` model with all fields
+- [x] Deterministic mode requires condition on every edge
+- [x] AI modes require confidence_threshold
+- [x] Tests cover valid configs and each validation failure case
 
 ### US-004: Remaining Config Models and Type-Discriminated Node Parsing
 
