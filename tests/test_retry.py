@@ -12,12 +12,18 @@ from roots.agents.invoker import (
     AgentNotFoundError,
     AgentSchemaValidationError,
 )
-from roots.core.retry import compute_backoff, execute_with_retry, is_retryable
+from roots.core.retry import (
+    RetryExhaustedError,
+    compute_backoff,
+    execute_with_retry,
+    is_retryable,
+)
 from roots.core.schema import (
     AgentNodeConfig,
     BackoffStrategy,
     NodeDefinition,
     NodeType,
+    OnExhaustion,
     RetryConfig,
 )
 from roots.events.emitter import EventEmitter
@@ -64,6 +70,136 @@ def make_emitter() -> tuple[EventEmitter, CollectorSink]:
     sink = CollectorSink()
     emitter = EventEmitter(sinks=[sink])
     return emitter, sink
+
+
+# --- US-002: Retry Exhaustion — Fail Mode ---
+
+
+class TestRetryExhaustionFailMode:
+    @pytest.mark.asyncio
+    @patch("roots.core.retry.asyncio.sleep", new_callable=AsyncMock)
+    async def test_exhaustion_raises_retry_exhausted_error(
+        self, mock_sleep: AsyncMock
+    ) -> None:
+        """When on_exhaustion=fail and retries exhaust, RetryExhaustedError is raised."""
+        node = make_node(
+            retry_config=RetryConfig(
+                max_attempts=3,
+                backoff=BackoffStrategy.FIXED,
+                backoff_seconds=0.01,
+                on_exhaustion=OnExhaustion.FAIL,
+            )
+        )
+        storage = make_storage()
+        emitter, sink = make_emitter()
+        fn = AsyncMock(side_effect=RuntimeError("always fails"))
+
+        with pytest.raises(RetryExhaustedError) as exc_info:
+            await execute_with_retry(
+                node, fn, storage, "run-1", emitter, "proc-1"
+            )
+
+        assert exc_info.value.node_id == "agent-1"
+        assert exc_info.value.max_attempts == 3
+        assert exc_info.value.last_error == "always fails"
+        assert fn.await_count == 3
+
+    @pytest.mark.asyncio
+    @patch("roots.core.retry.asyncio.sleep", new_callable=AsyncMock)
+    async def test_last_error_recorded_in_storage(
+        self, mock_sleep: AsyncMock
+    ) -> None:
+        """Verify that last error is persisted to storage on each attempt."""
+        node = make_node(
+            retry_config=RetryConfig(
+                max_attempts=2,
+                backoff=BackoffStrategy.FIXED,
+                backoff_seconds=0.01,
+                on_exhaustion=OnExhaustion.FAIL,
+            )
+        )
+        storage = make_storage()
+        emitter, sink = make_emitter()
+
+        call_count = 0
+
+        async def flaky_fn() -> dict[str, Any]:
+            nonlocal call_count
+            call_count += 1
+            raise RuntimeError(f"error-{call_count}")
+
+        with pytest.raises(RetryExhaustedError) as exc_info:
+            await execute_with_retry(
+                node, flaky_fn, storage, "run-1", emitter, "proc-1"
+            )
+
+        assert exc_info.value.last_error == "error-2"
+        # increment_retry called: before attempt 1 (no error), before attempt 2 (error-1),
+        # and final persist (error-2)
+        increment_calls = storage.increment_retry.await_args_list
+        assert len(increment_calls) == 3
+        # First call: before attempt 1, no prior error
+        assert increment_calls[0].args[2] == ""
+        # Second call: before attempt 2, last error from attempt 1
+        assert increment_calls[1].args[2] == "error-1"
+        # Third call: final persist with last error
+        assert increment_calls[2].args[2] == "error-2"
+
+    @pytest.mark.asyncio
+    @patch("roots.core.retry.asyncio.sleep", new_callable=AsyncMock)
+    async def test_all_attempts_executed_before_exhaustion(
+        self, mock_sleep: AsyncMock
+    ) -> None:
+        """All max_attempts are executed before raising RetryExhaustedError."""
+        node = make_node(
+            retry_config=RetryConfig(
+                max_attempts=5,
+                backoff=BackoffStrategy.FIXED,
+                backoff_seconds=0.01,
+                on_exhaustion=OnExhaustion.FAIL,
+            )
+        )
+        storage = make_storage()
+        emitter, sink = make_emitter()
+        fn = AsyncMock(side_effect=RuntimeError("fail"))
+
+        with pytest.raises(RetryExhaustedError):
+            await execute_with_retry(
+                node, fn, storage, "run-1", emitter, "proc-1"
+            )
+
+        assert fn.await_count == 5
+
+    @pytest.mark.asyncio
+    @patch("roots.core.retry.asyncio.sleep", new_callable=AsyncMock)
+    async def test_retrying_events_emitted_before_exhaustion(
+        self, mock_sleep: AsyncMock
+    ) -> None:
+        """Retrying events should be emitted for each retry before exhaustion."""
+        node = make_node(
+            retry_config=RetryConfig(
+                max_attempts=3,
+                backoff=BackoffStrategy.FIXED,
+                backoff_seconds=1.0,
+                on_exhaustion=OnExhaustion.FAIL,
+            )
+        )
+        storage = make_storage()
+        emitter, sink = make_emitter()
+        fn = AsyncMock(side_effect=RuntimeError("fail"))
+
+        with pytest.raises(RetryExhaustedError):
+            await execute_with_retry(
+                node, fn, storage, "run-1", emitter, "proc-1"
+            )
+
+        await emitter.close()
+
+        retrying_events = [
+            e for e in sink.events if e.event == "roots.node.retrying"
+        ]
+        # 3 attempts, 2 retries (between attempts 1->2 and 2->3)
+        assert len(retrying_events) == 2
 
 
 # --- is_retryable tests ---
@@ -248,13 +384,14 @@ class TestExecuteWithRetry:
                 max_attempts=3,
                 backoff=BackoffStrategy.FIXED,
                 backoff_seconds=0.01,
+                on_exhaustion=OnExhaustion.FAIL,
             )
         )
         storage = make_storage()
         emitter, sink = make_emitter()
         fn = AsyncMock(side_effect=RuntimeError("always fails"))
 
-        with pytest.raises(RuntimeError, match="always fails"):
+        with pytest.raises(RetryExhaustedError):
             await execute_with_retry(
                 node, fn, storage, "run-1", emitter, "proc-1"
             )

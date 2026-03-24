@@ -10,12 +10,24 @@ from roots.agents.invoker import (
     AgentNotFoundError,
     AgentSchemaValidationError,
 )
-from roots.core.schema import BackoffStrategy, NodeDefinition
+from roots.core.schema import BackoffStrategy, NodeDefinition, OnExhaustion
 from roots.events.emitter import EventEmitter
 from roots.events.types import EventType, create_event
 from roots.storage.base import StorageBackend
 
 logger = logging.getLogger(__name__)
+
+
+class RetryExhaustedError(Exception):
+    """Raised when all retry attempts are exhausted with on_exhaustion=fail."""
+
+    def __init__(self, node_id: str, max_attempts: int, last_error: str) -> None:
+        self.node_id = node_id
+        self.max_attempts = max_attempts
+        self.last_error = last_error
+        super().__init__(
+            f"Node '{node_id}' exhausted {max_attempts} retry attempts: {last_error}"
+        )
 
 
 def is_retryable(error: Exception) -> bool:
@@ -67,10 +79,11 @@ async def execute_with_retry(
     max_attempts = retry_config.max_attempts
     retry_state = await storage.get_retry_state(run_id, node.id)
     current_attempt = (retry_state.attempt_count if retry_state else 0) + 1
+    last_error_msg = retry_state.last_error if retry_state else ""
 
     while current_attempt <= max_attempts:
         # Persist attempt count BEFORE executing
-        await storage.increment_retry(run_id, node.id, "")
+        await storage.increment_retry(run_id, node.id, last_error_msg)
 
         try:
             result = await execute_fn()
@@ -78,13 +91,25 @@ async def execute_with_retry(
             await storage.clear_retry(run_id, node.id)
             return result
         except Exception as exc:
+            last_error_msg = str(exc)
+
             if not is_retryable(exc):
                 # Clear retry state and re-raise immediately
                 await storage.clear_retry(run_id, node.id)
                 raise
 
             if current_attempt >= max_attempts:
-                # Exhausted all attempts — re-raise
+                # Persist final error before raising
+                await storage.increment_retry(
+                    run_id, node.id, last_error_msg
+                )
+                # Check on_exhaustion mode
+                if retry_config.on_exhaustion == OnExhaustion.FAIL:
+                    raise RetryExhaustedError(
+                        node_id=node.id,
+                        max_attempts=max_attempts,
+                        last_error=last_error_msg,
+                    )
                 raise
 
             # Compute backoff and wait
