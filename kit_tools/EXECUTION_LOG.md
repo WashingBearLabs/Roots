@@ -148,3 +148,39 @@
 - Learnings: jsonschema.Draft7Validator.iter_errors collects all validation errors at once, avoiding the need to catch and re-raise ValidationError; AgentSchemaValidationError inherits from AgentInvocationError so the orchestrator can catch it as a subtype for escalation handling; Verifier note: Clean implementation. AgentSchemaValidationError properly inherits from AgentInvocationError for orchestrator escalation. Uses Draft7Validator with iter_errors for comprehensive validation. Validation errors include path, message, and validator type. No regressions — full suite passes (325 passed, 80 skipped).
 - Committed: feat(agent-registry): US-005 - Input/Output Schema Validation
 
+### US-001: Safe Expression Evaluator (Attempt 1) — PASS
+- Completed: 2026-03-24T04:53:37Z
+- Verified by: independent verifier session
+- Learnings: simpleeval's NameNotDefined has a .name attribute (not .node.id) for the missing name; simpleeval's AttributeDoesNotExist (not NameNotDefined) is raised for missing dict keys accessed via dot notation; EvalWithCompoundTypes has ATTR_INDEX_FALLBACK=True, enabling dict key access via dot notation automatically; Dot-notation array indices (e.g. results.0.name) are not valid Python syntax — must preprocess to bracket notation (results[0].name) before evaluation; The regex for array index conversion must use lookbehind for [A-Za-z_\]] to avoid matching decimal points in float literals like 0.5; Verifier note: Clean implementation using simpleeval.EvalWithCompoundTypes as specified. The flatten_for_eval helper correctly handles nested dicts, lists with dict items, and lists with scalar items. The regex-based array index conversion is a pragmatic approach. Error handling covers NameNotDefined, AttributeDoesNotExist, TypeError, and a catch-all Exception. All 33 tests pass in 0.03s.
+- Committed: feat(decision-engine): US-001 - Safe Expression Evaluator
+
+### US-002: Deterministic Decision Mode (Attempt 1) — PASS
+- Completed: 2026-03-24T04:58:37Z
+- Verified by: independent verifier session
+- Learnings: DecisionEvaluationError extended with optional node_id and context for backward compatibility with US-001; DecisionEngine uses async evaluate() method consistent with project async-first design pattern; assert isinstance(node.config, DecisionNodeConfig) used for type narrowing after Pydantic model_validator parses config dict; Verifier note: Implementation is clean and correct. DecisionEngine.evaluate dispatches to _evaluate_deterministic for deterministic mode and raises NotImplementedError for other modes. DecisionResult model matches the spec. DecisionEvaluationError was extended with node_id and context fields while maintaining backward compatibility for US-001 usage. All 39 tests pass (including US-001 tests).
+- Committed: feat(decision-engine): US-002 - Deterministic Decision Mode
+
+### US-003: AI Decision Response Model (Attempt 1) — PASS
+- Completed: 2026-03-24T05:02:20Z
+- Verified by: independent verifier session
+- Learnings: DecisionEngine now requires default_model constructor parameter — existing tests updated; parse_ai_response uses two-path parsing: tool_calls first, then text content with markdown fence stripping; DECISION_TOOL constant defines OpenAI-compatible tool format that LiteLLM translates for other providers; Verifier note: Clean implementation. AIDecisionResponse, build_decision_messages, resolve_model, and parse_ai_response are well-structured with proper error handling and fallback paths. DECISION_TOOL constant matches the OpenAI-compatible format specified in the story. The DecisionEngine constructor now requires default_model, and existing tests were updated accordingly.
+- Committed: feat(decision-engine): US-003 - AI Decision Response Model
+
+### US-004: AI Bounded and AI Autonomous Modes (Attempt 1) — PASS
+- Completed: 2026-03-24T05:06:46Z
+- Verified by: independent verifier session
+- Learnings: AIDecisionResponse must be defined before DecisionResult since DecisionResult references it as a field type; The _evaluate_ai method is shared by both ai_bounded and ai_autonomous modes — the confidence threshold logic is identical for both; Acceptance criteria says invalid edge target raises DecisionEvaluationError (not escalation as hints suggest) — followed AC; Verifier note: All 6 acceptance criteria are met. Implementation is clean: _evaluate_ai handles both ai_bounded and ai_autonomous modes with shared logic, edge validation raises DecisionEvaluationError, confidence threshold uses strict < comparison (boundary tested), and DecisionResult has the required escalated and ai_recommendation fields with correct defaults. 71 tests pass with no failures.
+- Committed: feat(decision-engine): US-004 - AI Bounded and AI Autonomous Modes
+
+### US-005: AI Checkpoint Mode (Attempt 1) — PASS
+- Completed: 2026-03-24T05:31:26Z
+- Verified by: independent verifier session
+- Learnings: ai_checkpoint reuses the same LiteLLM call pattern as ai_bounded/ai_autonomous but always sets escalated=True regardless of confidence; checkpoint_prompt is an optional field on both DecisionNodeConfig (already existed) and DecisionResult (added) — the decision engine passes it through from config to result; Verifier note: Clean implementation. The _evaluate_ai_checkpoint method correctly mirrors _evaluate_ai but unconditionally sets escalated=True and passes through checkpoint_prompt. Edge validation is properly included. Test coverage is thorough across all acceptance criteria.
+- Committed: feat(decision-engine): US-005 - AI Checkpoint Mode
+
+### US-006: Decision History Recording (Attempt 1) — PASS
+- Completed: 2026-03-24T05:34:52Z
+- Verified by: independent verifier session
+- Learnings: to_decision_record() takes input_state as a parameter since DecisionResult doesn't store the work item state; Optional fields (checkpoint_prompt, ai_recommendation) are only included in the record when present, keeping deterministic records clean; Verifier note: Clean implementation. The to_decision_record() method is straightforward and well-tested. All modes are covered with specific test cases. No scope creep or side effects observed.
+- Committed: feat(decision-engine): US-006 - Decision History Recording
+

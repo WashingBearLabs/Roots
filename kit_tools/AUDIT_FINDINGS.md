@@ -37,6 +37,85 @@
 <!-- Newest findings at top. Each entry has a unique ID: YYYY-MM-DD-NNN -->
 <!-- Findings are added by /kit-tools:validate-feature -->
 
+### 2026-03-23 — Decision Engine Validation
+
+| ID | Category | Severity | File | Status |
+|----|----------|----------|------|--------|
+| 2026-03-23-045 | quality | warning | `roots/core/decision.py` | open |
+| 2026-03-23-046 | quality | warning | `roots/core/decision.py` | open |
+| 2026-03-23-047 | quality | warning | `roots/core/decision.py` | open |
+| 2026-03-23-048 | quality | warning | `roots/core/decision.py` | open |
+| 2026-03-23-049 | security | warning | `roots/core/decision.py` | open |
+| 2026-03-23-050 | security | warning | `roots/core/decision.py` | open |
+| 2026-03-23-051 | quality | info | `roots/core/decision.py` | open |
+| 2026-03-23-052 | quality | info | `roots/storage/sqlite.py` | open |
+| 2026-03-23-053 | quality | info | `tests/test_decision.py` | open |
+| 2026-03-23-054 | security | info | `roots/core/decision.py` | open |
+| 2026-03-23-055 | testing | info | `test suite` | open |
+| 2026-03-23-056 | compliance | info | `feature spec` | open |
+
+---
+
+**2026-03-23-045** — Bare `except (json.JSONDecodeError, Exception)` in `parse_ai_response` (lines 235-237) silently swallows all exceptions from tool-call parsing. The `Exception` catch makes the `JSONDecodeError` redundant and masks why the fallback was triggered. Same pattern at lines 249-250.
+> Recommendation: Replace with `except (json.JSONDecodeError, ValueError, KeyError):` — the minimal set of expected failures. Add a debug log before the `pass`.
+
+---
+
+**2026-03-23-046** — `_evaluate_ai` (lines 327-383) and `_evaluate_ai_checkpoint` (lines 385-435) contain near-identical LLM invocation blocks. The `resolve_model`, `build_decision_messages`, `litellm.acompletion`, `parse_ai_response`, and edge-target validation are duplicated character-for-character.
+> Recommendation: Extract shared LLM invocation and validation into a `_call_ai_and_validate` helper. Both methods call the helper and diverge only in `DecisionResult` construction.
+
+---
+
+**2026-03-23-047** — `assert isinstance(node.config, DecisionNodeConfig)` used as runtime guard in `evaluate` (line 266), `_evaluate_deterministic` (line 302), `_evaluate_ai` (line 334), `_evaluate_ai_checkpoint` (line 394). Assert statements are stripped under `python -O`.
+> Recommendation: Replace with explicit `if not isinstance(...): raise TypeError(...)` or narrow the parameter type.
+
+---
+
+**2026-03-23-048** — `assert edge.condition is not None` (line 306) in `_evaluate_deterministic` is redundant with the schema-level validator in `DecisionNodeConfig` and provides no diagnostic context.
+> Recommendation: Remove if schema validation is sufficient, or replace with explicit `raise DecisionEvaluationError(...)` with node/edge context.
+
+---
+
+**2026-03-23-049** — Full work item state is serialized and sent to third-party LLM providers in `build_decision_messages` (line 203, `json.dumps(state)`). No filtering or redaction is applied. State may contain PII, credentials, or internal operational data depending on what callers store.
+> Recommendation: Add a `safe_fields` allowlist or `redact_fields` denylist on `DecisionNodeConfig`. Document that state content will leave the system.
+
+---
+
+**2026-03-23-050** — `simpleeval` (line 14, `EvalWithCompoundTypes`) is unpinned in pyproject.toml. The library has had past CVEs related to AST node type bypasses. `names` dict can contain arbitrary objects from `work_item_state`, and there is no expression length limit.
+> Recommendation: Pin `simpleeval` to a reviewed version. Add an expression length limit before `evaluator.eval()`. Ensure conditions are treated as trusted operator input.
+
+---
+
+**2026-03-23-051** — Line 204: unnecessary `f` prefix on `f"## Available Edges\n"` — the string contains no interpolation.
+> Recommendation: Drop the `f` prefix.
+
+---
+
+**2026-03-23-052** — `get_work_item_state` (sqlite.py line 335) returns empty dict `{}` for non-existent `run_id`. Callers cannot distinguish "empty state" from "run doesn't exist".
+> Recommendation: Return `None` for non-existent run (matching `get_run` pattern) or raise `StorageError`.
+
+---
+
+**2026-03-23-053** — `test_confidence_below_zero_rejected` and `test_confidence_above_one_rejected` (test_decision.py lines 343-355) use `pytest.raises(Exception)` instead of the specific `pydantic.ValidationError`.
+> Recommendation: Replace with `pytest.raises(ValidationError)`.
+
+---
+
+**2026-03-23-054** — `selected_edge_target` from AI responses is validated, but `reasoning` field is stored verbatim in decision history. If the LLM is adversarially prompted (via `context_prompt` or injected state), stored reasoning could contain injected content rendered in a future UI.
+> Recommendation: Truncate/sanitize `reasoning` before storing. Add `max_length=2000` on `AIDecisionResponse.reasoning`.
+
+---
+
+**2026-03-23-055** — Decision engine test suite: 412 passed, 80 skipped (PostgreSQL — no `ROOTS_POSTGRES_DSN`), 0 failures in 2.53s. 4 warnings (expected unreachable-node warnings in validator tests).
+> Recommendation: No action required.
+
+---
+
+**2026-03-23-056** — All 6 user stories (US-001 through US-006) pass compliance review. All acceptance criteria met. No scope creep within `roots/core/decision.py`. No TODO comments or placeholder implementations. Full intent alignment with feature spec.
+> Recommendation: No action required.
+
+---
+
 ### 2026-03-23-029
 | Field | Value |
 |-------|-------|
