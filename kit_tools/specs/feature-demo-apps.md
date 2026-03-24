@@ -50,13 +50,13 @@ Five self-contained demo applications that showcase the Roots framework's capabi
 - Add `.gitignore` in `demo/` ignoring `*.db`, `__pycache__/`, `.pyc`
 
 **Acceptance Criteria:**
-- [ ] `demo/_common/demo_server.py` exists with all three functions
-- [ ] `create_demo_app` mounts Roots API routers and static files
-- [ ] Static files served at `/static/` (demo-specific) and `/common/` (shared)
-- [ ] `GET /` serves index.html
-- [ ] `open_browser` opens the URL after a delay
-- [ ] `demo/.gitignore` excludes db files and pycache
-- [ ] Tests verify the app factory creates a working FastAPI app
+- [x] `demo/_common/demo_server.py` exists with all three functions
+- [x] `create_demo_app` mounts Roots API routers and static files
+- [x] Static files served at `/static/` (demo-specific) and `/common/` (shared)
+- [x] `GET /` serves index.html
+- [x] `open_browser` opens the URL after a delay
+- [x] `demo/.gitignore` excludes db files and pycache
+- [x] Tests verify the app factory creates a working FastAPI app
 
 ### US-002: Shared CSS and HTML Base Template
 
