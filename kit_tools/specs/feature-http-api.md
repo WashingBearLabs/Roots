@@ -78,11 +78,11 @@ The HTTP API is a FastAPI server exposing the full Roots framework via REST endp
 - `DELETE /runs/{run_id}`: cancel run — update status to `cancelled` via state machine. 404 if not found. 409 if terminal state.
 
 **Acceptance Criteria:**
-- [ ] Creating a run starts background execution
-- [ ] Background tasks tracked to prevent garbage collection
-- [ ] List runs with filters works
-- [ ] Cancel validates state transition (409 if already terminal)
-- [ ] Tests cover create, list, get, cancel
+- [x] Creating a run starts background execution
+- [x] Background tasks tracked to prevent garbage collection
+- [x] List runs with filters works
+- [x] Cancel validates state transition (409 if already terminal)
+- [x] Tests cover create, list, get, cancel
 
 ### US-004: Run Lifecycle Routes
 
