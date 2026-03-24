@@ -127,13 +127,13 @@ The process schema layer is the foundation of Roots. It defines the Pydantic v2 
 - Add helper methods: `get_node(node_id) -> NodeDefinition | None`, `get_outbound_edges(node_id) -> list[EdgeDefinition | DecisionEdge]` — for decision nodes, returns edges from config; for others, returns matching top-level edges
 
 **Acceptance Criteria:**
-- [ ] `EdgeDefinition` correctly handles `from` alias
-- [ ] `ProcessDefinition` validates entry_point exists in nodes
-- [ ] `ProcessDefinition` validates all edge references point to existing nodes
-- [ ] `get_node()` and `get_outbound_edges()` work correctly
-- [ ] Decision node outbound edges come from config, not top-level edges list
-- [ ] Non-decision node outbound edges come from top-level edges list
-- [ ] Tests cover valid process definitions and all reference validation failures
+- [x] `EdgeDefinition` correctly handles `from` alias
+- [x] `ProcessDefinition` validates entry_point exists in nodes
+- [x] `ProcessDefinition` validates all edge references point to existing nodes
+- [x] `get_node()` and `get_outbound_edges()` work correctly
+- [x] Decision node outbound edges come from config, not top-level edges list
+- [x] Non-decision node outbound edges come from top-level edges list
+- [x] Tests cover valid process definitions and all reference validation failures
 
 ### US-006: YAML Parsing Pipeline
 
