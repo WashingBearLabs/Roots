@@ -40,10 +40,10 @@ The agent registry maps agent names to invocation strategies and provides a unif
 - Define `AgentOutput` model: `output` (dict), `escalate` (bool, default False), `escalation_reason` (optional str)
 
 **Acceptance Criteria:**
-- [ ] `AgentRegistration` validates type-specific required fields
-- [ ] `AgentInput` and `AgentOutput` models defined
-- [ ] Local agents require callable, remote agents require callback_url
-- [ ] Tests cover valid and invalid registration combinations
+- [x] `AgentRegistration` validates type-specific required fields
+- [x] `AgentInput` and `AgentOutput` models defined
+- [x] Local agents require callable, remote agents require callback_url
+- [x] Tests cover valid and invalid registration combinations
 
 ### US-002: Agent Registry
 
