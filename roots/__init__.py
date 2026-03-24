@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Callable
 
 from roots.agents.registry import AgentRegistry
 from roots.agents.invoker import AgentInvoker
+from roots.agents.mcp_gateway import MCPGateway
+from roots.agents.types import AgentRegistration, AgentType
 from roots.core.decision import DecisionEngine
 from roots.core.orchestrator import Orchestrator, OrchestrationError
 from roots.core.validator import load_process_yaml
@@ -43,7 +46,10 @@ class Roots:
     ) -> None:
         self.storage = storage
         self._agent_registry = AgentRegistry()
-        self._agent_invoker = AgentInvoker(self._agent_registry)
+        self._mcp_gateway = MCPGateway()
+        self._agent_invoker = AgentInvoker(
+            self._agent_registry, mcp_gateway=self._mcp_gateway
+        )
         self._decision_engine = DecisionEngine(default_model=default_model)
         self._event_emitter = EventEmitter(sinks=event_sinks or [])
         self._orchestrator = Orchestrator(
@@ -69,6 +75,67 @@ class Roots:
         self._agent_registry.register_local(
             name, callable, input_schema=input_schema, output_schema=output_schema
         )
+
+    async def register_mcp_server(
+        self,
+        url: str | None = None,
+        command: list[str] | None = None,
+        tool_filter: list[str] | None = None,
+        name_prefix: str = "mcp",
+    ) -> list[str]:
+        """Register an MCP server and auto-discover its tools as agents.
+
+        Connects to the server, discovers tools, and registers each as an
+        MCP agent in the registry.
+
+        Args:
+            url: URL for SSE/HTTP-based MCP server.
+            command: Command for stdio-based MCP server.
+            tool_filter: If provided, only register tools whose names are in this list.
+            name_prefix: Prefix for generated agent names (default: "mcp").
+
+        Returns:
+            List of registered agent names.
+        """
+        if url is not None and command is not None:
+            raise ValueError(
+                "Provide exactly one of url or command, not both"
+            )
+        if url is None and command is None:
+            raise ValueError(
+                "Provide exactly one of url or command"
+            )
+
+        if url is not None:
+            connection = await self._mcp_gateway.connect_url(url)
+        else:
+            assert command is not None
+            connection = await self._mcp_gateway.connect_command(command)
+
+        tools = await self._mcp_gateway.discover_tools(connection)
+
+        registered_names: list[str] = []
+        for tool in tools:
+            tool_name = tool["name"]
+
+            if tool_filter is not None and tool_name not in tool_filter:
+                continue
+
+            sanitized = re.sub(r"[^a-zA-Z0-9]", "_", tool_name)
+            agent_name = f"{name_prefix}_{sanitized}"
+
+            registration = AgentRegistration(
+                name=agent_name,
+                agent_type=AgentType.MCP,
+                mcp_tool_name=tool_name,
+                mcp_server_url=url,
+                mcp_server_command=command,
+                input_schema=tool.get("input_schema"),
+            )
+            self._agent_registry.register(registration)
+            registered_names.append(agent_name)
+
+        return registered_names
 
     async def start_run(
         self, process_id: str, work_item: dict[str, Any]
@@ -314,8 +381,9 @@ class Roots:
             )
 
     async def close(self) -> None:
-        """Drain pending events and close storage."""
+        """Drain pending events, close MCP connections, and close storage."""
         await self._event_emitter.close()
+        await self._mcp_gateway.close()
         await self.storage.close()
 
     async def __aenter__(self) -> Roots:
