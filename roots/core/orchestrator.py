@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import logging
 import time
 from datetime import datetime, timezone
@@ -22,6 +23,7 @@ from roots.core.schema import (
     EmitNodeConfig,
     EndNodeConfig,
     ExecutionMode,
+    ForkNodeConfig,
     NodeDefinition,
     NodeType,
 )
@@ -680,7 +682,40 @@ class ProcessRunner:
     async def _handle_fork(
         self, node: NodeDefinition, state: dict[str, Any]
     ) -> dict[str, Any] | None:
-        raise NotImplementedError("Fork/join execution in T2.2")
+        assert isinstance(node.config, ForkNodeConfig)
+
+        # Load process to get outbound edges and fork_join_map
+        process = await self._storage.get_process(self._process_id or "")
+        if process is None:
+            raise OrchestrationError(
+                f"Process '{self._process_id}' not found"
+            )
+
+        edges = process.get_outbound_edges(node.id)
+        if not edges:
+            raise OrchestrationError(
+                f"Fork node '{node.id}' has no outbound edges"
+            )
+
+        # Create branch contexts with deep copies of state
+        branches: list[dict[str, Any]] = []
+        for i, edge in enumerate(edges):
+            branch_state = copy.deepcopy(state)
+            to_node = getattr(edge, "to_node", None)
+            branches.append({
+                "branch_id": f"branch-{i}",
+                "entry_node_id": to_node,
+                "state": branch_state,
+            })
+
+        # Look up the matching join node
+        join_node_id = process.fork_join_map.get(node.id)
+
+        # Store branches on the runner for later execution (US-002)
+        self._fork_branches = branches
+        self._fork_join_node_id = join_node_id
+
+        return None
 
     async def _handle_join(
         self, node: NodeDefinition, state: dict[str, Any]
