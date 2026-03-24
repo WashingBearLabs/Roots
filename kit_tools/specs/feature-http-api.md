@@ -116,14 +116,14 @@ The HTTP API is a FastAPI server exposing the full Roots framework via REST endp
 - For escalations with `approve`: next node is the AI's recommended edge target (if available) or requires `redirect_to`
 
 **Acceptance Criteria:**
-- [ ] GET returns pending checkpoint or escalation details
-- [ ] GET returns 404 when nothing pending
-- [ ] Approve resumes execution from correct next node
-- [ ] Reject fails the run
-- [ ] Redirect resumes from specified node
-- [ ] Missing redirect_to on redirect returns 422
-- [ ] Invalid redirect_to returns 400
-- [ ] Tests cover all resolution paths
+- [x] GET returns pending checkpoint or escalation details
+- [x] GET returns 404 when nothing pending
+- [x] Approve resumes execution from correct next node
+- [x] Reject fails the run
+- [x] Redirect resumes from specified node
+- [x] Missing redirect_to on redirect returns 422
+- [x] Invalid redirect_to returns 400
+- [x] Tests cover all resolution paths
 
 ### US-006: Agent Registry Routes
 
