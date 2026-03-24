@@ -424,11 +424,11 @@ The orchestrator is the heart of Roots. It is stateless between ticks — each t
 - Validate both YAML files parse correctly via `load_process_yaml`
 
 **Acceptance Criteria:**
-- [ ] `simple-linear.yaml` parses and validates successfully
-- [ ] `parallel-validation.yaml` parses and validates successfully (including fork/join pairing)
-- [ ] `run_simple.py` executes end-to-end when run directly
-- [ ] Both files serve as documentation of the YAML format
-- [ ] Tests load both files and verify parsing
+- [x] `simple-linear.yaml` parses and validates successfully
+- [x] `parallel-validation.yaml` parses and validates successfully (including fork/join pairing)
+- [x] `run_simple.py` executes end-to-end when run directly
+- [x] Both files serve as documentation of the YAML format
+- [x] Tests load both files and verify parsing
 
 ## Out of Scope
 
