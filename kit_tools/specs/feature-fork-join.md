@@ -88,12 +88,12 @@ Fork/join enables parallel branch execution within a process graph. A fork node 
 - Continue execution from the join node's outbound edge
 
 **Acceptance Criteria:**
-- [ ] Branch outputs are deep-merged in branch order
-- [ ] Nested dicts are merged recursively
-- [ ] Non-dict conflicts are resolved by last-writer-wins (branch order)
-- [ ] Merged state is written back to work item
-- [ ] Execution continues from join's outbound edge
-- [ ] Tests verify merge with overlapping keys, nested structures
+- [x] Branch outputs are deep-merged in branch order
+- [x] Nested dicts are merged recursively
+- [x] Non-dict conflicts are resolved by last-writer-wins (branch order)
+- [x] Merged state is written back to work item
+- [x] Execution continues from join's outbound edge
+- [x] Tests verify merge with overlapping keys, nested structures
 
 ### US-004: Join Node — collect Strategy
 
