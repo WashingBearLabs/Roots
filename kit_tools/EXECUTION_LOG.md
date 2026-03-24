@@ -453,3 +453,62 @@
 - Total attempts: 72
 - Total sessions: 154
 
+
+## Run: feature/demo-apps — 2026-03-24
+
+**Mode:** Guarded (max 3 retries)
+**Branch:** `feature/demo-apps`
+**Stories:** 11 total
+**Completion:** Merge to main
+
+---
+
+
+## Run: demo-apps — 2026-03-24
+- **Feature Spec:** feature-demo-apps.md
+- **Branch:** feature/demo-apps
+- **Mode:** guarded (max 3 retries)
+- **Stories:** 11 total, 0 complete at start
+
+### US-001: Demo Server Infrastructure (Attempt 1) — PASS
+- Completed: 2026-03-24T17:44:09Z
+- Verified by: independent verifier session
+- Learnings: Roots API routers have their own prefixes (e.g., /processes, /runs) so mounting under /api/ via include_router(prefix='/api') correctly produces /api/processes etc.; The graph router has no prefix unlike other routers — its routes mount directly at the included prefix level; Existing test pattern uses httpx ASGITransport + AsyncClient for testing FastAPI apps; Verifier note: Clean implementation. All three functions match the spec signatures. Tests are thorough and use real async ASGI transport. All 8 tests pass.
+- Committed: feat(demo-apps): US-001 - Demo Server Infrastructure
+
+### US-002: Shared CSS and HTML Base Template (Attempt 1) — PASS
+- Completed: 2026-03-24T17:47:03Z
+- Verified by: independent verifier session
+- Learnings: US-001 already set up the /common/ static mount in demo_server.py, so styles.css and base.html will be served automatically; Verifier note: Clean, well-structured implementation. All acceptance criteria met. CSS is well-organized with logical sections (reset, layout, components, animations, utilities). Both files are fully self-contained with no external dependencies. Test suite passes with 925 passed, 80 skipped. The bonus additions (status badges, scrollbar styling, fadeIn animation, utility color classes) go beyond requirements but are appropriate for the shared stylesheet's purpose.
+- Committed: feat(demo-apps): US-002 - Shared CSS and HTML Base Template
+
+### US-003: Shared JS Components (Attempt 1) — PASS
+- Completed: 2026-03-24T17:51:47Z
+- Verified by: independent verifier session
+- Learnings: The graph router has no prefix — its routes like /processes/{id}/graph and /runs/{id}/graph mount directly at the included prefix level (/api), so client calls go to /api/processes/{id}/graph and /api/runs/{id}/graph; GraphNodeResponse has position as dict[str, Any] with x/y keys, and status as string — auto-layout triggers when all nodes have {x:0, y:0}; CheckpointResolveRequest takes decision (required), notes (optional), redirect_to (optional) — mapped to resolveCheckpoint() params; base.html already includes script tags for graph-renderer.js, state-viewer.js, and event-log.js from /common/; Verifier note: All four JS components are well-implemented, matching the spec closely. Code is clean vanilla JS with no dependencies. The graph renderer handles both positioned and auto-layout cases. State viewer correctly implements recursive tree building with change detection. Event log handles max events and auto-scroll. API client covers all endpoints with adaptive polling. All 925 existing tests pass with no regressions.
+- Committed: feat(demo-apps): US-003 - Shared JS Components
+
+### US-004: Content Pipeline Demo (Attempt 1) — PASS
+- Completed: 2026-03-24T18:00:08Z
+- Verified by: independent verifier session
+- Learnings: Directory names with hyphens (content-pipeline) cannot be imported as Python modules — use sys.path.insert to add the demo dir and import agents locally; Agent pool parallel mode merges all agent outputs into a single dict under the output_key, so decision conditions can access merged fields like analysis_output.toxicity_score directly; The decision condition evaluator uses simpleeval with flatten_for_eval — dot notation on nested state keys works naturally; Process execution with 0.3-0.5s agent sleeps completes in ~0.7s total due to parallel agent pool execution; Verifier note: All acceptance criteria are met. Tests pass (925 passed, 80 skipped). Minor note: 'shut up' in toxic_words set will never match because re.findall(r'\w+') splits it into separate words, but this doesn't affect any sample texts or acceptance criteria. The implementation follows the established demo pattern (demo_server.py, shared CSS/JS components) correctly.
+- Committed: feat(demo-apps): US-004 - Content Pipeline Demo
+
+### US-005: Research Assistant Demo (Attempt 1) — FAIL
+- Failed: 2026-03-24T18:15:08Z
+- Failure: Timed out after 900s
+- Learnings: Session error: SESSION_ERROR: Timed out after 900s
+- Working tree reset, retrying...
+
+### US-005: Research Assistant Demo (Attempt 2) — FAIL
+- Failed: 2026-03-24T18:30:08Z
+- Failure: Timed out after 900s
+- Learnings: Session error: SESSION_ERROR: Timed out after 900s
+- Working tree reset, retrying...
+
+### US-005: Research Assistant Demo (Attempt 3) — FAIL
+- Failed: 2026-03-24T18:45:08Z
+- Failure: Timed out after 900s
+- Learnings: Session error: SESSION_ERROR: Timed out after 900s
+- Working tree reset, retrying...
+
