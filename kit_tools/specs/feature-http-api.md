@@ -41,10 +41,10 @@ The HTTP API is a FastAPI server exposing the full Roots framework via REST endp
 - `GET /health` → `{"status": "ok"}`
 
 **Acceptance Criteria:**
-- [ ] `create_app` returns configured FastAPI instance
-- [ ] Roots accessible via dependency injection in all routes
-- [ ] Root and health endpoints work
-- [ ] Tests use `httpx.AsyncClient(transport=ASGITransport(app=app))`
+- [x] `create_app` returns configured FastAPI instance
+- [x] Roots accessible via dependency injection in all routes
+- [x] Root and health endpoints work
+- [x] Tests use `httpx.AsyncClient(transport=ASGITransport(app=app))`
 
 ### US-002: Process CRUD Routes
 
