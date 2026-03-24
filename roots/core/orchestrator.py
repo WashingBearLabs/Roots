@@ -27,6 +27,7 @@ from roots.core.schema import (
 from roots.core.state_machine import RunStatus
 from roots.events.emitter import EventEmitter
 from roots.events.types import EventEnvelope, EventType, create_event
+from roots.core.retry import execute_with_retry
 from roots.storage.base import RunRecord, StorageBackend
 
 logger = logging.getLogger(__name__)
@@ -258,31 +259,43 @@ class ProcessRunner:
         self, node: NodeDefinition, state: dict[str, Any]
     ) -> dict[str, Any] | None:
         assert isinstance(node.config, AgentNodeConfig)
-        agent_input = AgentInput(
-            work_item_state=state,
-            node_config=node.config.model_dump(),
+
+        async def _invoke() -> AgentOutput:
+            agent_input = AgentInput(
+                work_item_state=state,
+                node_config=node.config.model_dump(),
+                run_id=self.run_id,
+            )
+            self._event_emitter.emit(
+                create_event(
+                    EventType.AGENT_INVOKED,
+                    run_id=self.run_id,
+                    process_id=self._process_id or "",
+                    node_id=node.id,
+                    metadata={"agent": node.config.agent},
+                )
+            )
+            result = await self._agent_invoker.invoke(
+                node.config.agent, agent_input
+            )
+            self._event_emitter.emit(
+                create_event(
+                    EventType.AGENT_RETURNED,
+                    run_id=self.run_id,
+                    process_id=self._process_id or "",
+                    node_id=node.id,
+                    metadata={"agent": node.config.agent},
+                )
+            )
+            return result
+
+        result = await execute_with_retry(
+            node=node,
+            execute_fn=_invoke,
+            storage=self._storage,
             run_id=self.run_id,
-        )
-        self._event_emitter.emit(
-            create_event(
-                EventType.AGENT_INVOKED,
-                run_id=self.run_id,
-                process_id=self._process_id or "",
-                node_id=node.id,
-                metadata={"agent": node.config.agent},
-            )
-        )
-        result = await self._agent_invoker.invoke(
-            node.config.agent, agent_input
-        )
-        self._event_emitter.emit(
-            create_event(
-                EventType.AGENT_RETURNED,
-                run_id=self.run_id,
-                process_id=self._process_id or "",
-                node_id=node.id,
-                metadata={"agent": node.config.agent},
-            )
+            emitter=self._event_emitter,
+            process_id=self._process_id or "",
         )
         if result.escalate:
             await self._trigger_escalation(
@@ -307,32 +320,43 @@ class ProcessRunner:
     async def _invoke_pool_agent(
         self, node: NodeDefinition, agent_name: str, state: dict[str, Any]
     ) -> AgentOutput:
-        """Invoke a single agent within a pool, emitting lifecycle events."""
-        agent_input = AgentInput(
-            work_item_state=state,
-            node_config=node.config.model_dump(),  # type: ignore[union-attr]
+        """Invoke a single agent within a pool, with retry support."""
+
+        async def _invoke() -> AgentOutput:
+            agent_input = AgentInput(
+                work_item_state=state,
+                node_config=node.config.model_dump(),  # type: ignore[union-attr]
+                run_id=self.run_id,
+            )
+            self._event_emitter.emit(
+                create_event(
+                    EventType.AGENT_INVOKED,
+                    run_id=self.run_id,
+                    process_id=self._process_id or "",
+                    node_id=node.id,
+                    metadata={"agent": agent_name},
+                )
+            )
+            result = await self._agent_invoker.invoke(agent_name, agent_input)
+            self._event_emitter.emit(
+                create_event(
+                    EventType.AGENT_RETURNED,
+                    run_id=self.run_id,
+                    process_id=self._process_id or "",
+                    node_id=node.id,
+                    metadata={"agent": agent_name},
+                )
+            )
+            return result
+
+        return await execute_with_retry(
+            node=node,
+            execute_fn=_invoke,
+            storage=self._storage,
             run_id=self.run_id,
+            emitter=self._event_emitter,
+            process_id=self._process_id or "",
         )
-        self._event_emitter.emit(
-            create_event(
-                EventType.AGENT_INVOKED,
-                run_id=self.run_id,
-                process_id=self._process_id or "",
-                node_id=node.id,
-                metadata={"agent": agent_name},
-            )
-        )
-        result = await self._agent_invoker.invoke(agent_name, agent_input)
-        self._event_emitter.emit(
-            create_event(
-                EventType.AGENT_RETURNED,
-                run_id=self.run_id,
-                process_id=self._process_id or "",
-                node_id=node.id,
-                metadata={"agent": agent_name},
-            )
-        )
-        return result
 
     async def _pool_parallel(
         self,
