@@ -1,4 +1,4 @@
-"""ProcessRunner — tick-based execution loop for Roots orchestration."""
+"""ProcessRunner and Orchestrator for Roots orchestration."""
 
 from __future__ import annotations
 
@@ -7,8 +7,10 @@ import logging
 import time
 from datetime import datetime, timezone
 from typing import Any
+from uuid import uuid4
 
 from roots.agents.invoker import AgentInvoker
+from roots.agents.registry import AgentRegistry
 from roots.agents.types import AgentInput, AgentOutput
 from roots.core.decision import DecisionEngine
 from roots.core.schema import (
@@ -25,7 +27,7 @@ from roots.core.schema import (
 from roots.core.state_machine import RunStatus
 from roots.events.emitter import EventEmitter
 from roots.events.types import EventEnvelope, EventType, create_event
-from roots.storage.base import StorageBackend
+from roots.storage.base import RunRecord, StorageBackend
 
 logger = logging.getLogger(__name__)
 
@@ -560,3 +562,87 @@ class ProcessRunner:
         self, node: NodeDefinition, state: dict[str, Any]
     ) -> dict[str, Any] | None:
         raise NotImplementedError("Fork/join execution in T2.2")
+
+
+class Orchestrator:
+    """Manages multiple ProcessRunners for concurrent run handling."""
+
+    def __init__(
+        self,
+        storage: StorageBackend,
+        agent_registry: AgentRegistry,
+        decision_engine: DecisionEngine,
+        event_emitter: EventEmitter,
+        poll_interval: float = 1.0,
+    ) -> None:
+        self._storage = storage
+        self._agent_registry = agent_registry
+        self._agent_invoker = AgentInvoker(agent_registry)
+        self._decision_engine = decision_engine
+        self._event_emitter = event_emitter
+        self._poll_interval = poll_interval
+        self.owner_id = f"orchestrator-{uuid4()}"
+
+    async def start_run(
+        self, process_id: str, work_item: dict[str, Any]
+    ) -> RunRecord:
+        """Create a new run for a process with pending status."""
+        process = await self._storage.get_process(process_id)
+        if process is None:
+            raise OrchestrationError(
+                f"Process '{process_id}' not found"
+            )
+        run = await self._storage.create_run(process_id, work_item)
+        await self._storage.update_run_status(
+            run.id, RunStatus.PENDING, process.entry_point
+        )
+        # Reload to get updated current_node_id
+        updated = await self._storage.get_run(run.id)
+        if updated is None:
+            raise OrchestrationError(
+                f"Run '{run.id}' not found after creation"
+            )
+        return updated
+
+    async def tick_all(self) -> None:
+        """Tick all pending and running runs concurrently."""
+        pending = await self._storage.list_runs(status=RunStatus.PENDING)
+        running = await self._storage.list_runs(status=RunStatus.RUNNING)
+        active_runs = pending + running
+
+        async def _tick_run(run: RunRecord) -> None:
+            runner = ProcessRunner(
+                run_id=run.id,
+                storage=self._storage,
+                agent_invoker=self._agent_invoker,
+                decision_engine=self._decision_engine,
+                event_emitter=self._event_emitter,
+                owner_id=self.owner_id,
+            )
+            await runner.tick()
+
+        await asyncio.gather(
+            *[_tick_run(r) for r in active_runs],
+            return_exceptions=True,
+        )
+
+    async def run_loop(self) -> None:
+        """Poll continuously, ticking all runs. Handles CancelledError for graceful shutdown."""
+        try:
+            while True:
+                await self.tick_all()
+                await asyncio.sleep(self._poll_interval)
+        except asyncio.CancelledError:
+            return
+
+    async def execute_run(self, run_id: str) -> None:
+        """Run a single run to completion (embedded/synchronous mode)."""
+        runner = ProcessRunner(
+            run_id=run_id,
+            storage=self._storage,
+            agent_invoker=self._agent_invoker,
+            decision_engine=self._decision_engine,
+            event_emitter=self._event_emitter,
+            owner_id=self.owner_id,
+        )
+        await runner.run_to_completion()
