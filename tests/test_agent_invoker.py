@@ -1,5 +1,8 @@
 """Tests for the agent invoker."""
 
+import json
+
+import httpx
 import pytest
 
 from roots.agents.invoker import (
@@ -8,7 +11,7 @@ from roots.agents.invoker import (
     AgentNotFoundError,
 )
 from roots.agents.registry import AgentRegistry
-from roots.agents.types import AgentInput, AgentType
+from roots.agents.types import AgentInput, AgentRegistration, AgentType
 
 
 def _make_input() -> AgentInput:
@@ -159,3 +162,160 @@ class TestInputPassthrough:
         assert received[0]["work_item_state"] == {"key": "value"}
         assert received[0]["node_config"] == {"step": 1}
         assert received[0]["run_id"] == "run-001"
+
+
+def _make_remote_registry(
+    name: str = "remote-agent",
+    callback_url: str = "http://remote.test/invoke",
+    timeout_seconds: int = 300,
+) -> AgentRegistry:
+    registry = AgentRegistry()
+    registry.register(
+        AgentRegistration(
+            name=name,
+            agent_type=AgentType.REMOTE,
+            callback_url=callback_url,
+            timeout_seconds=timeout_seconds,
+        )
+    )
+    return registry
+
+
+class TestRemoteInvocation:
+    @pytest.mark.asyncio
+    async def test_remote_agent_posts_correct_payload(self) -> None:
+        captured_requests: list[httpx.Request] = []
+
+        async def _handler(request: httpx.Request) -> httpx.Response:
+            captured_requests.append(request)
+            return httpx.Response(
+                200,
+                json={"output": {"result": "ok"}},
+            )
+
+        transport = httpx.MockTransport(_handler)
+        client = httpx.AsyncClient(transport=transport)
+        registry = _make_remote_registry()
+        invoker = AgentInvoker(registry, http_client=client)
+
+        agent_input = _make_input()
+        result = await invoker.invoke("remote-agent", agent_input)
+
+        assert result.output == {"result": "ok"}
+        assert result.escalate is False
+        assert len(captured_requests) == 1
+        req = captured_requests[0]
+        assert req.method == "POST"
+        assert str(req.url) == "http://remote.test/invoke"
+        body = json.loads(req.content)
+        assert body["work_item_state"] == {"key": "value"}
+        assert body["run_id"] == "run-001"
+
+    @pytest.mark.asyncio
+    async def test_remote_agent_parses_escalation(self) -> None:
+        async def _handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "output": {"result": "needs help"},
+                    "escalate": True,
+                    "escalation_reason": "too complex",
+                },
+            )
+
+        transport = httpx.MockTransport(_handler)
+        client = httpx.AsyncClient(transport=transport)
+        registry = _make_remote_registry()
+        invoker = AgentInvoker(registry, http_client=client)
+
+        result = await invoker.invoke("remote-agent", _make_input())
+        assert result.escalate is True
+        assert result.escalation_reason == "too complex"
+
+    @pytest.mark.asyncio
+    async def test_remote_agent_http_error_raises_invocation_error(self) -> None:
+        async def _handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                500,
+                text="Internal Server Error",
+            )
+
+        transport = httpx.MockTransport(_handler)
+        client = httpx.AsyncClient(transport=transport)
+        registry = _make_remote_registry()
+        invoker = AgentInvoker(registry, http_client=client)
+
+        with pytest.raises(AgentInvocationError, match="HTTP 500") as exc_info:
+            await invoker.invoke("remote-agent", _make_input())
+        assert exc_info.value.agent_name == "remote-agent"
+        assert isinstance(exc_info.value.original, httpx.HTTPStatusError)
+
+    @pytest.mark.asyncio
+    async def test_remote_agent_timeout_raises_invocation_error(self) -> None:
+        async def _handler(request: httpx.Request) -> httpx.Response:
+            raise httpx.ReadTimeout("timed out")
+
+        transport = httpx.MockTransport(_handler)
+        client = httpx.AsyncClient(transport=transport)
+        registry = _make_remote_registry(timeout_seconds=5)
+        invoker = AgentInvoker(registry, http_client=client)
+
+        with pytest.raises(AgentInvocationError, match="timed out") as exc_info:
+            await invoker.invoke("remote-agent", _make_input())
+        assert exc_info.value.agent_name == "remote-agent"
+        assert isinstance(exc_info.value.original, httpx.TimeoutException)
+
+    @pytest.mark.asyncio
+    async def test_remote_agent_connection_error_raises_invocation_error(
+        self,
+    ) -> None:
+        async def _handler(request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectError("connection refused")
+
+        transport = httpx.MockTransport(_handler)
+        client = httpx.AsyncClient(transport=transport)
+        registry = _make_remote_registry()
+        invoker = AgentInvoker(registry, http_client=client)
+
+        with pytest.raises(
+            AgentInvocationError, match="Connection failed"
+        ) as exc_info:
+            await invoker.invoke("remote-agent", _make_input())
+        assert exc_info.value.agent_name == "remote-agent"
+        assert isinstance(exc_info.value.original, httpx.ConnectError)
+
+    @pytest.mark.asyncio
+    async def test_remote_agent_respects_timeout_seconds(self) -> None:
+        captured_timeouts: list[httpx.Timeout] = []
+
+        async def _handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"output": {"ok": True}})
+
+        class _CapturingTransport(httpx.AsyncBaseTransport):
+            async def handle_async_request(
+                self, request: httpx.Request
+            ) -> httpx.Response:
+                captured_timeouts.append(request.extensions.get("timeout"))
+                return httpx.Response(200, json={"output": {"ok": True}})
+
+        transport = _CapturingTransport()
+        client = httpx.AsyncClient(transport=transport)
+        registry = _make_remote_registry(timeout_seconds=42)
+        invoker = AgentInvoker(registry, http_client=client)
+
+        await invoker.invoke("remote-agent", _make_input())
+        assert len(captured_timeouts) == 1
+
+    @pytest.mark.asyncio
+    async def test_remote_agent_404_raises_with_status_code(self) -> None:
+        async def _handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(404, text="Not Found")
+
+        transport = httpx.MockTransport(_handler)
+        client = httpx.AsyncClient(transport=transport)
+        registry = _make_remote_registry()
+        invoker = AgentInvoker(registry, http_client=client)
+
+        with pytest.raises(AgentInvocationError, match="HTTP 404") as exc_info:
+            await invoker.invoke("remote-agent", _make_input())
+        assert "Not Found" in str(exc_info.value)
