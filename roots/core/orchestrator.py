@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from datetime import datetime, timezone
 from typing import Any
 
 from roots.agents.invoker import AgentInvoker
@@ -13,13 +14,17 @@ from roots.core.decision import DecisionEngine
 from roots.core.schema import (
     AgentNodeConfig,
     AgentPoolNodeConfig,
+    CheckpointNodeConfig,
+    DecisionNodeConfig,
+    EmitNodeConfig,
+    EndNodeConfig,
     ExecutionMode,
     NodeDefinition,
     NodeType,
 )
 from roots.core.state_machine import RunStatus
 from roots.events.emitter import EventEmitter
-from roots.events.types import EventType, create_event
+from roots.events.types import EventEnvelope, EventType, create_event
 from roots.storage.base import StorageBackend
 
 logger = logging.getLogger(__name__)
@@ -53,6 +58,7 @@ class ProcessRunner:
         self._owner_id = owner_id
         self._process_id: str | None = None
         self._escalated: bool = False
+        self._decision_next_node: str | None = None
 
     async def tick(self) -> bool:
         """Execute one node and return True if the run should continue."""
@@ -129,6 +135,7 @@ class ProcessRunner:
             # Step 6: Call appropriate handler
             state = dict(run.work_item_state)
             self._escalated = False
+            self._decision_next_node = None
             output = await self._dispatch_node(node, state)
 
             # Step 7: Write output to state if applicable
@@ -139,6 +146,9 @@ class ProcessRunner:
             if self._escalated:
                 next_node_id = run.current_node_id
                 status = RunStatus.PAUSED
+            elif self._decision_next_node is not None:
+                next_node_id = self._decision_next_node
+                status = RunStatus.RUNNING
             else:
                 next_node_id, status = self._resolve_next(node, output, process)
 
@@ -413,26 +423,132 @@ class ProcessRunner:
             work_item_snapshot=state,
         )
 
-    # --- Stub Handlers (US-004+) ---
+    # --- Decision, Checkpoint, Emit, End Handlers (US-004) ---
 
     async def _handle_decision(
         self, node: NodeDefinition, state: dict[str, Any]
     ) -> dict[str, Any] | None:
-        raise NotImplementedError("Decision handler in US-004")
+        assert isinstance(node.config, DecisionNodeConfig)
+        result = await self._decision_engine.evaluate(node, state)
+
+        # Record decision to storage
+        record = result.to_decision_record(state)
+        await self._storage.append_decision(
+            run_id=self.run_id,
+            process_id=self._process_id or "",
+            node_id=node.id,
+            mode=record["mode"],
+            input_state=record["input_state_snapshot"],
+            decision=record,
+            confidence=record["confidence"],
+        )
+
+        if result.escalated:
+            # Create checkpoint record for escalation
+            await self._storage.create_checkpoint(
+                self.run_id,
+                node.id,
+                "escalation",
+                node.config.checkpoint_prompt or "AI decision requires review",
+                result.ai_recommendation.model_dump()
+                if result.ai_recommendation
+                else None,
+            )
+            self._escalated = True
+            self._event_emitter.emit(
+                create_event(
+                    EventType.DECISION_ESCALATED,
+                    run_id=self.run_id,
+                    process_id=self._process_id or "",
+                    node_id=node.id,
+                )
+            )
+            self._event_emitter.emit(
+                create_event(
+                    EventType.CHECKPOINT_REACHED,
+                    run_id=self.run_id,
+                    process_id=self._process_id or "",
+                    node_id=node.id,
+                )
+            )
+            return None
+
+        # Non-escalated: emit decision.taken and route to selected edge
+        self._event_emitter.emit(
+            create_event(
+                EventType.DECISION_TAKEN,
+                run_id=self.run_id,
+                process_id=self._process_id or "",
+                node_id=node.id,
+                metadata={"selected_edge": result.selected_edge},
+            )
+        )
+        self._decision_next_node = result.selected_edge
+        return None
 
     async def _handle_checkpoint(
         self, node: NodeDefinition, state: dict[str, Any]
     ) -> dict[str, Any] | None:
-        raise NotImplementedError("Checkpoint handler in US-004")
+        assert isinstance(node.config, CheckpointNodeConfig)
+        await self._storage.create_checkpoint(
+            self.run_id,
+            node.id,
+            "planned",
+            node.config.prompt,
+        )
+        self._escalated = True
+        self._event_emitter.emit(
+            create_event(
+                EventType.CHECKPOINT_REACHED,
+                run_id=self.run_id,
+                process_id=self._process_id or "",
+                node_id=node.id,
+            )
+        )
+        return None
 
     async def _handle_emit(
         self, node: NodeDefinition, state: dict[str, Any]
     ) -> dict[str, Any] | None:
-        raise NotImplementedError("Emit handler in US-004")
+        assert isinstance(node.config, EmitNodeConfig)
+        payload_metadata: dict[str, Any] = {}
+        for key in node.config.payload_keys:
+            if key in state:
+                payload_metadata[key] = state[key]
+        self._event_emitter.emit(
+            EventEnvelope(
+                event=node.config.event_type,
+                timestamp=datetime.now(timezone.utc),
+                run_id=self.run_id,
+                process_id=self._process_id or "",
+                node_id=node.id,
+                metadata=payload_metadata,
+            )
+        )
+        return None
 
     async def _handle_end(
         self, node: NodeDefinition, state: dict[str, Any]
     ) -> dict[str, Any] | None:
+        assert isinstance(node.config, EndNodeConfig)
+        if node.config.status.value == "completed":
+            self._event_emitter.emit(
+                create_event(
+                    EventType.RUN_COMPLETED,
+                    run_id=self.run_id,
+                    process_id=self._process_id or "",
+                    node_id=node.id,
+                )
+            )
+        else:
+            self._event_emitter.emit(
+                create_event(
+                    EventType.RUN_FAILED,
+                    run_id=self.run_id,
+                    process_id=self._process_id or "",
+                    node_id=node.id,
+                )
+            )
         return None
 
     async def _handle_fork(
