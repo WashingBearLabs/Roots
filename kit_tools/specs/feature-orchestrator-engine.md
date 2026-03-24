@@ -106,13 +106,13 @@ The orchestrator is the heart of Roots. It is stateless between ticks — each t
   - Return the aggregated/final output dict
 
 **Acceptance Criteria:**
-- [ ] Single agent handler invokes agent and returns output
-- [ ] Agent pool parallel mode invokes all concurrently and merges results
-- [ ] Agent pool sequential mode chains outputs
-- [ ] Agent pool first_pass mode returns first success
-- [ ] Explicit escalation signal (`escalate: true`) triggers escalation
-- [ ] Agent events emitted (invoked, returned)
-- [ ] Tests cover each execution mode with mock agents
+- [x] Single agent handler invokes agent and returns output
+- [x] Agent pool parallel mode invokes all concurrently and merges results
+- [x] Agent pool sequential mode chains outputs
+- [x] Agent pool first_pass mode returns first success
+- [x] Explicit escalation signal (`escalate: true`) triggers escalation
+- [x] Agent events emitted (invoked, returned)
+- [x] Tests cover each execution mode with mock agents
 
 ### US-004: Decision, Checkpoint, Emit, and End Handlers
 
