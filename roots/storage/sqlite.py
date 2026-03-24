@@ -237,7 +237,7 @@ class SqliteBackend(StorageBackend):
     async def create_run(
         self, process_id: str, work_item_state: dict[str, Any]
     ) -> RunRecord:
-        run_id = str(uuid4())
+        run_id = f"run-{uuid4()}"
         now = utcnow()
         await self.db.execute(
             """INSERT INTO runs
