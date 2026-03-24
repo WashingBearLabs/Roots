@@ -145,13 +145,13 @@ The orchestrator is the heart of Roots. It is stateless between ticks — each t
 - Fork/join: `_handlers[NodeType.fork] = _handle_fork` → raises `NotImplementedError("Fork/join execution in T2.2")`
 
 **Acceptance Criteria:**
-- [ ] Decision handler calls engine, records result, handles escalation
-- [ ] Checkpoint handler creates record and pauses run
-- [ ] Emit handler fires custom event with payload from state
-- [ ] End handler sets terminal status and emits appropriate event
-- [ ] Dispatch dict routes all node types to handlers
-- [ ] Fork/join stubs raise NotImplementedError
-- [ ] Tests cover each handler independently
+- [x] Decision handler calls engine, records result, handles escalation
+- [x] Checkpoint handler creates record and pauses run
+- [x] Emit handler fires custom event with payload from state
+- [x] End handler sets terminal status and emits appropriate event
+- [x] Dispatch dict routes all node types to handlers
+- [x] Fork/join stubs raise NotImplementedError
+- [x] Tests cover each handler independently
 
 ### US-005: Edge Evaluation and State Accumulation
 
