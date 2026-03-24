@@ -66,6 +66,16 @@ class DecisionMode(StrEnum):
     AI_AUTONOMOUS = "ai_autonomous"
 
 
+class MergeStrategy(StrEnum):
+    MERGE_ALL = "merge_all"
+    COLLECT = "collect"
+
+
+class EndStatus(StrEnum):
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class AgentNodeConfig(BaseModel):
     agent: str
     output_key: str
@@ -110,16 +120,70 @@ class DecisionNodeConfig(BaseModel):
         return self
 
 
+class CheckpointNodeConfig(BaseModel):
+    prompt: str
+
+
+class ForkNodeConfig(BaseModel):
+    pass
+
+
+class JoinNodeConfig(BaseModel):
+    merge_strategy: MergeStrategy = MergeStrategy.MERGE_ALL
+    collect_key: str | None = None
+    allow_partial: bool = False
+
+    @model_validator(mode="after")
+    def validate_collect_key(self) -> Self:
+        if (
+            self.merge_strategy == MergeStrategy.COLLECT
+            and self.collect_key is None
+        ):
+            raise ValueError(
+                "collect_key is required when merge_strategy is 'collect'"
+            )
+        return self
+
+
+class EmitNodeConfig(BaseModel):
+    event_type: str
+    payload_keys: list[str] = Field(default_factory=list)
+
+
+class EndNodeConfig(BaseModel):
+    status: EndStatus
+
+
+CONFIG_MAP: dict[NodeType, type[BaseModel]] = {
+    NodeType.AGENT: AgentNodeConfig,
+    NodeType.AGENT_POOL: AgentPoolNodeConfig,
+    NodeType.DECISION: DecisionNodeConfig,
+    NodeType.CHECKPOINT: CheckpointNodeConfig,
+    NodeType.FORK: ForkNodeConfig,
+    NodeType.JOIN: JoinNodeConfig,
+    NodeType.EMIT: EmitNodeConfig,
+    NodeType.END: EndNodeConfig,
+}
+
+
 class NodeDefinition(BaseModel):
     id: str
     type: NodeType
     label: str
-    config: dict[str, Any]
+    config: dict[str, Any] | BaseModel
     metadata: dict[str, Any] | None = None
     retry: RetryConfig | None = None
 
     @model_validator(mode="after")
-    def validate_retry(self) -> Self:
+    def validate_node(self) -> Self:
+        if isinstance(self.config, dict):
+            config_cls = CONFIG_MAP[self.type]
+            try:
+                self.config = config_cls.model_validate(self.config)
+            except Exception as exc:
+                raise ValueError(
+                    f"Node '{self.id}' ({self.type}): {exc}"
+                ) from exc
         if self.retry is not None and self.type not in (
             NodeType.AGENT,
             NodeType.AGENT_POOL,

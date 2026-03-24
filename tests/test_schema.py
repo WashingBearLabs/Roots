@@ -7,10 +7,17 @@ from roots.core.schema import (
     AgentNodeConfig,
     AgentPoolNodeConfig,
     BackoffStrategy,
+    CheckpointNodeConfig,
     DecisionEdge,
     DecisionMode,
     DecisionNodeConfig,
+    EmitNodeConfig,
+    EndNodeConfig,
+    EndStatus,
     ExecutionMode,
+    ForkNodeConfig,
+    JoinNodeConfig,
+    MergeStrategy,
     NodeDefinition,
     NodeType,
     OnExhaustion,
@@ -83,24 +90,46 @@ class TestRetryConfig:
         assert rc.fallback_edge == "unused"
 
 
+from typing import Any
+
+VALID_CONFIGS: dict[NodeType, dict[str, Any]] = {
+    NodeType.AGENT: {"agent": "summarizer", "output_key": "summary"},
+    NodeType.AGENT_POOL: {
+        "agents": ["a1"],
+        "execution_mode": "parallel",
+        "output_key": "out",
+    },
+    NodeType.DECISION: {
+        "mode": "deterministic",
+        "edges": [{"target": "a", "condition": "x > 0"}],
+    },
+    NodeType.CHECKPOINT: {"prompt": "Review this"},
+    NodeType.FORK: {},
+    NodeType.JOIN: {},
+    NodeType.EMIT: {"event_type": "process.done"},
+    NodeType.END: {"status": "completed"},
+}
+
+
 class TestNodeDefinition:
     def test_valid_agent_node(self) -> None:
         node = NodeDefinition(
             id="node-1",
             type=NodeType.AGENT,
             label="My Agent",
-            config={"model": "gpt-4"},
+            config={"agent": "summarizer", "output_key": "summary"},
         )
         assert node.id == "node-1"
         assert node.type == NodeType.AGENT
         assert node.metadata == {}
+        assert isinstance(node.config, AgentNodeConfig)
 
     def test_valid_agent_node_with_retry(self) -> None:
         node = NodeDefinition(
             id="node-1",
             type=NodeType.AGENT,
             label="My Agent",
-            config={},
+            config={"agent": "summarizer", "output_key": "summary"},
             retry=RetryConfig(max_attempts=3),
         )
         assert node.retry is not None
@@ -111,7 +140,11 @@ class TestNodeDefinition:
             id="pool-1",
             type=NodeType.AGENT_POOL,
             label="Pool",
-            config={},
+            config={
+                "agents": ["a1"],
+                "execution_mode": "parallel",
+                "output_key": "out",
+            },
             retry=RetryConfig(),
         )
         assert node.retry is not None
@@ -124,7 +157,10 @@ class TestNodeDefinition:
                 id="d-1",
                 type=NodeType.DECISION,
                 label="Decision",
-                config={},
+                config={
+                    "mode": "deterministic",
+                    "edges": [{"target": "a", "condition": "x > 0"}],
+                },
                 retry=RetryConfig(),
             )
 
@@ -147,7 +183,7 @@ class TestNodeDefinition:
                 id="n-1",
                 type=node_type,
                 label="Node",
-                config={},
+                config=VALID_CONFIGS[node_type],
                 retry=RetryConfig(),
             )
 
@@ -156,7 +192,7 @@ class TestNodeDefinition:
             id="n-1",
             type=NodeType.END,
             label="End",
-            config={},
+            config={"status": "completed"},
         )
         assert node.metadata == {}
 
@@ -165,7 +201,7 @@ class TestNodeDefinition:
             id="n-1",
             type=NodeType.EMIT,
             label="Emit",
-            config={},
+            config={"event_type": "process.done"},
             metadata={"author": "test"},
         )
         assert node.metadata == {"author": "test"}
@@ -176,7 +212,7 @@ class TestNodeDefinition:
                 id=f"node-{nt.value}",
                 type=nt,
                 label=f"Node {nt.value}",
-                config={},
+                config=VALID_CONFIGS[nt],
             )
             assert node.type == nt
 
@@ -348,3 +384,188 @@ class TestDecisionNodeConfig:
         assert cfg.model == "gpt-4"
         assert cfg.context_prompt == "Decide the route"
         assert cfg.checkpoint_prompt == "Are you sure?"
+
+
+class TestCheckpointNodeConfig:
+    def test_valid(self) -> None:
+        cfg = CheckpointNodeConfig(prompt="Review this step")
+        assert cfg.prompt == "Review this step"
+
+    def test_requires_prompt(self) -> None:
+        with pytest.raises(ValueError):
+            CheckpointNodeConfig()  # type: ignore[call-arg]
+
+
+class TestForkNodeConfig:
+    def test_valid_empty(self) -> None:
+        cfg = ForkNodeConfig()
+        assert isinstance(cfg, ForkNodeConfig)
+
+
+class TestJoinNodeConfig:
+    def test_defaults(self) -> None:
+        cfg = JoinNodeConfig()
+        assert cfg.merge_strategy == MergeStrategy.MERGE_ALL
+        assert cfg.collect_key is None
+        assert cfg.allow_partial is False
+
+    def test_collect_requires_collect_key(self) -> None:
+        with pytest.raises(ValueError, match="collect_key is required"):
+            JoinNodeConfig(merge_strategy=MergeStrategy.COLLECT)
+
+    def test_collect_with_collect_key(self) -> None:
+        cfg = JoinNodeConfig(
+            merge_strategy=MergeStrategy.COLLECT,
+            collect_key="results",
+        )
+        assert cfg.collect_key == "results"
+
+    def test_merge_all_ignores_collect_key(self) -> None:
+        cfg = JoinNodeConfig(
+            merge_strategy=MergeStrategy.MERGE_ALL,
+            collect_key="optional",
+        )
+        assert cfg.collect_key == "optional"
+
+    def test_allow_partial(self) -> None:
+        cfg = JoinNodeConfig(allow_partial=True)
+        assert cfg.allow_partial is True
+
+
+class TestEmitNodeConfig:
+    def test_valid(self) -> None:
+        cfg = EmitNodeConfig(event_type="process.quality_check_complete")
+        assert cfg.event_type == "process.quality_check_complete"
+        assert cfg.payload_keys == []
+
+    def test_with_payload_keys(self) -> None:
+        cfg = EmitNodeConfig(
+            event_type="process.done",
+            payload_keys=["score", "summary"],
+        )
+        assert cfg.payload_keys == ["score", "summary"]
+
+    def test_requires_event_type(self) -> None:
+        with pytest.raises(ValueError):
+            EmitNodeConfig()  # type: ignore[call-arg]
+
+
+class TestEndNodeConfig:
+    def test_completed(self) -> None:
+        cfg = EndNodeConfig(status=EndStatus.COMPLETED)
+        assert cfg.status == EndStatus.COMPLETED
+
+    def test_failed(self) -> None:
+        cfg = EndNodeConfig(status=EndStatus.FAILED)
+        assert cfg.status == EndStatus.FAILED
+
+    def test_requires_status(self) -> None:
+        with pytest.raises(ValueError):
+            EndNodeConfig()  # type: ignore[call-arg]
+
+    def test_invalid_status(self) -> None:
+        with pytest.raises(ValueError):
+            EndNodeConfig(status="unknown")  # type: ignore[arg-type]
+
+
+class TestConfigDiscriminator:
+    """Tests for type-discriminated config parsing on NodeDefinition."""
+
+    @pytest.mark.parametrize("node_type", list(NodeType))
+    def test_dict_config_parsed_to_typed_model(
+        self, node_type: NodeType
+    ) -> None:
+        node = NodeDefinition(
+            id="n-1",
+            type=node_type,
+            label="Test",
+            config=VALID_CONFIGS[node_type],
+        )
+        assert not isinstance(node.config, dict)
+
+    def test_agent_config_parsed(self) -> None:
+        node = NodeDefinition(
+            id="a-1",
+            type=NodeType.AGENT,
+            label="Agent",
+            config={"agent": "summarizer", "output_key": "summary"},
+        )
+        assert isinstance(node.config, AgentNodeConfig)
+        assert node.config.agent == "summarizer"
+
+    def test_checkpoint_config_parsed(self) -> None:
+        node = NodeDefinition(
+            id="cp-1",
+            type=NodeType.CHECKPOINT,
+            label="Checkpoint",
+            config={"prompt": "Review this"},
+        )
+        assert isinstance(node.config, CheckpointNodeConfig)
+        assert node.config.prompt == "Review this"
+
+    def test_fork_config_parsed(self) -> None:
+        node = NodeDefinition(
+            id="f-1",
+            type=NodeType.FORK,
+            label="Fork",
+            config={},
+        )
+        assert isinstance(node.config, ForkNodeConfig)
+
+    def test_join_config_parsed(self) -> None:
+        node = NodeDefinition(
+            id="j-1",
+            type=NodeType.JOIN,
+            label="Join",
+            config={"merge_strategy": "collect", "collect_key": "results"},
+        )
+        assert isinstance(node.config, JoinNodeConfig)
+        assert node.config.merge_strategy == MergeStrategy.COLLECT
+
+    def test_emit_config_parsed(self) -> None:
+        node = NodeDefinition(
+            id="e-1",
+            type=NodeType.EMIT,
+            label="Emit",
+            config={"event_type": "process.done", "payload_keys": ["score"]},
+        )
+        assert isinstance(node.config, EmitNodeConfig)
+        assert node.config.payload_keys == ["score"]
+
+    def test_end_config_parsed(self) -> None:
+        node = NodeDefinition(
+            id="end-1",
+            type=NodeType.END,
+            label="End",
+            config={"status": "completed"},
+        )
+        assert isinstance(node.config, EndNodeConfig)
+        assert node.config.status == EndStatus.COMPLETED
+
+    def test_already_typed_config_not_reparsed(self) -> None:
+        typed_config = AgentNodeConfig(agent="summarizer", output_key="out")
+        node = NodeDefinition(
+            id="a-1",
+            type=NodeType.AGENT,
+            label="Agent",
+            config=typed_config,
+        )
+        assert node.config is typed_config
+
+    def test_mismatched_config_raises_with_context(self) -> None:
+        with pytest.raises(ValueError, match="my_node.*agent"):
+            NodeDefinition(
+                id="my_node",
+                type=NodeType.AGENT,
+                label="Agent",
+                config={"wrong_field": "value"},
+            )
+
+    def test_missing_required_field_raises_with_context(self) -> None:
+        with pytest.raises(ValueError, match="cp-1.*checkpoint"):
+            NodeDefinition(
+                id="cp-1",
+                type=NodeType.CHECKPOINT,
+                label="Checkpoint",
+                config={},
+            )
