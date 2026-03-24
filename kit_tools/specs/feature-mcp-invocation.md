@@ -84,12 +84,12 @@ MCP agent invocation extends the agent registry with a third invocation type. MC
 - `async close()`: disconnect all connections, terminate all subprocesses
 
 **Acceptance Criteria:**
-- [ ] Subprocess started with command
-- [ ] Stdio MCP protocol established
-- [ ] Graceful shutdown terminates subprocess
-- [ ] Force kill after timeout
-- [ ] Gateway close cleans up all connections
-- [ ] Tests verify subprocess lifecycle (can use mock command)
+- [x] Subprocess started with command
+- [x] Stdio MCP protocol established
+- [x] Graceful shutdown terminates subprocess
+- [x] Force kill after timeout
+- [x] Gateway close cleans up all connections
+- [x] Tests verify subprocess lifecycle (can use mock command)
 
 ### US-004: MCP Tool Invocation via AgentInvoker
 
