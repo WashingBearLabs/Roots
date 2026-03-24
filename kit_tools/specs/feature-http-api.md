@@ -137,12 +137,12 @@ The HTTP API is a FastAPI server exposing the full Roots framework via REST endp
 - `GET /agents/{name}/health`: for remote agents, GET the callback_url with 5s timeout. Return `{name, status: "healthy"|"unhealthy", response_time_ms, error}`. For local agents: return `{status: "healthy"}` (always).
 
 **Acceptance Criteria:**
-- [ ] Remote agents registered via API
-- [ ] Agent list returns all agents (local + remote)
-- [ ] Deregister removes agent
-- [ ] Health check pings remote callback URL
-- [ ] Health check returns unhealthy on timeout/error
-- [ ] Tests cover registration, listing, health check
+- [x] Remote agents registered via API
+- [x] Agent list returns all agents (local + remote)
+- [x] Deregister removes agent
+- [x] Health check pings remote callback URL
+- [x] Health check returns unhealthy on timeout/error
+- [x] Tests cover registration, listing, health check
 
 ### US-007: Webhook Routes
 
