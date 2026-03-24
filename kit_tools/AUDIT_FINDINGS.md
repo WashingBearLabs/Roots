@@ -10,7 +10,7 @@
 > **TEMPLATE_INTENT:** Persistent record of code quality, security, and intent alignment findings from automated validation. Tracks findings across sessions with status tracking and archival.
 
 > Last updated: 2026-03-24
-> Updated by: Claude (validate-feature — http-api)
+> Updated by: Claude (validate-feature — cli)
 
 ---
 
@@ -36,6 +36,89 @@
 
 <!-- Newest findings at top. Each entry has a unique ID: YYYY-MM-DD-NNN -->
 <!-- Findings are added by /kit-tools:validate-feature -->
+
+### 2026-03-24 — CLI Validation
+
+| ID | Category | Severity | File | Status |
+|----|----------|----------|------|--------|
+| 2026-03-24-061 | quality | warning | `roots/cli/main.py` | open |
+| 2026-03-24-062 | quality | warning | `roots/cli/main.py` | open |
+| 2026-03-24-063 | quality | warning | `roots/cli/main.py` | open |
+| 2026-03-24-064 | quality | warning | `roots/cli/main.py` | open |
+| 2026-03-24-065 | quality | warning | `roots/cli/main.py` | open |
+| 2026-03-24-066 | security | warning | `roots/cli/main.py` | open |
+| 2026-03-24-067 | security | warning | `roots/cli/main.py` | open |
+| 2026-03-24-068 | security | warning | `roots/cli/main.py` | open |
+| 2026-03-24-069 | quality | info | `roots/cli/main.py` | open |
+| 2026-03-24-070 | quality | info | `roots/cli/main.py` | open |
+| 2026-03-24-071 | quality | info | `roots/cli/main.py` | open |
+| 2026-03-24-072 | quality | info | `roots/cli/main.py` | open |
+| 2026-03-24-073 | quality | info | `roots/cli/main.py` | open |
+| 2026-03-24-074 | quality | info | `tests/test_cli.py` | open |
+| 2026-03-24-075 | quality | info | `roots/cli/main.py` | open |
+| 2026-03-24-076 | security | info | `roots/cli/main.py` | open |
+| 2026-03-24-077 | security | info | `roots/cli/main.py` | open |
+| 2026-03-24-078 | compliance | info | `feature spec` | open |
+| 2026-03-24-079 | testing | info | `test suite` | open |
+
+**2026-03-24-061** — Duplicated backend creation logic. The pattern `if _is_postgres_dsn → PostgresBackend else SqliteBackend → initialize()` is repeated in `_create_roots_from_options`, `_run_process`, `_list_runs`, and `_get_run_detail`.
+> Recommendation: Extract a shared `async def _create_backend(storage: str)` helper.
+
+**2026-03-24-062** — Bare `except Exception` in `_check_agent_health` (line 407) swallows all errors without reporting the reason. Users see "unhealthy" with no diagnostic info.
+> Recommendation: Capture `str(e)` and include it in the result dict for optional display.
+
+**2026-03-24-063** — `assert final_run is not None` (line 203) used for control flow. Assertions are stripped under `python -O`, which would cause `AttributeError` instead of a clear error.
+> Recommendation: Replace with explicit `if final_run is None` check and `typer.Exit(code=1)`.
+
+**2026-03-24-064** — `_run_process` (lines 167-215) mixes file detection, process loading, run execution, status checking, and exit code mapping in one function.
+> Recommendation: Extract "load process from file-or-id" into a small helper.
+
+**2026-03-24-065** — Double YAML loading in `_run_process` (lines 186-189): `roots_instance.load_process()` and `load_process_yaml()` both parse the same file to extract the process ID.
+> Recommendation: Call `load_process_yaml` once and pass the result to `roots_instance`, or have `load_process` return the process ID.
+
+**2026-03-24-066** — Default bind address `0.0.0.0` (line 86) exposes the HTTP API on all network interfaces.
+> Recommendation: Default to `127.0.0.1`. Users who need external access can pass `--host 0.0.0.0`.
+
+**2026-03-24-067** — PostgreSQL DSN with embedded credentials may appear in shell history via `--storage` option.
+> Recommendation: Support reading DSN from an environment variable (e.g., `ROOTS_STORAGE_DSN`) to avoid credential exposure.
+
+**2026-03-24-068** — SSRF risk in `_check_agent_health` (lines 383-412). HTTP GET requests sent to `callback_url` values from the database without URL validation.
+> Recommendation: Validate callback URLs — restrict to HTTP/HTTPS, consider blocking private/internal IP ranges.
+
+**2026-03-24-069** — Magic numbers for exit codes (0, 1, 2 on lines 209-213) without named constants.
+> Recommendation: Define `EXIT_OK`, `EXIT_FAILURE`, `EXIT_PAUSED` constants.
+
+**2026-03-24-070** — Magic numbers 200 (state truncation, line 287) and 5.0 (HTTP timeout, line 402) as inline literals.
+> Recommendation: Extract to module-level constants.
+
+**2026-03-24-071** — `_parse_work_item` (lines 157-164) provides no user-friendly error on malformed JSON. Raw `JSONDecodeError` traceback shown.
+> Recommendation: Wrap in try/except and use `typer.BadParameter` or styled error message.
+
+**2026-03-24-072** — Unnecessary f-string prefix on line 105: `f"Roots server starting..."` has no interpolation.
+> Recommendation: Remove the `f` prefix.
+
+**2026-03-24-073** — Mixed `Optional[X]` and `X | None` syntax. Lines 46, 313, etc. use `Optional` while line 244 uses `str | None`.
+> Recommendation: Use `X | None` consistently (already using `from __future__ import annotations`).
+
+**2026-03-24-074** — Unused `_patch_run` helper function in `tests/test_cli.py` (lines 372-377). Never called by any test.
+> Recommendation: Remove the dead code.
+
+**2026-03-24-075** — `RunRecord` import at module scope (line 18) only used as type annotation in `_list_runs` return type. Could be a `TYPE_CHECKING` import.
+> Recommendation: Move to `if TYPE_CHECKING:` block to avoid loading storage modules at CLI startup.
+
+**2026-03-24-076** — No file size limit on `--work-item` file read (line 163). Very large JSON files could cause excessive memory usage.
+> Recommendation: Add a reasonable file size check (e.g., 10MB cap).
+
+**2026-03-24-077** — No upper bound on `--limit` option (line 328). Extremely large values could cause the backend to return and sort large datasets in memory.
+> Recommendation: Cap at a reasonable maximum (e.g., 1000).
+
+**2026-03-24-078** — All 28 acceptance criteria across 5 user stories (US-001 through US-005) fully addressed. No scope creep detected. No TODO comments or placeholder implementations. Implementation aligns with feature spec goals and technical considerations.
+> No action required.
+
+**2026-03-24-079** — Test suite: 865 passed, 80 skipped (PostgreSQL), 0 failures in 16.62s. CLI-specific: 53 tests, all passing in 0.29s. All CLI user stories have comprehensive test coverage.
+> No action required.
+
+---
 
 ### 2026-03-24 — HTTP API Validation
 

@@ -382,3 +382,39 @@
 - Learnings: EdgeDefinition uses Field(alias='from') so construction requires model_validate with dict using 'from' key, not from_node parameter; validate_structure checks that non-end/non-decision/non-join nodes have outbound edges, so adding disconnected agent nodes always fails validation; NodeDefinition.validate_node is a @model_validator, not a callable method — to re-validate after mutation, reconstruct the node via constructor; ProcessDefinition._node_map must be manually updated after mutating process.nodes since it's computed in model_validator; Verifier note: Implementation is clean and follows the spec closely. All mutation endpoints have proper rollback on validation failure, correct HTTP status codes (201 for creates, 204 for deletes, 200 for updates), and 404 handling. Request/response models in models.py are well-structured. All 812 tests pass with 0 failures.
 - Committed: feat(http-api): US-009 - Graph Mutation Endpoints
 
+### US-001: CLI Scaffolding (Attempt 1) — PASS
+- Completed: 2026-03-24T08:32:58Z
+- Verified by: independent verifier session
+- Learnings: SqliteBackend takes a path string, PostgresBackend takes a DSN string — auto-detection uses postgresql:// or postgres:// prefix; Typer version_callback with is_eager=True handles --version before subcommand dispatch; Common options go in the @app.callback() function and are passed via ctx.obj to subcommands; Verifier note: Clean implementation. All acceptance criteria are met. Code follows project conventions (async backends, Typer CLI). Full test suite passes with 822 passed, 80 skipped, 0 failures.
+- Committed: feat(cli): US-001 - CLI Scaffolding
+
+### US-002: `roots serve` Command (Attempt 1) — FAIL
+- Failed: 2026-03-24T08:47:58Z
+- Failure: Timed out after 900s
+- Learnings: Session error: SESSION_ERROR: Timed out after 900s
+- Working tree reset, retrying...
+
+### US-002: `roots serve` Command (Attempt 2) — PASS
+- Completed: 2026-03-24T08:51:45Z
+- Verified by: independent verifier session
+- Learnings: uvicorn and create_app imports moved to module level in cli/main.py for testability — local imports prevent patching; Typer CLI runner tests require patching create_roots_from_options and uvicorn.run since serve now does real work; Patch target must match where the name is bound (roots.cli.main.create_app not roots.api.app.create_app) when using module-level imports; Verifier note: Implementation is clean and follows the feature spec closely. The serve command correctly wires up storage backend creation, FastAPI app creation, startup banner, and uvicorn server launch. Tests use appropriate mocking to avoid actually starting a server while verifying all integration points. The --reload flag from the implementation hints is included as a bonus.
+- Committed: feat(cli): US-002 - `roots serve` Command
+
+### US-003: `roots validate` Command (Attempt 1) — PASS
+- Completed: 2026-03-24T08:54:59Z
+- Verified by: independent verifier session
+- Learnings: validate_process_yaml in roots/core/validator.py provides the full validation pipeline (YAML parse, Pydantic, structural) and returns a list of error strings — perfect for CLI consumption; Typer CLI runner in tests works well with tmp_path for file-based command testing; Verifier note: Implementation is clean and follows project conventions. The validate command properly delegates to validate_process_yaml which handles the full pipeline (YAML parse -> Pydantic -> structural). Error formatting includes node ID context via _format_validation_errors. All tests pass.
+- Committed: feat(cli): US-003 - `roots validate` Command
+
+### US-004: `roots run` Command (Attempt 1) — PASS
+- Completed: 2026-03-24T08:58:41Z
+- Verified by: independent verifier session
+- Learnings: Typer --wait/--no-wait boolean flag syntax works well for toggle options; Patching roots.cli.main.SqliteBackend and roots.cli.main.Roots at module level is the correct approach for CLI run tests since _run_process creates these directly; _parse_work_item detects file paths by checking Path.is_file() before falling back to JSON parsing; Verifier note: Clean implementation. All criteria are met with good test coverage. The code follows project conventions (async helpers, typer patterns, consistent mocking approach). The _patch_run helper function at line 372-377 is unused dead code but is harmless.
+- Committed: feat(cli): US-004 - `roots run` Command
+
+### US-005: `roots status` and `roots agents` Commands (Attempt 1) — PASS
+- Completed: 2026-03-24T09:03:15Z
+- Verified by: independent verifier session
+- Learnings: Typer sub-app with invoke_without_command=True allows both `roots agents` (list) and `roots agents health` (subcommand) patterns; Rich Console and Table work well inside Typer CLI runner tests — output is captured as plain text; Agent storage returns list[dict[str, Any]] — agents are stored as JSON config blobs, not typed dataclasses; httpx.AsyncClient with 5s timeout follows the same pattern used in the API agents health endpoint; Verifier note: Implementation is solid. All acceptance criteria are fully met. The code uses rich.table.Table for formatted output, proper async backends with cleanup, httpx for health checks, and comprehensive test coverage with mocked backends. No regressions detected.
+- Committed: feat(cli): US-005 - `roots status` and `roots agents` Commands
+
