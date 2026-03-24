@@ -198,12 +198,12 @@ The orchestrator is the heart of Roots. It is stateless between ticks — each t
 - `async execute_run(run_id)`: create ProcessRunner, call `run_to_completion()`. Synchronous run-to-done for embedded mode.
 
 **Acceptance Criteria:**
-- [ ] `start_run` creates run with pending status
-- [ ] `tick_all` processes all pending and running runs
-- [ ] `execute_run` runs a single run to completion
-- [ ] `run_loop` polls continuously and handles cancellation
-- [ ] owner_id is unique per Orchestrator instance
-- [ ] Tests verify start → execute → completed flow
+- [x] `start_run` creates run with pending status
+- [x] `tick_all` processes all pending and running runs
+- [x] `execute_run` runs a single run to completion
+- [x] `run_loop` polls continuously and handles cancellation
+- [x] owner_id is unique per Orchestrator instance
+- [x] Tests verify start → execute → completed flow
 
 ### US-007: Roots Embedded API — Core Methods
 
