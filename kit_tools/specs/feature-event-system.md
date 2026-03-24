@@ -68,12 +68,12 @@ The event system provides structured JSON event emission at all process lifecycl
 - If no sinks configured, `emit` is a no-op
 
 **Acceptance Criteria:**
-- [ ] Events are dispatched to all sinks asynchronously
-- [ ] Sink exceptions are caught and logged, never propagated
-- [ ] Buffer limit is enforced — oldest tasks shed when full
-- [ ] No sinks = silent no-op
-- [ ] `close()` drains pending events
-- [ ] Tests verify fire-and-forget behavior, exception isolation, buffer shedding
+- [x] Events are dispatched to all sinks asynchronously
+- [x] Sink exceptions are caught and logged, never propagated
+- [x] Buffer limit is enforced — oldest tasks shed when full
+- [x] No sinks = silent no-op
+- [x] `close()` drains pending events
+- [x] Tests verify fire-and-forget behavior, exception isolation, buffer shedding
 
 ### US-003: StdoutSink and FileSink
 
