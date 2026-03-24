@@ -59,12 +59,12 @@ MCP agent invocation extends the agent registry with a third invocation type. MC
 - On connection failure: raise `AgentInvocationError` with connection details
 
 **Acceptance Criteria:**
-- [ ] URL-based MCP server connection works
-- [ ] Tool discovery returns available tools with schemas
-- [ ] Tool calls return results
-- [ ] Connections are cached and reused
-- [ ] Connection failures produce clear errors
-- [ ] Tests use mock MCP server (or skip if mcp package not installed)
+- [x] URL-based MCP server connection works
+- [x] Tool discovery returns available tools with schemas
+- [x] Tool calls return results
+- [x] Connections are cached and reused
+- [x] Connection failures produce clear errors
+- [x] Tests use mock MCP server (or skip if mcp package not installed)
 
 ### US-003: Command-Based MCP Subprocess Lifecycle
 
