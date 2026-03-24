@@ -58,11 +58,11 @@ The Roots CLI (`roots`) provides command-line access to process validation, serv
 - Print startup banner with URL and configured storage backend
 
 **Acceptance Criteria:**
-- [ ] Server starts and listens on configured host/port
-- [ ] Storage backend is configured from --storage option
-- [ ] Startup banner shows URL and backend info
-- [ ] Ctrl+C shuts down gracefully
-- [ ] Tests verify server startup (can use short-lived background server)
+- [x] Server starts and listens on configured host/port
+- [x] Storage backend is configured from --storage option
+- [x] Startup banner shows URL and backend info
+- [x] Ctrl+C shuts down gracefully
+- [x] Tests verify server startup (can use short-lived background server)
 
 ### US-003: `roots validate` Command
 
