@@ -104,12 +104,12 @@ The process schema layer is the foundation of Roots. It defines the Pydantic v2 
   - On validation failure: raise with context like `"Node 'my_node' (agent): field 'output_key' is required"`
 
 **Acceptance Criteria:**
-- [ ] All 5 remaining config models validate correctly
-- [ ] `JoinNodeConfig` requires `collect_key` when merge_strategy is collect
-- [ ] `EmitNodeConfig` has event_type and optional payload_keys
-- [ ] `NodeDefinition.config` is parsed into the correct typed model based on `type`
-- [ ] Mismatched config raises error with node ID and type context
-- [ ] Tests cover each config model and the discriminator logic
+- [x] All 5 remaining config models validate correctly
+- [x] `JoinNodeConfig` requires `collect_key` when merge_strategy is collect
+- [x] `EmitNodeConfig` has event_type and optional payload_keys
+- [x] `NodeDefinition.config` is parsed into the correct typed model based on `type`
+- [x] Mismatched config raises error with node ID and type context
+- [x] Tests cover each config model and the discriminator logic
 
 ### US-005: Edge Model and Process Definition Model
 
