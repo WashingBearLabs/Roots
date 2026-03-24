@@ -124,15 +124,15 @@ Five self-contained demo applications that showcase the Roots framework's capabi
   - All methods return promises (async fetch)
 
 **Acceptance Criteria:**
-- [ ] `graph-renderer.js` renders graph JSON as SVG with status-colored nodes
-- [ ] Auto-layout works for nodes with default `{x:0, y:0}` positions
-- [ ] `update()` updates status colors without full re-render
-- [ ] `state-viewer.js` renders JSON tree with expandable sections
-- [ ] Changed keys highlighted when previous state provided
-- [ ] `event-log.js` shows scrolling events, color-coded by type
-- [ ] `roots-client.js` wraps all key API endpoints with polling support
-- [ ] Polling slows down when run is in terminal/paused state
-- [ ] No external dependencies — all vanilla JS
+- [x] `graph-renderer.js` renders graph JSON as SVG with status-colored nodes
+- [x] Auto-layout works for nodes with default `{x:0, y:0}` positions
+- [x] `update()` updates status colors without full re-render
+- [x] `state-viewer.js` renders JSON tree with expandable sections
+- [x] Changed keys highlighted when previous state provided
+- [x] `event-log.js` shows scrolling events, color-coded by type
+- [x] `roots-client.js` wraps all key API endpoints with polling support
+- [x] Polling slows down when run is in terminal/paused state
+- [x] No external dependencies — all vanilla JS
 
 ### US-004: Content Pipeline Demo
 
