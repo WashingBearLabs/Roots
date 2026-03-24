@@ -230,15 +230,15 @@ The orchestrator is the heart of Roots. It is stateless between ticks — each t
 - **Update `tests/conftest.py`:** Replace the placeholder comment from T1.2 with the actual `roots_instance` fixture now that the Roots class exists. The fixture creates `Roots(storage=sqlite_storage)`, registers a simple echo agent (`async def echo_agent(input): return {"echo": input["work_item_state"]}`), yields the instance, and calls `close()` in teardown.
 
 **Acceptance Criteria:**
-- [ ] `Roots(storage=SqliteBackend(":memory:"))` instantiates cleanly
-- [ ] `load_process` parses and stores a YAML process
-- [ ] `register_agent` registers a local callable
-- [ ] `start_run` + `execute_run` drives a run to completion
-- [ ] All public types importable from `roots` package
-- [ ] `close()` drains events and closes storage
-- [ ] Works as async context manager
-- [ ] `roots_instance` fixture added to conftest.py (replacing T1.2 placeholder)
-- [ ] End-to-end test: 5-line script that loads process, registers agent, runs to completion
+- [x] `Roots(storage=SqliteBackend(":memory:"))` instantiates cleanly
+- [x] `load_process` parses and stores a YAML process
+- [x] `register_agent` registers a local callable
+- [x] `start_run` + `execute_run` drives a run to completion
+- [x] All public types importable from `roots` package
+- [x] `close()` drains events and closes storage
+- [x] Works as async context manager
+- [x] `roots_instance` fixture added to conftest.py (replacing T1.2 placeholder)
+- [x] End-to-end test: 5-line script that loads process, registers agent, runs to completion
 
 ### US-008: Roots Embedded API — Graph and Resolution
 
