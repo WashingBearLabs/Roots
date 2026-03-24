@@ -168,12 +168,12 @@ The storage backend provides the persistence layer for all Roots state. It defin
 - `delete_webhook(webhook_id)`: DELETE, return True if deleted, False if not found
 
 **Acceptance Criteria:**
-- [ ] Webhook CRUD works (create, list, delete)
-- [ ] Exact pattern matching works
-- [ ] Wildcard suffix matching works (`roots.run.*` matches `roots.run.completed`)
-- [ ] Universal wildcard `*` matches all events
-- [ ] Pattern matching is case-sensitive
-- [ ] Tests cover all matching scenarios
+- [x] Webhook CRUD works (create, list, delete)
+- [x] Exact pattern matching works
+- [x] Wildcard suffix matching works (`roots.run.*` matches `roots.run.completed`)
+- [x] Universal wildcard `*` matches all events
+- [x] Pattern matching is case-sensitive
+- [x] Tests cover all matching scenarios
 
 ### US-007: SQLite — Run Locking
 
