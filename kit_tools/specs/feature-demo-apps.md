@@ -27,291 +27,450 @@ Five self-contained demo applications that showcase the Roots framework's capabi
 
 ## User Stories
 
-### US-001: Shared Demo Infrastructure
+### US-001: Demo Server Infrastructure
 
-**Description:** As a demo builder, I want shared HTML/CSS/JS components for graph rendering and process visualization so that each demo doesn't reinvent the UI layer.
+**Description:** As a demo builder, I want a shared Python module that creates a FastAPI app from a Roots instance so that each demo doesn't reinvent the server setup.
 
 **Implementation Hints:**
-- Create `demo/_common/` directory with shared assets:
-  - `graph-renderer.js` — Takes the Roots graph JSON structure (from `GET /runs/{id}/graph`) and renders it as an SVG with positioned nodes, colored by status, connected by edges. Use the `position` metadata from nodes. Nodes are rounded rectangles with label + type + status badge. Edges are SVG paths. Active node pulses. Completed nodes are green, running are blue, pending are gray, failed are red, paused are yellow.
-  - `state-viewer.js` — Renders work item state as a collapsible JSON tree. Highlights keys that changed since last update.
-  - `event-log.js` — Scrolling event log that shows events as they arrive. Each event shows timestamp, type (color-coded), node, and a brief description.
-  - `styles.css` — Clean, minimal CSS. Dark background, light text, monospace for data. Card-based layout. Responsive. No framework — just CSS custom properties + flexbox/grid.
-  - `base.html` — Template HTML that includes all shared assets via `<script>` and `<link>` tags. Provides a standard layout: header (demo name + process status), main area (graph + panels), footer (controls).
-- Create `demo/_common/demo_server.py` — Shared Python helper:
-  - `create_demo_app(roots: Roots, demo_name: str, static_dir: str) -> FastAPI` — Creates a FastAPI app that:
-    - Mounts the Roots API routers (process, runs, checkpoints, graph)
-    - Serves static files from the demo's `static/` directory
-    - Serves shared assets from `demo/_common/`
-    - Adds a `GET /` route that serves `index.html`
-    - Adds a `GET /api/demo-info` route returning demo name, description, and instructions
-  - `open_browser(port: int)` — Opens `http://localhost:{port}` in the default browser after a 1s delay
-  - `run_demo(roots: Roots, demo_name: str, static_dir: str, port: int = 8200)` — One-liner to start the demo server and open browser
-- The graph renderer should poll `GET /runs/{id}/graph` every 500ms to update the display (simple polling, no websockets)
-- Load no external CDN dependencies — everything is self-contained in `_common/`
+- Create `demo/_common/demo_server.py`:
+  - `create_demo_app(roots: Roots, demo_name: str, static_dir: str, common_dir: str | None = None) -> FastAPI`:
+    - Creates a FastAPI app
+    - Stores `roots` on `app.state.roots`
+    - Mounts Roots API routers (processes, runs, checkpoints, agents, graph, webhooks) under `/api/`
+    - Mounts demo-specific static files at `/static/` from `static_dir`
+    - Mounts shared assets at `/common/` from `common_dir` (defaults to `demo/_common/`)
+    - Adds `GET /` that returns `FileResponse` for `{static_dir}/index.html`
+    - Adds `GET /api/demo-info` returning `{"name": demo_name, "status": "ready"}`
+  - `open_browser(port: int)`:
+    - Spawns a thread that sleeps 1.5s then calls `webbrowser.open(f"http://localhost:{port}")`
+  - `run_demo(roots: Roots, demo_name: str, static_dir: str, port: int = 8200)`:
+    - Calls `create_demo_app`, calls `open_browser`, runs `uvicorn.run(app, host="127.0.0.1", port=port)`
+- Create `demo/_common/__init__.py` (empty)
+- Create `demo/__init__.py` (empty) — makes demo importable for run_all.py
+- Add `.gitignore` in `demo/` ignoring `*.db`, `__pycache__/`, `.pyc`
 
 **Acceptance Criteria:**
-- [ ] `demo/_common/` directory exists with all shared assets
-- [ ] `graph-renderer.js` renders Roots graph JSON as SVG with node status colors
-- [ ] `state-viewer.js` renders JSON state as collapsible tree
-- [ ] `event-log.js` shows scrolling event log
-- [ ] `styles.css` provides clean dark-theme layout
-- [ ] `demo_server.py` creates a working FastAPI app from a Roots instance
-- [ ] Static files served correctly (shared + demo-specific)
-- [ ] Tests verify demo_server creates a working app
+- [ ] `demo/_common/demo_server.py` exists with all three functions
+- [ ] `create_demo_app` mounts Roots API routers and static files
+- [ ] Static files served at `/static/` (demo-specific) and `/common/` (shared)
+- [ ] `GET /` serves index.html
+- [ ] `open_browser` opens the URL after a delay
+- [ ] `demo/.gitignore` excludes db files and pycache
+- [ ] Tests verify the app factory creates a working FastAPI app
 
-### US-002: Content Pipeline Demo
+### US-002: Shared CSS and HTML Base Template
+
+**Description:** As a demo builder, I want shared CSS and an HTML template so that all demos have a consistent, clean look without duplicating styles.
+
+**Implementation Hints:**
+- Create `demo/_common/styles.css`:
+  - Dark theme: `--bg: #1a1a2e`, `--surface: #16213e`, `--text: #e0e0e0`, `--accent: #0f3460`, `--green: #4ecca3`, `--blue: #4a9ff5`, `--red: #e74c3c`, `--yellow: #f1c40f`, `--gray: #555`
+  - CSS custom properties for all colors (easy theming)
+  - Base layout: full-viewport flexbox with header, main (3-column or 2-column via CSS grid), footer
+  - Card component: `.card` with surface background, subtle border, border-radius 8px, padding 1rem
+  - Node status classes: `.node-pending` (gray), `.node-running` (blue + pulse animation), `.node-completed` (green), `.node-failed` (red), `.node-paused` (yellow)
+  - Monospace font for code/data: `'JetBrains Mono', 'Fira Code', monospace`
+  - Sans-serif for UI: `system-ui, -apple-system, sans-serif`
+  - Button styles: `.btn-primary` (accent), `.btn-success` (green), `.btn-danger` (red), `.btn-outline` (border only)
+  - Scrollable panels: `.panel-scroll` with max-height and overflow-y auto
+  - Simple animations: `@keyframes pulse` for running nodes, `@keyframes fadeIn` for new elements
+- Create `demo/_common/base.html`:
+  - HTML5 template with `<meta charset="utf-8">`, viewport meta
+  - Links to `/common/styles.css`
+  - Script tags for `/common/graph-renderer.js`, `/common/state-viewer.js`, `/common/event-log.js`
+  - Standard layout: `<header>` with demo name + process status badge, `<main>` with flexible content area, `<footer>` with "Powered by Roots" + link
+  - This is a REFERENCE template — each demo copies and customizes it, it's not served directly
+
+**Acceptance Criteria:**
+- [ ] `styles.css` exists with dark theme, all node status classes, card/button components
+- [ ] `base.html` exists as a reference template linking all shared assets
+- [ ] CSS uses custom properties for all colors (themeable)
+- [ ] Pulse animation defined for running nodes
+- [ ] No external CDN dependencies — fully self-contained
+- [ ] Looks clean and readable in a browser (manual visual check)
+
+### US-003: Shared JS Components
+
+**Description:** As a demo builder, I want shared JavaScript components for graph rendering, state viewing, and event logging so that each demo has consistent interactive elements.
+
+**Implementation Hints:**
+- Create `demo/_common/graph-renderer.js`:
+  - `class GraphRenderer` — takes a container DOM element and renders Roots graph JSON as SVG
+  - `render(graphData)` — clears container, draws SVG with:
+    - Nodes as rounded rectangles (width 160, height 60) with label text + type subtitle + status badge
+    - **Positions:** Read from `node.position` in graph JSON (`{x, y}`). If position is `{x:0, y:0}` (default), auto-layout: simple top-to-bottom flow, nodes spaced 100px vertically, parallel branches side by side
+    - Edges as SVG `<line>` or `<path>` elements connecting node centers. Traversed edges are green, pending are gray dashed.
+    - Node fill colors by status: pending=#555, running=#4a9ff5 (with CSS pulse), completed=#4ecca3, failed=#e74c3c, paused=#f1c40f, skipped=#333
+    - Active node (status=running) gets a glow filter: `<filter id="glow">` with `feGaussianBlur`
+  - Keep it simple: rectangular nodes, straight-line edges, no curved paths. This is demos, not a production graph editor.
+  - `update(graphData)` — diff-updates existing SVG (update colors/status) without full re-render to avoid flicker
+- Create `demo/_common/state-viewer.js`:
+  - `class StateViewer` — takes a container element
+  - `render(state, previousState)` — renders JSON as collapsible tree
+  - Top-level keys are expandable sections. Values are syntax-highlighted (strings=green, numbers=blue, bools=yellow, null=gray)
+  - Keys that changed since `previousState` are highlighted with a gold left-border
+  - Use recursive DOM building — no library needed for a JSON tree
+- Create `demo/_common/event-log.js`:
+  - `class EventLog` — takes a container element
+  - `addEvent(event)` — prepends a new event row (newest at top)
+  - Each row: `[HH:MM:SS] <type-badge> <node-id> <description>`
+  - Type badges color-coded: run.* = blue, node.* = green, agent.* = cyan, decision.* = purple, checkpoint.* = yellow, escalation.* = red
+  - Auto-scroll to top on new event. Max 100 events displayed (remove oldest).
+- Create `demo/_common/roots-client.js`:
+  - `class RootsClient` — simple fetch wrapper for the Roots API
+  - Methods: `createRun(processId, workItem)`, `getRun(runId)`, `getRunGraph(runId)`, `resolveCheckpoint(runId, decision, notes, redirectTo)`, `listRuns()`, `getProcessGraph(processId)`
+  - `startPolling(runId, callback, intervalMs=500)` — polls `getRunGraph` at interval, calls callback with graph data. Slows to 3000ms when run status is completed/failed/paused/cancelled.
+  - `stopPolling()` — clears the interval
+  - All methods return promises (async fetch)
+
+**Acceptance Criteria:**
+- [ ] `graph-renderer.js` renders graph JSON as SVG with status-colored nodes
+- [ ] Auto-layout works for nodes with default `{x:0, y:0}` positions
+- [ ] `update()` updates status colors without full re-render
+- [ ] `state-viewer.js` renders JSON tree with expandable sections
+- [ ] Changed keys highlighted when previous state provided
+- [ ] `event-log.js` shows scrolling events, color-coded by type
+- [ ] `roots-client.js` wraps all key API endpoints with polling support
+- [ ] Polling slows down when run is in terminal/paused state
+- [ ] No external dependencies — all vanilla JS
+
+### US-004: Content Pipeline Demo
 
 **Description:** As a new user, I want a content moderation pipeline demo so that I can see how agent pools and deterministic decisions work in a real scenario.
 
 **Implementation Hints:**
 - Create `demo/content-pipeline/`:
-  - `process.yaml` — Content moderation pipeline:
-    - `classify` (agent) — classifies content type (article/comment/image_caption)
-    - `analyze` (agent_pool, parallel) — runs sentiment_analyzer + toxicity_scorer + spam_detector concurrently
-    - `route` (decision, deterministic) — routes based on combined scores: approve (all clean), flag_review (borderline), reject (toxic/spam)
-    - `approve` / `flag_review` / `reject` (end nodes with different statuses)
-  - `agents.py` — Local agent callables that return realistic mock data. Each agent sleeps 0.5-1s to simulate work. Agents use the input text to produce deterministic but varied results (e.g., keyword matching for toxicity).
-  - `static/index.html` — UI showing:
-    - Text input area where user types or pastes content to moderate
-    - "Submit" button that creates a run via API
-    - Graph visualization showing the process flow with real-time status
-    - Results panel showing agent outputs (scores, classifications)
-    - Decision outcome with reasoning
-  - `run_demo.py`:
-    ```python
-    async def main():
-        async with Roots(storage=SqliteBackend(":memory:")) as roots:
-            await roots.load_process("demo/content-pipeline/process.yaml")
-            # register agents from agents.py
-            run_demo(roots, "Content Pipeline", "demo/content-pipeline/static")
-    ```
-- Include 3-4 sample texts in the UI as quick-select buttons: one clean, one borderline, one toxic, one spam
-- The UI auto-polls the run graph to show progress
+  - `process.yaml`:
+    - `classify` (agent, output_key: classify_output) — classifies content type
+    - `analyze` (agent_pool, parallel, output_key: analysis_output) — sentiment_analyzer + toxicity_scorer + spam_detector
+    - `route` (decision, deterministic) — edges:
+      - `approve`: condition `analysis_output.toxicity_score < 0.3 and analysis_output.spam_score < 0.3`
+      - `flag_review`: condition `analysis_output.toxicity_score >= 0.3 and analysis_output.toxicity_score < 0.7`
+      - `reject`: condition `analysis_output.toxicity_score >= 0.7 or analysis_output.spam_score >= 0.7`
+    - `approve` (end, completed) / `flag_review` (end, completed) / `reject` (end, failed)
+    - Hardcode node positions in metadata for clean top-to-bottom layout
+  - `agents.py`:
+    - `classify_content(input)` — keyword matching: returns `{"type": "article|comment|image_caption", "language": "en"}`
+    - `analyze_sentiment(input)` — returns `{"sentiment": "positive|negative|neutral", "sentiment_score": 0.0-1.0}`
+    - `score_toxicity(input)` — keyword list ("hate","kill","stupid",...) → returns `{"toxicity_score": 0.0-1.0, "flagged_words": [...]}`
+    - `detect_spam(input)` — pattern matching (ALL CAPS, repeated chars, URLs) → returns `{"spam_score": 0.0-1.0, "indicators": [...]}`
+    - Each agent sleeps `0.3-0.5s` (use `asyncio.sleep`) to simulate work
+  - `static/index.html`:
+    - Layout: graph panel (left 60%), results panel (right 40%)
+    - Top bar: text input area (textarea) + "Submit" button
+    - Quick-select sample buttons below input: "Clean article" / "Mild comment" / "Toxic post" / "Spam message" — each populates the textarea with preset text
+    - On submit: `POST /api/runs` with `{"process_id": "content-pipeline", "work_item": {"text": "..."}}`
+    - Store returned `run_id`, start polling with `RootsClient`
+    - Graph panel: `GraphRenderer` shows process flow updating in real-time
+    - Results panel: shows agent outputs as they appear in the state (poll state from graph response), then final decision outcome with badge (Approved/Flagged/Rejected)
+  - `run_demo.py`: standard pattern — load process, register 4 agents, call `run_demo()`
 
 **Acceptance Criteria:**
 - [ ] `python demo/content-pipeline/run_demo.py` starts server and opens browser
 - [ ] User can submit text and see the process execute in real-time
 - [ ] Agent pool parallel execution visible (3 agents run simultaneously)
-- [ ] Decision routing shows which path was taken and why
-- [ ] Sample texts produce different outcomes (approve/flag/reject)
+- [ ] Decision routing shows which path was taken
+- [ ] 4 sample texts produce different outcomes (approve/flag/reject)
 - [ ] Process completes in <3 seconds
 
-### US-003: Research Assistant Demo
+### US-005: Research Assistant Demo
 
 **Description:** As a new user, I want a research aggregator demo so that I can see fork/join parallel execution and checkpoint-based human approval.
 
 **Implementation Hints:**
 - Create `demo/research-assistant/`:
-  - `process.yaml` — Research aggregation pipeline:
-    - `topic_input` (checkpoint) — "Enter a research topic to investigate"
-    - `split` (fork) — splits into 3 parallel research branches
-    - Branch 1: `search_academic` (agent) — searches "academic papers"
-    - Branch 2: `search_news` (agent) — searches "news articles"
-    - Branch 3: `search_web` (agent) — searches "web sources"
-    - `merge` (join, collect strategy, collect_key: "research_results")
-    - `summarize` (agent) — combines collected results into a summary
-    - `quality_check` (decision, deterministic) — checks if summary has enough sources
-    - `approve_publish` (checkpoint) — human reviews summary before "publishing"
+  - `process.yaml`:
+    - `topic_input` (checkpoint, prompt: "Enter a research topic to investigate")
+    - `split` (fork) → 3 branches
+    - `search_academic` (agent, output_key: academic_results)
+    - `search_news` (agent, output_key: news_results)
+    - `search_web` (agent, output_key: web_results)
+    - `merge` (join, collect, collect_key: research_results)
+    - `summarize` (agent, output_key: summary)
+    - `quality_check` (decision, deterministic) — edges: `approve_publish` if `summary.source_count >= 3`, `insufficient` if `summary.source_count < 3`
+    - `approve_publish` (checkpoint, prompt: "Review the summary and approve for publishing")
     - `publish` (end, completed) / `insufficient` (end, failed)
-  - `agents.py` — Mock agents that return plausible research results based on the topic. Use the topic string to seed different results. `search_academic` returns {"papers": [...]}, `search_news` returns {"articles": [...]}, etc. `summarize` agent combines them into a prose summary.
-  - `static/index.html` — UI showing:
-    - Topic input with submit (resolves the first checkpoint)
-    - Graph with fork/join branches clearly visible (3 parallel lanes)
-    - Collected results panel showing what each branch found
-    - Summary panel
-    - Approval panel with approve/reject buttons (resolves second checkpoint)
-  - `run_demo.py` — same pattern as content-pipeline
+    - Hardcode positions: checkpoint at top, fork/3-branches in middle, join below, decision+checkpoints at bottom
+  - `agents.py`:
+    - `search_academic(input)` — returns `{"papers": [{"title": "...", "abstract": "...", "year": 2025},...]}` based on topic keyword matching. 3-5 results.
+    - `search_news(input)` — returns `{"articles": [{"headline": "...", "source": "...", "date": "..."},...]}`. 3-5 results.
+    - `search_web(input)` — returns `{"pages": [{"title": "...", "url": "...", "snippet": "..."},...]}`. 3-5 results.
+    - `summarize(input)` — combines results into `{"summary_text": "...", "source_count": N, "key_findings": [...]}`
+    - Each search agent sleeps 0.5-1s. Topic string seeds different results (hash-based selection from a pool of canned results).
+  - `static/index.html`:
+    - Layout: graph panel (top 50%), content panels (bottom 50% split into research results + summary)
+    - Initial state: graph shows process paused at `topic_input`. Input field + "Start Research" button.
+    - On submit: `POST /api/runs/{id}/checkpoint` with `{"decision": "approve"}` (the topic is in the work_item, set during run creation). Actually — the topic needs to get into the work item. Approach: create the run with `{"topic": "user's input"}` as the work_item, then resolve the checkpoint to continue.
+    - Fork/join: graph shows 3 parallel branches with individual progress
+    - After merge: results panel shows collected data from all 3 sources in tabs (Academic / News / Web)
+    - After summarize: summary panel shows the generated summary
+    - Second checkpoint: "Approve" / "Reject" buttons appear
+    - Approve → publish (green completion), Reject → insufficient (red)
+  - `run_demo.py`: load process, register 4 agents, run_demo()
 
 **Acceptance Criteria:**
 - [ ] `python demo/research-assistant/run_demo.py` starts server and opens browser
-- [ ] First checkpoint shows topic input UI, process pauses until submitted
-- [ ] Fork/join branches execute in parallel with visual progress
-- [ ] Collected results show all three sources merged
-- [ ] Summary agent output displayed
-- [ ] Second checkpoint shows approve/reject UI
-- [ ] Approve leads to "published", reject leads to "insufficient"
+- [ ] First checkpoint pauses and shows topic input
+- [ ] Fork/join branches visible executing in parallel
+- [ ] Collected results show all three sources
+- [ ] Summary displayed after summarize agent
+- [ ] Second checkpoint shows approve/reject buttons
+- [ ] Approve → completed, Reject → failed
 
-### US-004: Incident Response Demo
+### US-006: Incident Response Demo
 
 **Description:** As a new user, I want a SOC incident triage demo so that I can see AI decisions, confidence thresholds, and escalation in action.
 
 **Implementation Hints:**
 - Create `demo/incident-response/`:
-  - `process.yaml` — SOC incident response:
-    - `ingest` (agent) — normalizes incident data
-    - `enrich` (agent_pool, sequential) — enriches with threat intel + geo lookup
-    - `triage` (decision, ai_bounded, confidence_threshold: 0.75) — AI evaluates severity, routes to response path. Edges: isolate_endpoint, reset_credentials, block_ip, escalate_to_analyst, close_benign
-    - `respond` (agent) — executes the selected response action
-    - `document` (emit) — emits a custom event with incident summary
+  - `process.yaml`:
+    - `ingest` (agent, output_key: normalized_incident)
+    - `enrich` (agent_pool, sequential, output_key: enriched_data) — threat_intel_lookup + geo_lookup
+    - `triage` (decision, ai_bounded, confidence_threshold: 0.75, model: configured at runtime) — edges: isolate_endpoint / reset_credentials / block_ip / escalate_to_analyst / close_benign
+    - `respond` (agent, output_key: response_result)
+    - `document` (emit, event_type: "incident.response_complete", payload_keys: ["normalized_incident", "enriched_data", "response_result"])
     - `close` (end, completed)
-  - `agents.py` — Mock agents. `ingest` normalizes JSON input. `enrich` agents add threat intel scores and geo data. `respond` logs the action taken.
-  - `static/index.html` — UI showing:
-    - Incident input panel (JSON editor or form with fields: source_ip, event_type, severity_hint)
-    - Pre-built incident scenarios as buttons: "Brute force login", "Malware callback", "Data exfiltration", "False alarm"
-    - Graph visualization with the AI decision node highlighted
-    - **AI Decision panel** showing: the AI's recommendation, confidence score (as a gauge/bar), reasoning text, and which edge was selected
-    - If confidence is below threshold: escalation panel explaining the escalation
-    - Response action output
+    - Plus a separate path from triage escalation → `escalation_review` (checkpoint) → `respond`
+  - `agents.py`:
+    - `ingest_incident(input)` — normalizes raw incident data, returns `{"source_ip": "...", "event_type": "...", "severity": "...", "timestamp": "..."}`
+    - `threat_intel_lookup(input)` — returns `{"threat_score": 0.0-1.0, "known_iocs": [...], "threat_category": "..."}`
+    - `geo_lookup(input)` — returns `{"country": "...", "city": "...", "is_vpn": bool, "is_tor": bool}`
+    - `execute_response(input)` — returns `{"action_taken": "...", "success": true, "details": "..."}`
+  - `mock_decision.py` — A mock LLM callable that implements `LLMCompletionFunc`:
+    - Keyword matching: "brute force" → reset_credentials (0.92), "malware" → isolate_endpoint (0.88), "exfiltration" → block_ip (0.85), "port scan" → close_benign (0.45 — below threshold, triggers escalation), default → escalate_to_analyst (0.6)
+    - Returns `LLMResponse` with a ToolCall containing the decision JSON
   - `run_demo.py`:
-    - Accepts `--model` flag (default: mock mode with no API key needed)
-    - **Mock mode** (default): Replace the AI decision with a deterministic mock that uses keyword matching on the incident data to select edges and generate fake confidence scores. This lets the demo run without any LLM API key.
-    - **Live mode** (`--model gpt-4o-mini` or any LiteLLM string): Uses real LLM for the triage decision
-    - Print clear instructions on startup: "Running in mock mode. Pass --model gpt-4o-mini to use a real LLM."
+    - Default: mock mode using `mock_decision.py` as `llm_callable`
+    - `--model MODEL --base-url URL --api-key KEY`: live mode using `LLMConfig` + `openai_chat_completion`
+    - Print on startup: `"Running in mock mode (no API key needed). Use --model gpt-4o-mini --api-key YOUR_KEY for live AI."`
+  - `static/index.html`:
+    - Layout: incident input (top), graph (middle-left), AI decision panel (middle-right), event log (bottom)
+    - Pre-built scenario buttons: "Brute Force Login" / "Malware Callback" / "Data Exfiltration" / "Port Scan (Low Confidence)"
+    - AI decision panel: shows selected edge, confidence as a progress bar (color: green >0.75, yellow 0.5-0.75, red <0.5), reasoning text
+    - If escalated: panel changes to escalation view with "Escalation triggered — confidence {score} below threshold 0.75" + resolution buttons
+    - Emit node: custom event visible in event log with incident summary
 
 **Acceptance Criteria:**
 - [ ] `python demo/incident-response/run_demo.py` works with NO API key (mock mode)
-- [ ] `python demo/incident-response/run_demo.py --model gpt-4o-mini` uses real LLM
+- [ ] `--model gpt-4o-mini --base-url https://api.openai.com/v1 --api-key KEY` uses real LLM
 - [ ] Pre-built scenarios produce different routing decisions
-- [ ] AI decision panel shows confidence score and reasoning
-- [ ] Low-confidence scenario triggers escalation (confidence below 0.75)
-- [ ] Emit node fires a visible custom event in the event log
-- [ ] Mock mode confidence scores are deterministic and predictable
+- [ ] AI decision panel shows confidence bar and reasoning
+- [ ] "Port Scan" scenario triggers escalation (confidence 0.45 < 0.75)
+- [ ] Emit node fires visible custom event
+- [ ] Mock mode confidence scores are deterministic
 
-### US-005: API Explorer Demo
+### US-007: API Explorer Demo
 
 **Description:** As a new user, I want an API explorer demo so that I can understand all available HTTP endpoints and interact with them directly.
 
 **Implementation Hints:**
 - Create `demo/api-explorer/`:
-  - `process.yaml` — A simple 3-node process (agent → decision → end) pre-loaded for experimentation
-  - `agents.py` — Simple echo agent that returns its input with a timestamp
-  - `static/index.html` — UI showing:
-    - Left panel: API endpoint catalog grouped by category (Processes, Runs, Checkpoints, Agents, Webhooks, Graph). Each endpoint shows method, path, description.
-    - Center panel: Request builder (select endpoint, fill params, edit JSON body, send)
-    - Right panel: Response viewer (status code, headers, formatted JSON body)
-    - Bottom panel: Live event log (register a webhook on startup that posts to a local receiver endpoint)
-    - Pre-built "recipes" as quick-action buttons: "Create a run", "Check run status", "Get run graph", "List agents", "Register webhook"
+  - `process.yaml` — Simple 3-node process: `echo_input` (agent) → `check` (decision, deterministic: always passes) → `done` (end). Pre-loaded for experimentation.
+  - `agents.py` — `echo_agent(input)`: returns `{"echo": input["work_item_state"], "timestamp": "..."}`
+  - `static/index.html`:
+    - 3-panel layout: endpoint catalog (left 25%), request builder (center 50%), response viewer (right 25%)
+    - **Endpoint catalog:** Collapsible groups: Processes, Runs, Checkpoints, Agents, Webhooks, Graph. Each endpoint: colored method badge (GET=green, POST=blue, PUT=yellow, DELETE=red) + path + 1-line description. Click to load into request builder.
+    - **Request builder:** Method dropdown, path with editable params (e.g., `{run_id}` shows an input field), JSON body editor (textarea with syntax highlighting via wrapping in `<pre>` and coloring), "Send" button
+    - **Response viewer:** Status code (color-coded: 2xx=green, 4xx=yellow, 5xx=red), response time in ms, formatted JSON body (collapsible tree using StateViewer)
+    - **Bottom bar:** Pre-built recipe buttons: "Create Run", "Get Run Graph", "List Agents", "Register Webhook". Each populates the request builder with the correct method/path/body.
+    - Endpoint data: hardcode the full endpoint list in a JS const (method, path, description, sample body). ~30 endpoints.
   - `run_demo.py`:
-    - Starts the Roots API server with the pre-loaded process
-    - Registers a webhook that posts to a local `/api/webhook-receiver` endpoint on the same server
-    - The webhook receiver stores events in memory and exposes them via `GET /api/received-events`
-    - Opens browser
-  - The API explorer is essentially a lightweight Postman/Swagger UI tailored to Roots
+    - Load process, register echo agent
+    - Add custom routes:
+      - `POST /api/webhook-receiver` — stores received webhooks in `app.state.received_events` list
+      - `GET /api/received-events` — returns the list (for the event log panel)
+    - On startup: register a webhook via storage pointing to `http://localhost:{port}/api/webhook-receiver` with events `["*"]`
+    - run_demo()
 
 **Acceptance Criteria:**
 - [ ] `python demo/api-explorer/run_demo.py` starts server and opens browser
-- [ ] All API endpoint categories visible and documented
-- [ ] Request builder can send requests to any endpoint
-- [ ] Response viewer shows formatted JSON responses
-- [ ] Pre-built recipes work correctly
-- [ ] Webhook events appear in the live event log
-- [ ] Process is pre-loaded and ready for experimentation
+- [ ] All endpoint categories visible with method badges
+- [ ] Clicking an endpoint loads it into request builder
+- [ ] Request builder sends requests and shows responses
+- [ ] Pre-built recipes populate correct request data
+- [ ] Webhook events appear in received events log
+- [ ] Process pre-loaded and ready to experiment with
 
-### US-006: Node Explorer Demo (Interactive Tutorial)
+### US-008: Node Explorer — Process and Custom Endpoints
 
-**Description:** As a new user, I want an interactive node explorer so that I can learn what each node type does by stepping through a process that uses all of them.
+**Description:** As a demo builder, I want the node explorer's process definition, agents, and custom API endpoints so that step-through execution works.
 
 **Implementation Hints:**
 - Create `demo/node-explorer/`:
-  - `process.yaml` — "Greatest hits" process designed to demonstrate every node type in sequence:
-    1. `welcome` (checkpoint) — "Welcome! Press Continue to start the tour." Teaches checkpoints.
-    2. `classify` (agent) — Classifies a sample work item. Teaches single agent nodes and output_key.
-    3. `validate` (agent_pool, parallel) — Runs 3 validators in parallel. Teaches agent pools and execution modes.
-    4. `quality_gate` (decision, deterministic) — Routes based on validation scores. Teaches deterministic decisions.
-    5. `deep_analysis` (fork) — Splits into 2 branches. Teaches fork nodes.
-    6. Branch A: `analyze_content` (agent) / Branch B: `analyze_metadata` (agent)
-    7. `combine` (join, merge_all) — Merges branch results. Teaches join nodes and merge strategies.
-    8. `notify` (emit, event_type: "tour.analysis_complete") — Fires custom event. Teaches emit nodes.
-    9. `complete` (end, completed) — Process complete. Teaches end nodes.
-    - Also include a retry demonstration: one agent configured with `retry: {max_attempts: 2}` that fails on first call, succeeds on second (agent tracks call count in a closure). Teaches retry behavior.
-  - `agents.py` — Each agent is annotated with docstrings explaining what it demonstrates. The "failing" agent for retry is clearly labeled.
-  - `static/index.html` — UI showing:
-    - **Graph panel** (top): Full process graph with all nodes visible. Current node highlighted with a glow effect. Completed nodes have checkmarks. Lines connecting nodes show traversal status.
-    - **Tutorial panel** (right): For each node the execution reaches, shows:
-      - Node type name and icon
-      - "What this node does" — 2-3 sentence explanation
-      - "Configuration" — The actual YAML config for this node (syntax highlighted)
-      - "What happened" — What the node produced (output, decision, event, etc.)
-      - "Try it yourself" — A code snippet showing how to define this node type in your own process
-    - **State panel** (bottom-left): Work item state, updated after each node. Changed keys highlighted in gold.
-    - **Event log** (bottom-right): Events stream, color-coded by type.
-    - **Controls**:
-      - "Step" button — Advances one node (resolves checkpoint or triggers next tick)
-      - "Auto-play" toggle — Runs through automatically with 2s pause between nodes
-      - "Reset" button — Starts the process over
-    - The process starts paused at the first checkpoint. The user clicks "Continue" to begin the tour.
-  - `run_demo.py`:
-    - Starts in step-through mode by default
-    - Uses a custom execution approach: instead of `execute_run` (which runs to completion), the demo's JS calls a custom `/api/step` endpoint that runs a single tick
-    - Add a `POST /api/step` endpoint to the demo server that calls `ProcessRunner.tick()` once and returns the updated graph
-    - Add a `POST /api/reset` endpoint that cancels the current run and starts a new one
-    - Add a `GET /api/tutorial/{node_id}` endpoint that returns the tutorial content for a specific node type (loaded from a `tutorial_content.json` file)
-  - `tutorial_content.json` — Structured tutorial data for each node:
+  - `process.yaml` — "Greatest hits" tour of every node type:
+    1. `welcome` (checkpoint, prompt: "Welcome to the Roots Node Explorer! Click Continue to start the tour.")
+    2. `classify` (agent, output_key: classify_output) — classifies sample work item
+    3. `validate` (agent_pool, parallel, output_key: validation_output) — 3 validators: format_checker, schema_validator, content_analyzer
+    4. `quality_gate` (decision, deterministic) — edges: `deep_analysis` if `validation_output.overall_score >= 0.7`, `needs_fix` (end, failed) otherwise
+    5. `deep_analysis` (fork) → 2 branches
+    6. Branch A: `analyze_content` (agent, output_key: content_analysis, retry: {max_attempts: 2}) — fails first call, succeeds second (demonstrates retry)
+    7. Branch B: `analyze_metadata` (agent, output_key: metadata_analysis)
+    8. `combine` (join, merge_all)
+    9. `notify` (emit, event_type: "tour.analysis_complete", payload_keys: ["content_analysis", "metadata_analysis"])
+    10. `complete` (end, completed)
+    - Hardcode positions for clean visual layout (2 columns for fork branches)
+  - `agents.py`:
+    - Each agent has a descriptive docstring: `"""DEMO: Demonstrates the 'agent' node type. Output is written to state['classify_output']."""`
+    - `classify_item(input)` — returns `{"category": "document", "confidence": 0.95}`
+    - `check_format(input)`, `validate_schema(input)`, `analyze_content_quality(input)` — three validators returning scores, merged into `{"overall_score": 0.85, ...}`
+    - `analyze_content_deep(input)` — tracks call count via closure. First call raises `Exception("Simulated transient failure")`. Second call returns `{"depth": "thorough", "findings": [...]}`. This demonstrates retry.
+    - `analyze_metadata_deep(input)` — returns `{"metadata_score": 0.9, "fields_checked": 12}`
+    - All agents sleep 0.3s
+  - Add to `demo_server.py` (or create `demo/node-explorer/server_extensions.py`):
+    - `POST /api/step` — Takes `{"run_id": "..."}`. Creates a `ProcessRunner` directly (import from `roots.core.orchestrator`), calls `tick()` once, returns the updated graph JSON. If the run is paused at a checkpoint, this auto-resolves with approve first, then ticks.
+    - `POST /api/reset` — Takes `{"process_id": "..."}`. Creates a new run with a default work_item, returns `{"run_id": "..."}`.
+    - `GET /api/tutorial/{node_type}` — Returns tutorial content from `tutorial_content.json`
+    - These are added as extra routes on the demo's FastAPI app, not on the shared `demo_server.py`
+  - `tutorial_content.json` — Tutorial data for all node types plus retry:
     ```json
     {
-      "checkpoint": {
-        "title": "Checkpoint Node",
-        "icon": "pause-circle",
-        "what": "Pauses execution for human review. The process waits until someone approves, rejects, or redirects.",
-        "when": "Use checkpoints for quality gates, approvals, or any point where a human should verify before continuing.",
-        "config_example": "type: checkpoint\nconfig:\n  prompt: \"Review and approve\"",
-        "tips": ["Checkpoints create a record in storage", "Resolve via API: POST /runs/{id}/checkpoint", "Escalations also surface as checkpoints"]
-      }
+      "checkpoint": {"title": "Checkpoint", "what": "Pauses execution for human review...", "when": "Quality gates, approvals...", "config": "type: checkpoint\nconfig:\n  prompt: \"Review...\"", "tips": ["Creates a record in storage", "Resolve via POST /runs/{id}/checkpoint"]},
+      "agent": {"title": "Agent", "what": "Executes a single registered agent...", ...},
+      "agent_pool": {"title": "Agent Pool", "what": "Executes multiple agents...", ...},
+      "decision": {"title": "Decision", "what": "Evaluates conditions and routes...", ...},
+      "fork": {"title": "Fork", "what": "Splits execution into parallel branches...", ...},
+      "join": {"title": "Join", "what": "Waits for all branches and merges results...", ...},
+      "emit": {"title": "Emit", "what": "Fires a custom event to the event system...", ...},
+      "end": {"title": "End", "what": "Marks the process as completed or failed...", ...},
+      "retry": {"title": "Retry (Node Feature)", "what": "Automatically retries failed agent nodes...", ...}
     }
     ```
 
 **Acceptance Criteria:**
-- [ ] `python demo/node-explorer/run_demo.py` starts server and opens browser
-- [ ] Process graph shows all 8+ nodes with clear visual layout
-- [ ] Step-through execution advances one node at a time
-- [ ] Tutorial panel updates with node-specific content at each step
-- [ ] Each node type's explanation includes what, when, config example, and tips
-- [ ] State panel shows accumulated state changes with highlights
-- [ ] Event log shows events in real-time
-- [ ] Auto-play mode works with configurable speed
-- [ ] Reset restarts the process from the beginning
-- [ ] Retry behavior is visible (agent fails, retries, succeeds)
+- [ ] `process.yaml` uses all 8 node types plus retry
+- [ ] Agents produce deterministic, educational outputs
+- [ ] Retry agent fails first call, succeeds second
+- [ ] `POST /api/step` advances one tick and returns graph
+- [ ] `POST /api/reset` creates fresh run
+- [ ] `GET /api/tutorial/{node_type}` returns tutorial content
+- [ ] `tutorial_content.json` has entries for all 8 types + retry
+- [ ] Tests verify step/reset endpoints work
 
-### US-007: Demo Landing Page
+### US-009: Node Explorer — Tutorial Panel UI
 
-**Description:** As a new user, I want a landing page at `demo/` that lists all available demos with descriptions so that I can pick which one to explore.
+**Description:** As a new user, I want the tutorial panel to explain each node type as I step through the process.
 
 **Implementation Hints:**
-- Create `demo/index/`:
-  - `static/index.html` — Landing page showing:
-    - Roots logo/name + tagline ("AI-native process orchestration")
-    - Card grid with all 5 demos, each showing: name, 1-line description, what Roots features it demonstrates, a "Launch" button
-    - Each Launch button links to `http://localhost:{port}` for that demo
-    - Footer with links: GitHub repo, API docs (FastAPI auto-generated), architecture overview
-  - `run_all.py` — Starts ALL demo servers on consecutive ports (8201-8205) and opens the landing page:
-    ```
-    Content Pipeline:   http://localhost:8201
-    Research Assistant:  http://localhost:8202
-    Incident Response:   http://localhost:8203
-    API Explorer:        http://localhost:8204
-    Node Explorer:       http://localhost:8205
-    Landing Page:        http://localhost:8200
-    ```
-  - Each individual demo can still be run standalone via its own `run_demo.py`
-- Also create `demo/README.md` documenting the demo suite
+- In `demo/node-explorer/static/index.html`:
+  - **Tutorial panel** (right side, 35% width):
+    - Header: node type icon (emoji or unicode symbol) + title (e.g., "Agent Node")
+    - Section: **"What this does"** — 2-3 sentence explanation
+    - Section: **"When to use it"** — brief guidance
+    - Section: **"Configuration"** — the YAML config shown in a `<pre>` block with basic syntax highlighting (keys in cyan, strings in green, numbers in blue)
+    - Section: **"What happened"** — dynamically populated after the node executes. Shows the node's output from the state, or the decision taken, or the event emitted. Formatted as JSON.
+    - Section: **"Try it yourself"** — copyable YAML snippet showing how to add this node type to a process
+    - The panel updates when the current node changes (detected via polling — compare `run_status.current_node_id` with previous)
+    - Load tutorial content from `/api/tutorial/{node_type}` when the current node changes
+    - For the retry demonstration: show a special "Retry" section when the node has retry config, explaining what happened (attempt 1 failed, attempt 2 succeeded) pulled from the event log
+
+**Acceptance Criteria:**
+- [ ] Tutorial panel shows content for the current node
+- [ ] All sections populated: what, when, config, what happened, try it yourself
+- [ ] YAML config has basic syntax highlighting
+- [ ] "What happened" updates after node executes with actual output
+- [ ] Retry node shows attempt history
+- [ ] Panel transitions smoothly when node changes
+
+### US-010: Node Explorer — Interactive Controls and Graph
+
+**Description:** As a new user, I want step-through controls and a live graph so that I can explore the process at my own pace.
+
+**Implementation Hints:**
+- In `demo/node-explorer/static/index.html`:
+  - **Graph panel** (top-left, 65% width, 50% height):
+    - Uses `GraphRenderer` from shared components
+    - All nodes visible from the start (full process graph)
+    - Current node highlighted with glow effect
+    - Completed nodes show checkmark icon
+    - Edge colors: traversed=green, pending=gray dashed
+  - **State panel** (bottom-left):
+    - Uses `StateViewer` from shared components
+    - Shows full work_item_state
+    - After each step, highlights the new/changed key
+  - **Event log** (bottom-right):
+    - Uses `EventLog` from shared components
+    - Shows all events as they fire during stepping
+  - **Control bar** (fixed bottom):
+    - "Step" button (primary) — calls `POST /api/step`, updates graph + tutorial + state + events
+    - "Auto-play" toggle — when on, calls step every 2 seconds automatically. Speed slider (1s - 5s).
+    - "Reset" button (outline) — calls `POST /api/reset`, clears all panels, restarts from welcome checkpoint
+    - Step counter: "Step 3 of ~10"
+  - **Polling flow:**
+    - NOT using continuous polling like other demos. Instead: click Step → call API → update all panels from response. This gives precise control.
+    - Auto-play mode: `setInterval` that clicks Step programmatically
+  - **Initial state:** Process created but not started. Graph shows all nodes as pending. Tutorial panel shows "Welcome" intro. Click Step to resolve the first checkpoint and begin.
+
+**Acceptance Criteria:**
+- [ ] Graph shows all nodes from the start with correct layout
+- [ ] Step button advances one node and updates all panels
+- [ ] Auto-play mode steps automatically at configurable speed
+- [ ] Reset clears everything and restarts
+- [ ] State panel shows accumulated state with change highlights
+- [ ] Event log captures all events during execution
+- [ ] Step counter tracks progress
+- [ ] Process starts paused at welcome checkpoint
+
+### US-011: Demo Landing Page
+
+**Description:** As a new user, I want a landing page that lists all demos and lets me launch any of them.
+
+**Implementation Hints:**
+- Create `demo/index/static/index.html`:
+  - Hero section: "Roots" in large text + "AI-native process orchestration framework" subtitle
+  - Card grid (3 columns on desktop, 1 on narrow): one card per demo:
+    - **Content Pipeline** — "See agent pools and deterministic decisions in action" — Features: agent, agent_pool, decision, end
+    - **Research Assistant** — "Explore fork/join parallelism and human checkpoints" — Features: fork, join, checkpoint, decision
+    - **Incident Response** — "Watch AI-powered decisions with confidence thresholds" — Features: ai_decision, escalation, retry, emit
+    - **API Explorer** — "Interact with every Roots API endpoint" — Features: full HTTP API, webhooks
+    - **Node Explorer** — "Interactive tutorial — learn every node type step by step" — Features: all 8 node types, step-through
+  - Each card: colored accent bar (top), demo name, description, feature tags as pills, "Launch" button linking to `http://localhost:{port}`
+  - Footer: "Built with Roots v0.1.0" + link to GitHub
+  - Simple, clean — same dark theme as other demos
+- Create `demo/run_all.py`:
+  - Starts each demo server in a subprocess on consecutive ports:
+    - Content Pipeline: 8201
+    - Research Assistant: 8202
+    - Incident Response: 8203
+    - API Explorer: 8204
+    - Node Explorer: 8205
+  - Starts landing page server on 8200 (simple `uvicorn` serving the index)
+  - Opens browser to `http://localhost:8200`
+  - Prints port table to console
+  - Handles Ctrl+C: terminates all subprocesses gracefully
+- Create `demo/README.md`:
+  - Quick start: `python demo/run_all.py`
+  - Individual demo instructions
+  - Port assignments
+  - Screenshot descriptions (no actual screenshots needed)
 
 **Acceptance Criteria:**
 - [ ] `python demo/run_all.py` starts all demos and opens landing page
-- [ ] Landing page lists all 5 demos with descriptions
-- [ ] Each demo card links to the correct port
-- [ ] Individual demos still work standalone
-- [ ] `demo/README.md` documents how to run
+- [ ] Landing page shows all 5 demos with descriptions and feature tags
+- [ ] Each card links to correct port
+- [ ] Individual demos still work standalone via their own `run_demo.py`
+- [ ] Ctrl+C stops all demo servers cleanly
+- [ ] `demo/README.md` documents everything
 
 ## Out of Scope
 
-- Production-quality UI design (demos should be clean but not polished)
+- Production-quality UI design (clean but not polished)
 - React, Vue, or any JS framework (vanilla JS + HTML only)
 - npm, webpack, or any build tooling
 - Authentication on demo servers
 - Persistent storage (all demos use in-memory SQLite)
-- Mobile responsiveness (desktop-first is fine)
+- Mobile responsiveness (desktop-first)
+- Curved edge paths or advanced graph layout algorithms
 
 ## Technical Considerations
 
 - All demos use `Roots(storage=SqliteBackend(":memory:"))` — fresh state on every restart
-- The graph renderer JS needs to handle the specific JSON structure from `GET /runs/{id}/graph`
-- Graph node positions: either hardcode in the YAML metadata or compute a simple top-to-bottom layout in JS
-- Use `webbrowser.open()` for auto-opening browser
-- Each demo's FastAPI app mounts the Roots API + its own static files + the shared `_common/` assets
-- The node-explorer's step-through mode needs a custom endpoint that doesn't exist in the base Roots API — this is a demo-specific addition
-- Keep agent sleep times short (0.3-0.5s) so demos feel snappy
-- All agents return deterministic results for reproducibility (no randomness unless seeded)
+- Graph node positions: hardcoded in YAML metadata for each demo process. The JS auto-layout is a fallback only.
+- The node-explorer's step mode uses on-demand requests (not continuous polling). Other demos poll at 500ms during runs, 3s when idle.
+- The `POST /api/step` endpoint in node-explorer creates a `ProcessRunner` directly — this bypasses the `Orchestrator` class's polling loop. It's demo-specific, not a pattern for production use.
+- Keep agent sleep times at 0.3-0.5s so demos feel snappy but execution is visible
+- All agents return deterministic results (no randomness) for reproducibility
+- The shared `roots-client.js` is the JS counterpart to the Python `Roots` class — it should feel natural to use
+- Each demo's `index.html` includes shared assets via `<script src="/common/...">` and `<link href="/common/styles.css">`
 
 ## Related Documentation
 
