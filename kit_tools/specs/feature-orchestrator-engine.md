@@ -75,14 +75,14 @@ The orchestrator is the heart of Roots. It is stateless between ticks — each t
 - Method `async run_to_completion()`: loop `while await self.tick(): pass`.
 
 **Acceptance Criteria:**
-- [ ] Tick acquires lock, executes one node, releases lock
-- [ ] Lock always released via try/finally (even on exception)
-- [ ] Run state loaded fresh from storage each tick (no in-memory caching)
-- [ ] First tick transitions pending → running and sets current_node to entry_point
-- [ ] Events emitted with correct fields (run_id, process_id, node_id, node_type, duration_ms)
-- [ ] History events use lifecycle status strings ("entered", "completed", "failed"), NOT node type strings
-- [ ] `run_to_completion` loops until done
-- [ ] Tests with SQLite in-memory + mock agents verify tick behavior
+- [x] Tick acquires lock, executes one node, releases lock
+- [x] Lock always released via try/finally (even on exception)
+- [x] Run state loaded fresh from storage each tick (no in-memory caching)
+- [x] First tick transitions pending → running and sets current_node to entry_point
+- [x] Events emitted with correct fields (run_id, process_id, node_id, node_type, duration_ms)
+- [x] History events use lifecycle status strings ("entered", "completed", "failed"), NOT node type strings
+- [x] `run_to_completion` loops until done
+- [x] Tests with SQLite in-memory + mock agents verify tick behavior
 
 ### US-003: Agent and Agent Pool Handlers
 
