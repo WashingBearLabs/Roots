@@ -83,11 +83,11 @@ Retry and escalation extend the orchestrator with production-critical error hand
 - The retry state should record the last error message for each attempt
 
 **Acceptance Criteria:**
-- [ ] Run transitions to `failed` when retries exhausted with `on_exhaustion: fail`
-- [ ] `roots.node.failed` and `roots.run.failed` events are emitted
-- [ ] Last error is included in failure metadata
-- [ ] Run history records all attempts and the final failure
-- [ ] Tests verify full exhaustion path
+- [x] Run transitions to `failed` when retries exhausted with `on_exhaustion: fail`
+- [x] `roots.node.failed` and `roots.run.failed` events are emitted
+- [x] Last error is included in failure metadata
+- [x] Run history records all attempts and the final failure
+- [x] Tests verify full exhaustion path
 
 ### US-003: Retry Exhaustion — Route Mode
 
