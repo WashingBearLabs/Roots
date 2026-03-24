@@ -166,12 +166,12 @@ Five self-contained demo applications that showcase the Roots framework's capabi
   - `run_demo.py`: standard pattern — load process, register 4 agents, call `run_demo()`
 
 **Acceptance Criteria:**
-- [ ] `python demo/content-pipeline/run_demo.py` starts server and opens browser
-- [ ] User can submit text and see the process execute in real-time
-- [ ] Agent pool parallel execution visible (3 agents run simultaneously)
-- [ ] Decision routing shows which path was taken
-- [ ] 4 sample texts produce different outcomes (approve/flag/reject)
-- [ ] Process completes in <3 seconds
+- [x] `python demo/content-pipeline/run_demo.py` starts server and opens browser
+- [x] User can submit text and see the process execute in real-time
+- [x] Agent pool parallel execution visible (3 agents run simultaneously)
+- [x] Decision routing shows which path was taken
+- [x] 4 sample texts produce different outcomes (approve/flag/reject)
+- [x] Process completes in <3 seconds
 
 ### US-005: Research Assistant Demo
 
