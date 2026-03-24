@@ -127,13 +127,13 @@ Retry and escalation extend the orchestrator with production-critical error hand
 - Emit `roots.run.escalated` event with trigger type and reason
 
 **Acceptance Criteria:**
-- [ ] Schema validation failure on agent output triggers escalation
-- [ ] AI confidence below threshold triggers escalation
-- [ ] Agent returning `escalate: true` triggers escalation
-- [ ] Run transitions to `paused` on any escalation
-- [ ] `roots.run.escalated` event is emitted with trigger type
-- [ ] Escalation record includes work item state snapshot
-- [ ] Tests cover all three trigger types
+- [x] Schema validation failure on agent output triggers escalation
+- [x] AI confidence below threshold triggers escalation
+- [x] Agent returning `escalate: true` triggers escalation
+- [x] Run transitions to `paused` on any escalation
+- [x] `roots.run.escalated` event is emitted with trigger type
+- [x] Escalation record includes work item state snapshot
+- [x] Tests cover all three trigger types
 
 ### US-005: Checkpoint and Escalation Resolution
 
