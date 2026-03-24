@@ -2,13 +2,110 @@
 
 from __future__ import annotations
 
+import warnings
+from collections import deque
 from pathlib import Path
 from typing import Any, cast
 
 import yaml
 from pydantic import ValidationError
 
-from roots.core.schema import ProcessDefinition
+from roots.core.schema import (
+    NodeType,
+    OnExhaustion,
+    ProcessDefinition,
+)
+
+
+class ProcessValidationError(Exception):
+    """Raised when structural validation of a process definition fails."""
+
+    def __init__(self, errors: list[str]) -> None:
+        self.errors = errors
+        super().__init__(
+            f"Process validation failed with {len(errors)} error(s):\n"
+            + "\n".join(f"  - {e}" for e in errors)
+        )
+
+
+def validate_structure(process: ProcessDefinition) -> list[str]:
+    """Validate graph-level structural rules on a ProcessDefinition.
+
+    Returns a list of error strings. Warnings (e.g. unreachable nodes)
+    are emitted via the warnings module, not included in the error list.
+    """
+    errors: list[str] = []
+
+    node_ids = {node.id for node in process.nodes}
+    from_nodes_in_edges = {edge.from_node for edge in process.edges}
+
+    # Decision edge exclusivity
+    for node in process.nodes:
+        if node.type == NodeType.DECISION and node.id in from_nodes_in_edges:
+            errors.append(
+                f"Decision node '{node.id}' must not have top-level "
+                f"outbound edges \u2014 define edges in the node's config block"
+            )
+
+    # Edge completeness: non-end, non-decision, non-join nodes need outbound edges
+    exempt_types = {NodeType.END, NodeType.DECISION, NodeType.JOIN}
+    nodes_with_outbound = {edge.from_node for edge in process.edges}
+    for node in process.nodes:
+        if node.type not in exempt_types and node.id not in nodes_with_outbound:
+            errors.append(
+                f"Node '{node.id}' ({node.type}) has no outbound edges"
+            )
+
+    # End node existence
+    if not any(node.type == NodeType.END for node in process.nodes):
+        errors.append("Process has no end node")
+
+    # Reachability via BFS from entry_point
+    visited: set[str] = set()
+    queue: deque[str] = deque([process.entry_point])
+    # Build adjacency from top-level edges + decision config edges
+    adjacency: dict[str, list[str]] = {node.id: [] for node in process.nodes}
+    for edge in process.edges:
+        adjacency[edge.from_node].append(edge.to_node)
+    for node in process.nodes:
+        if node.type == NodeType.DECISION:
+            from roots.core.schema import DecisionNodeConfig
+
+            if isinstance(node.config, DecisionNodeConfig):
+                for dedge in node.config.edges:
+                    adjacency[node.id].append(dedge.target)
+
+    while queue:
+        current = queue.popleft()
+        if current in visited:
+            continue
+        visited.add(current)
+        for neighbor in adjacency.get(current, []):
+            if neighbor not in visited:
+                queue.append(neighbor)
+
+    for node in process.nodes:
+        if node.id not in visited:
+            warnings.warn(
+                f"Node '{node.id}' is unreachable from entry point",
+                stacklevel=2,
+            )
+
+    # Fallback edge validity
+    for node in process.nodes:
+        if node.retry is not None:
+            if (
+                node.retry.on_exhaustion == OnExhaustion.ROUTE
+                and node.retry.fallback_edge is not None
+                and node.retry.fallback_edge not in node_ids
+            ):
+                errors.append(
+                    f"Node '{node.id}': fallback_edge "
+                    f"'{node.retry.fallback_edge}' does not reference "
+                    f"a valid node"
+                )
+
+    return errors
 
 
 def _format_validation_errors(
@@ -84,7 +181,11 @@ def load_process_yaml(path: str | Path) -> ProcessDefinition:
         raise yaml.YAMLError(
             f"Expected a YAML mapping at top level, got {type(data).__name__}"
         )
-    return parse_process_dict(cast(dict[str, Any], data))
+    process = parse_process_dict(cast(dict[str, Any], data))
+    struct_errors = validate_structure(process)
+    if struct_errors:
+        raise ProcessValidationError(struct_errors)
+    return process
 
 
 def validate_process_yaml(path: str | Path) -> list[str]:
@@ -110,8 +211,8 @@ def validate_process_yaml(path: str | Path) -> list[str]:
 
     data_dict = cast(dict[str, Any], data)
     try:
-        parse_process_dict(data_dict)
+        process = parse_process_dict(data_dict)
     except ValidationError as exc:
         return _format_validation_errors(exc, raw_data=data_dict)
 
-    return []
+    return validate_structure(process)
