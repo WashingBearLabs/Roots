@@ -46,3 +46,23 @@ class ProcessDetail(BaseModel):
 class ProcessValidationResponse(BaseModel):
     valid: bool
     errors: list[str]
+
+
+# --- Run models ---
+
+
+class RunCreateRequest(BaseModel):
+    """Body for POST /runs."""
+
+    process_id: str
+    work_item: dict[str, Any]
+
+
+class RunResponse(BaseModel):
+    id: str
+    process_id: str
+    status: str
+    current_node_id: str | None = None
+    work_item_state: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
