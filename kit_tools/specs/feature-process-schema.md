@@ -203,13 +203,13 @@ The process schema layer is the foundation of Roots. It defines the Pydantic v2 
 - Every `join` must be the target of exactly one `fork`. Every `fork` must have exactly one downstream `join`.
 
 **Acceptance Criteria:**
-- [ ] Valid fork/join pairs pass validation
-- [ ] Unpaired fork nodes are detected
-- [ ] Unpaired join nodes are detected
-- [ ] Branches that escape to end nodes without join are caught
-- [ ] Branches converging at different joins are caught
-- [ ] Fork→join mapping is stored on ProcessDefinition for runtime use
-- [ ] Tests cover: valid 2-branch, valid 3-branch, missing join, divergent joins, branch escaping to end
+- [x] Valid fork/join pairs pass validation
+- [x] Unpaired fork nodes are detected
+- [x] Unpaired join nodes are detected
+- [x] Branches that escape to end nodes without join are caught
+- [x] Branches converging at different joins are caught
+- [x] Fork→join mapping is stored on ProcessDefinition for runtime use
+- [x] Tests cover: valid 2-branch, valid 3-branch, missing join, divergent joins, branch escaping to end
 
 ## Out of Scope
 
