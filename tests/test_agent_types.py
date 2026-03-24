@@ -21,6 +21,9 @@ class TestAgentType:
     def test_remote_value(self) -> None:
         assert AgentType.REMOTE == "remote"
 
+    def test_mcp_value(self) -> None:
+        assert AgentType.MCP == "mcp"
+
 
 class TestAgentRegistrationValid:
     def test_local_agent_with_callable(self) -> None:
@@ -59,6 +62,30 @@ class TestAgentRegistrationValid:
         assert reg.output_schema == schema
         assert reg.timeout_seconds == 60
         assert reg.metadata == {"version": "1.0"}
+
+    def test_mcp_agent_with_server_url(self) -> None:
+        reg = AgentRegistration(
+            name="mcp-url-agent",
+            agent_type=AgentType.MCP,
+            mcp_tool_name="my-tool",
+            mcp_server_url="http://localhost:8080",
+        )
+        assert reg.agent_type == AgentType.MCP
+        assert reg.mcp_tool_name == "my-tool"
+        assert reg.mcp_server_url == "http://localhost:8080"
+        assert reg.mcp_server_command is None
+
+    def test_mcp_agent_with_server_command(self) -> None:
+        reg = AgentRegistration(
+            name="mcp-cmd-agent",
+            agent_type=AgentType.MCP,
+            mcp_tool_name="my-tool",
+            mcp_server_command=["npx", "mcp-server"],
+        )
+        assert reg.agent_type == AgentType.MCP
+        assert reg.mcp_tool_name == "my-tool"
+        assert reg.mcp_server_command == ["npx", "mcp-server"]
+        assert reg.mcp_server_url is None
 
     def test_remote_agent_with_schemas(self) -> None:
         reg = AgentRegistration(
@@ -101,6 +128,38 @@ class TestAgentRegistrationInvalid:
                 name="bad-remote",
                 agent_type=AgentType.REMOTE,
                 callable=_dummy_callable,
+            )
+
+    def test_mcp_agent_without_tool_name_raises(self) -> None:
+        with pytest.raises(ValueError, match="MCP agent requires mcp_tool_name"):
+            AgentRegistration(
+                name="bad-mcp",
+                agent_type=AgentType.MCP,
+                mcp_server_url="http://localhost:8080",
+            )
+
+    def test_mcp_agent_without_connection_method_raises(self) -> None:
+        with pytest.raises(
+            ValueError,
+            match="MCP agent requires exactly one of mcp_server_url or mcp_server_command",
+        ):
+            AgentRegistration(
+                name="bad-mcp",
+                agent_type=AgentType.MCP,
+                mcp_tool_name="my-tool",
+            )
+
+    def test_mcp_agent_with_both_connection_methods_raises(self) -> None:
+        with pytest.raises(
+            ValueError,
+            match="MCP agent requires exactly one of mcp_server_url or mcp_server_command",
+        ):
+            AgentRegistration(
+                name="bad-mcp",
+                agent_type=AgentType.MCP,
+                mcp_tool_name="my-tool",
+                mcp_server_url="http://localhost:8080",
+                mcp_server_command=["npx", "mcp-server"],
             )
 
 

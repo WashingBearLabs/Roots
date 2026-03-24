@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 class AgentType(StrEnum):
     LOCAL = "local"
     REMOTE = "remote"
+    MCP = "mcp"
 
 
 class AgentRegistration(BaseModel):
@@ -25,6 +26,9 @@ class AgentRegistration(BaseModel):
     output_schema: dict[str, Any] | None = None
     timeout_seconds: int = 300
     metadata: dict[str, Any] | None = None
+    mcp_server_url: str | None = None
+    mcp_server_command: list[str] | None = None
+    mcp_tool_name: str | None = None
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -38,6 +42,16 @@ class AgentRegistration(BaseModel):
             raise ValueError(
                 "callback_url is required when agent_type is 'remote'"
             )
+        if self.agent_type == AgentType.MCP:
+            if self.mcp_tool_name is None:
+                raise ValueError("MCP agent requires mcp_tool_name")
+            has_url = self.mcp_server_url is not None
+            has_cmd = self.mcp_server_command is not None
+            if has_url == has_cmd:
+                raise ValueError(
+                    "MCP agent requires exactly one of "
+                    "mcp_server_url or mcp_server_command"
+                )
         return self
 
 
