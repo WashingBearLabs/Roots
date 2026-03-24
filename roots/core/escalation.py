@@ -26,12 +26,12 @@ async def create_escalation_from_error(
     emitter: EventEmitter,
     process_id: str = "",
 ) -> str:
-    """Create an escalation record, pause the run, and emit an event.
+    """Create an escalation record and emit an event.
+
+    The caller (tick loop) is responsible for the status transition to PAUSED.
 
     Returns the escalation record ID.
     """
-    from roots.core.state_machine import RunStatus
-
     escalation_id = await storage.create_escalation(
         run_id=run_id,
         node_id=node_id,
@@ -40,7 +40,19 @@ async def create_escalation_from_error(
         work_item_snapshot=work_item_state,
     )
 
-    await storage.update_run_status(run_id, RunStatus.PAUSED)
+    emitter.emit(
+        create_event(
+            EventType.ESCALATION_TRIGGERED,
+            run_id=run_id,
+            process_id=process_id,
+            node_id=node_id,
+            metadata={
+                "escalation_id": escalation_id,
+                "trigger_type": trigger.value,
+                "reason": reason,
+            },
+        )
+    )
 
     emitter.emit(
         create_event(

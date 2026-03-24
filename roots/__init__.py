@@ -258,6 +258,9 @@ class Roots:
     ) -> None:
         """Resolve a pending checkpoint or escalation.
 
+        Delegates to ``checkpoint.resolve_pending`` which handles all
+        resolution logic (approve / reject / redirect).
+
         Args:
             run_id: The run with a pending checkpoint/escalation.
             decision: One of "approve", "reject", or "redirect".
@@ -274,117 +277,51 @@ class Roots:
                 f"Process '{run.process_id}' not found"
             )
 
-        # Find pending checkpoint or escalation
-        checkpoint = await self.storage.get_pending_checkpoint(run_id)
-        escalation = await self.storage.get_pending_escalation(run_id)
-
-        if checkpoint is None and escalation is None:
-            raise OrchestrationError(
-                f"No pending checkpoint or escalation for run '{run_id}'"
-            )
-
-        resolution = {"decision": decision, "notes": notes}
-
-        if decision == "approve":
-            # Resolve the record
-            if checkpoint:
-                await self.storage.resolve_checkpoint(checkpoint.id, resolution)
-                node_id = checkpoint.node_id
-            else:
-                assert escalation is not None
-                await self.storage.resolve_escalation(escalation.id, resolution)
-                node_id = escalation.node_id
-
-            # Determine next node
-            node = process.get_node(node_id)
-            if node is None:
-                raise OrchestrationError(
-                    f"Node '{node_id}' not found in process"
-                )
-            outbound = process.get_outbound_edges(node_id)
-            if not outbound:
-                raise OrchestrationError(
-                    f"No outbound edges from node '{node_id}'"
-                )
-            first_edge = outbound[0]
-            next_node = getattr(first_edge, "to_node", None) or getattr(
-                first_edge, "target", None
-            )
-
-            await self.storage.update_run_status(
-                run_id, "running", next_node
-            )
-            self._event_emitter.emit(
-                create_event(
-                    EventType.CHECKPOINT_RESOLVED,
-                    run_id=run_id,
-                    process_id=run.process_id,
-                    node_id=node_id,
-                    metadata={"decision": "approve"},
-                )
-            )
-
-        elif decision == "reject":
-            if checkpoint:
-                await self.storage.resolve_checkpoint(checkpoint.id, resolution)
-                node_id = checkpoint.node_id
-            else:
-                assert escalation is not None
-                await self.storage.resolve_escalation(escalation.id, resolution)
-                node_id = escalation.node_id
-
-            await self.storage.update_run_status(run_id, "failed")
-            self._event_emitter.emit(
-                create_event(
-                    EventType.CHECKPOINT_RESOLVED,
-                    run_id=run_id,
-                    process_id=run.process_id,
-                    node_id=node_id,
-                    metadata={"decision": "reject"},
-                )
-            )
-
-        elif decision == "redirect":
-            if redirect_to is None:
-                raise OrchestrationError(
-                    "redirect_to is required when decision is 'redirect'"
-                )
-            target_node = process.get_node(redirect_to)
-            if target_node is None:
-                raise OrchestrationError(
-                    f"Redirect target '{redirect_to}' is not a valid node"
-                )
-
-            if checkpoint:
-                await self.storage.resolve_checkpoint(checkpoint.id, resolution)
-                node_id = checkpoint.node_id
-            else:
-                assert escalation is not None
-                await self.storage.resolve_escalation(escalation.id, resolution)
-                node_id = escalation.node_id
-
-            await self.storage.update_run_status(
-                run_id, "running", redirect_to
-            )
-            self._event_emitter.emit(
-                create_event(
-                    EventType.CHECKPOINT_RESOLVED,
-                    run_id=run_id,
-                    process_id=run.process_id,
-                    node_id=node_id,
-                    metadata={"decision": "redirect", "redirect_to": redirect_to},
-                )
-            )
-
-        else:
+        try:
+            resolution_decision = ResolutionDecision(decision)
+        except ValueError:
             raise OrchestrationError(
                 f"Invalid decision '{decision}'. Must be 'approve', 'reject', or 'redirect'."
             )
+
+        # When approving an escalation without an AI recommendation and no
+        # explicit redirect_to, derive the target from the first outbound edge
+        # so that callers don't need to supply redirect_to for simple cases.
+        effective_redirect = redirect_to
+        if resolution_decision == ResolutionDecision.APPROVE and effective_redirect is None:
+            escalation = await self.storage.get_pending_escalation(run_id)
+            checkpoint = await self.storage.get_pending_checkpoint(run_id)
+            has_ai_rec = (
+                checkpoint is not None
+                and checkpoint.ai_recommendation is not None
+            )
+            if escalation is not None and not has_ai_rec:
+                node_id = escalation.node_id
+                outbound = process.get_outbound_edges(node_id)
+                if outbound:
+                    first_edge = outbound[0]
+                    effective_redirect = getattr(first_edge, "to_node", None) or getattr(
+                        first_edge, "target", None
+                    )
+
+        try:
+            await resolve_pending(
+                storage=self.storage,
+                run_id=run_id,
+                decision=resolution_decision,
+                process=process,
+                emitter=self._event_emitter,
+                notes=notes,
+                redirect_to=effective_redirect,
+            )
+        except ResolutionError as exc:
+            raise OrchestrationError(str(exc)) from exc
 
     async def close(self) -> None:
         """Drain pending events, close MCP connections, and close storage."""
         await self._event_emitter.close()
         await self._mcp_gateway.close()
+        await self._agent_invoker.close()
         await self.storage.close()
 
     async def __aenter__(self) -> Roots:

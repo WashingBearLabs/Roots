@@ -150,9 +150,11 @@ async def _resolve_escalation(
         # Check for a checkpoint with ai_recommendation (confidence escalations)
         checkpoint = await storage.get_pending_checkpoint(run_id)
         if checkpoint and checkpoint.ai_recommendation:
-            next_node = checkpoint.ai_recommendation.get(
+            candidate = checkpoint.ai_recommendation.get(
                 "selected_edge_target"
             )
+            if candidate and process.get_node(candidate) is not None:
+                next_node = candidate
             # Also resolve the associated checkpoint
             await storage.resolve_checkpoint(
                 checkpoint.id,

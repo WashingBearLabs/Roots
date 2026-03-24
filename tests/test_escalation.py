@@ -290,9 +290,13 @@ class TestCreateEscalationFromError:
         assert esc.work_item_snapshot == {"input": "test"}
 
     @pytest.mark.asyncio
-    async def test_sets_run_to_paused(
+    async def test_does_not_set_run_to_paused(
         self, sqlite_storage: StorageBackend, sink: CollectorSink, emitter: EventEmitter
     ) -> None:
+        """create_escalation_from_error no longer sets status to PAUSED.
+
+        The tick loop is responsible for the status transition.
+        """
         process = make_agent_process()
         run_id = await _setup_run(sqlite_storage, process)
 
@@ -308,7 +312,8 @@ class TestCreateEscalationFromError:
 
         run = await sqlite_storage.get_run(run_id)
         assert run is not None
-        assert run.status == RunStatus.PAUSED
+        # Status should remain unchanged; the tick loop handles PAUSED transition
+        assert run.status != RunStatus.PAUSED
 
     @pytest.mark.asyncio
     async def test_emits_run_escalated_event(

@@ -715,8 +715,10 @@ class TestDecisionEngineAIBounded:
             mode=DecisionMode.AI_BOUNDED,
             edges=[DecisionEdge(target="node-a"), DecisionEdge(target="node-b")],
         )
-        with pytest.raises(DecisionEvaluationError, match="invalid edge target"):
-            await engine.evaluate(node, {"x": 1})
+        result = await engine.evaluate(node, {"x": 1})
+        assert result.escalated is True
+        assert result.selected_edge == "node-invalid"
+        assert result.ai_recommendation is not None
 
     @pytest.mark.asyncio
     @patch("roots.core.decision.litellm.acompletion", new_callable=AsyncMock)
@@ -789,8 +791,10 @@ class TestDecisionEngineAIAutonomous:
             mode=DecisionMode.AI_AUTONOMOUS,
             edges=[DecisionEdge(target="node-a")],
         )
-        with pytest.raises(DecisionEvaluationError, match="invalid edge target"):
-            await engine.evaluate(node, {})
+        result = await engine.evaluate(node, {})
+        assert result.escalated is True
+        assert result.selected_edge == "nonexistent"
+        assert result.ai_recommendation is not None
 
     @pytest.mark.asyncio
     @patch("roots.core.decision.litellm.acompletion", new_callable=AsyncMock)
@@ -958,7 +962,7 @@ class TestDecisionEngineAICheckpoint:
     async def test_invalid_edge_target_raises_error(
         self, mock_acompletion: AsyncMock, engine: DecisionEngine
     ) -> None:
-        """Invalid edge target raises DecisionEvaluationError."""
+        """Invalid edge target escalates instead of raising error."""
         mock_acompletion.return_value = _fake_litellm_response(
             "nonexistent", 0.9, "Bad target"
         )
@@ -966,8 +970,10 @@ class TestDecisionEngineAICheckpoint:
             mode=DecisionMode.AI_CHECKPOINT,
             edges=[DecisionEdge(target="node-a")],
         )
-        with pytest.raises(DecisionEvaluationError, match="invalid edge target"):
-            await engine.evaluate(node, {})
+        result = await engine.evaluate(node, {})
+        assert result.escalated is True
+        assert result.selected_edge == "nonexistent"
+        assert result.ai_recommendation is not None
 
 
 # --- DecisionResult.to_decision_record (US-006) ---

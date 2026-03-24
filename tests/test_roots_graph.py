@@ -335,7 +335,7 @@ async def test_resolve_checkpoint_redirect_invalid_node():
         run = await roots.start_run("test-checkpoint", {"data": "test"})
         await roots.execute_run(run.id)
 
-        with pytest.raises(OrchestrationError, match="not a valid node"):
+        with pytest.raises(OrchestrationError, match="does not exist in process"):
             await roots.resolve_checkpoint(
                 run.id, "redirect", redirect_to="nonexistent"
             )

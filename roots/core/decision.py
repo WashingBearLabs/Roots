@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import Any
 
 import litellm
+
+logger = logging.getLogger(__name__)
 from pydantic import BaseModel, Field
 
 from roots.core.schema import DecisionEdge, DecisionMode, DecisionNodeConfig, NodeDefinition
@@ -327,6 +330,30 @@ class DecisionEngine:
             context=work_item_state,
         )
 
+    async def _call_ai_decision(
+        self, node: NodeDefinition, work_item_state: dict[str, Any]
+    ) -> AIDecisionResponse:
+        """Call LiteLLM and parse the AI response.
+
+        Returns the parsed AIDecisionResponse.  Edge-target validation
+        is performed by the caller so that invalid targets can be
+        escalated instead of crashing.
+        """
+        assert isinstance(node.config, DecisionNodeConfig)
+        model = resolve_model(node.config, self._default_model)
+        messages = build_decision_messages(
+            node.config.context_prompt,
+            work_item_state,
+            node.config.edges,
+        )
+        response = await litellm.acompletion(
+            model=model,
+            messages=messages,
+            tools=[DECISION_TOOL],
+            tool_choice={"type": "function", "function": {"name": "make_decision"}},
+        )
+        return parse_ai_response(response)
+
     async def _evaluate_ai(
         self,
         node: NodeDefinition,
@@ -334,38 +361,26 @@ class DecisionEngine:
     ) -> DecisionResult:
         """Evaluate an AI decision node (ai_bounded or ai_autonomous)."""
         assert isinstance(node.config, DecisionNodeConfig)
+        ai_response = await self._call_ai_decision(node, work_item_state)
 
-        model = resolve_model(node.config, self._default_model)
-        messages = build_decision_messages(
-            node.config.context_prompt,
-            work_item_state,
-            node.config.edges,
-        )
-
-        response = await litellm.acompletion(
-            model=model,
-            messages=messages,
-            tools=[DECISION_TOOL],
-            tool_choice={"type": "function", "function": {"name": "make_decision"}},
-        )
-
-        ai_response = parse_ai_response(response)
-
-        # Validate edge target is in defined edges
+        # Validate edge target — escalate instead of crashing
         valid_targets = {edge.target for edge in node.config.edges}
         if ai_response.selected_edge_target not in valid_targets:
-            raise DecisionEvaluationError(
-                expression="AI edge selection",
-                message=(
-                    f"AI selected invalid edge target "
-                    f"'{ai_response.selected_edge_target}'. "
-                    f"Valid targets: {sorted(valid_targets)}"
-                ),
-                node_id=node.id,
-                context=work_item_state,
+            logger.warning(
+                "AI selected invalid edge target '%s' for node '%s'. Escalating to checkpoint.",
+                ai_response.selected_edge_target,
+                node.id,
+            )
+            return DecisionResult(
+                selected_edge=ai_response.selected_edge_target,
+                mode=node.config.mode.value,
+                confidence=ai_response.confidence,
+                reasoning=ai_response.reasoning,
+                escalated=True,
+                ai_recommendation=ai_response,
+                checkpoint_prompt=getattr(node.config, 'checkpoint_prompt', None),
             )
 
-        # Confidence threshold check
         assert node.config.confidence_threshold is not None
         if ai_response.confidence < node.config.confidence_threshold:
             return DecisionResult(
@@ -376,7 +391,6 @@ class DecisionEngine:
                 escalated=True,
                 ai_recommendation=ai_response,
             )
-
         return DecisionResult(
             selected_edge=ai_response.selected_edge_target,
             mode=node.config.mode,
@@ -395,38 +409,26 @@ class DecisionEngine:
         Same as AI bounded/autonomous but always escalates for human confirmation.
         """
         assert isinstance(node.config, DecisionNodeConfig)
+        ai_response = await self._call_ai_decision(node, work_item_state)
 
-        model = resolve_model(node.config, self._default_model)
-        messages = build_decision_messages(
-            node.config.context_prompt,
-            work_item_state,
-            node.config.edges,
-        )
-
-        response = await litellm.acompletion(
-            model=model,
-            messages=messages,
-            tools=[DECISION_TOOL],
-            tool_choice={"type": "function", "function": {"name": "make_decision"}},
-        )
-
-        ai_response = parse_ai_response(response)
-
-        # Validate edge target is in defined edges
+        # Validate edge target — escalate instead of crashing
         valid_targets = {edge.target for edge in node.config.edges}
         if ai_response.selected_edge_target not in valid_targets:
-            raise DecisionEvaluationError(
-                expression="AI edge selection",
-                message=(
-                    f"AI selected invalid edge target "
-                    f"'{ai_response.selected_edge_target}'. "
-                    f"Valid targets: {sorted(valid_targets)}"
-                ),
-                node_id=node.id,
-                context=work_item_state,
+            logger.warning(
+                "AI selected invalid edge target '%s' for node '%s'. Escalating to checkpoint.",
+                ai_response.selected_edge_target,
+                node.id,
+            )
+            return DecisionResult(
+                selected_edge=ai_response.selected_edge_target,
+                mode=node.config.mode.value,
+                confidence=ai_response.confidence,
+                reasoning=ai_response.reasoning,
+                escalated=True,
+                ai_recommendation=ai_response,
+                checkpoint_prompt=getattr(node.config, 'checkpoint_prompt', None),
             )
 
-        # Checkpoint mode always escalates regardless of confidence
         return DecisionResult(
             selected_edge=ai_response.selected_edge_target,
             mode=node.config.mode,

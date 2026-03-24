@@ -69,6 +69,7 @@ async def test_update_run_status_without_node_id(
 ) -> None:
     """Status can be updated without changing current_node_id."""
     run = await sqlite_storage.create_run("proc-1", {})
+    await sqlite_storage.update_run_status(run.id, "running")
     await sqlite_storage.update_run_status(run.id, "completed")
 
     loaded = await sqlite_storage.get_run(run.id)
@@ -187,6 +188,7 @@ async def test_update_run_atomically_with_none_node(
 ) -> None:
     """Atomic update works with None current_node_id."""
     run = await sqlite_storage.create_run("proc-1", {})
+    await sqlite_storage.update_run_status(run.id, "running")
     await sqlite_storage.update_run_atomically(
         run_id=run.id,
         work_item_state={"done": True},

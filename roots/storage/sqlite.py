@@ -11,6 +11,8 @@ import aiosqlite
 from pydantic import BaseModel
 
 from roots.core.schema import ProcessDefinition
+from roots.core.state_machine import RunStatus as _RunStatus
+from roots.core.state_machine import can_transition as _can_transition
 from roots.core.utils import utcnow
 from roots.storage.base import (
     CheckpointRecord,
@@ -121,7 +123,7 @@ CREATE TABLE IF NOT EXISTS webhooks (
 
 def _serialize_process(process: ProcessDefinition) -> str:
     """Serialize a ProcessDefinition to JSON, handling config union type."""
-    data = process.model_dump(mode="json")
+    data = process.model_dump(by_alias=True, mode="json")
     for i, node in enumerate(process.nodes):
         if isinstance(node.config, BaseModel):
             data["nodes"][i]["config"] = node.config.model_dump(mode="json")
@@ -288,6 +290,13 @@ class SqliteBackend(StorageBackend):
     async def update_run_status(
         self, run_id: str, status: str, current_node_id: str | None = None
     ) -> None:
+        current_run = await self.get_run(run_id)
+        if current_run and current_run.status != status:
+            try:
+                if not _can_transition(_RunStatus(current_run.status), _RunStatus(status)):
+                    raise StorageError(f"Invalid transition from {current_run.status} to {status}")
+            except ValueError:
+                pass  # Non-RunStatus values bypass state machine check
         now = utcnow().isoformat()
         await self.db.execute(
             "UPDATE runs SET status = ?, current_node_id = ?, updated_at = ? "
@@ -694,6 +703,13 @@ class SqliteBackend(StorageBackend):
         status: str,
         current_node_id: str | None,
     ) -> None:
+        current_run = await self.get_run(run_id)
+        if current_run and current_run.status != status:
+            try:
+                if not _can_transition(_RunStatus(current_run.status), _RunStatus(status)):
+                    raise StorageError(f"Invalid transition from {current_run.status} to {status}")
+            except ValueError:
+                pass  # Non-RunStatus values bypass state machine check
         now = utcnow().isoformat()
         await self.db.execute(
             "UPDATE runs SET work_item_state_json = ?, status = ?, "

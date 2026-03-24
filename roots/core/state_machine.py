@@ -22,7 +22,7 @@ VALID_TRANSITIONS: dict[RunStatus, list[RunStatus]] = {
         RunStatus.FAILED,
         RunStatus.CANCELLED,
     ],
-    RunStatus.PAUSED: [RunStatus.RUNNING, RunStatus.CANCELLED],
+    RunStatus.PAUSED: [RunStatus.RUNNING, RunStatus.FAILED, RunStatus.CANCELLED],
     RunStatus.COMPLETED: [],
     RunStatus.FAILED: [],
     RunStatus.CANCELLED: [],

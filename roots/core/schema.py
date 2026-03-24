@@ -6,7 +6,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 if TYPE_CHECKING:
     from typing import Self
@@ -219,7 +219,7 @@ class ProcessDefinition(BaseModel):
     entry_point: str
     fork_join_map: dict[str, str] = Field(default_factory=dict)
 
-    _node_map: dict[str, NodeDefinition] = {}
+    _node_map: dict[str, NodeDefinition] = PrivateAttr(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_process(self) -> Self:

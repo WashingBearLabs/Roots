@@ -119,6 +119,11 @@ class ProcessRunner:
                 await self._storage.update_run_status(
                     self.run_id, RunStatus.RUNNING, entry
                 )
+                self._event_emitter.emit(create_event(
+                    EventType.RUN_STARTED,
+                    run_id=self.run_id,
+                    process_id=run.process_id,
+                ))
                 # Reload run after transition
                 run = await self._storage.get_run(self.run_id)
                 if run is None:
@@ -262,6 +267,17 @@ class ProcessRunner:
                 self.run_id, "completed", node.id, output or {}
             )
 
+            # Emit RUN_PAUSED when run transitions to paused
+            if status == RunStatus.PAUSED:
+                self._event_emitter.emit(
+                    create_event(
+                        EventType.RUN_PAUSED,
+                        run_id=self.run_id,
+                        process_id=run.process_id,
+                        node_id=node.id,
+                    )
+                )
+
             # Step 10: Emit node.completed with duration
             elapsed_ms = int((time.monotonic() - start_time) * 1000)
             node_completed_meta = self._join_metadata
@@ -399,6 +415,15 @@ class ProcessRunner:
                 process_id=self._process_id or "",
             )
         except AgentSchemaValidationError as e:
+            self._event_emitter.emit(
+                create_event(
+                    EventType.AGENT_FAILED,
+                    run_id=self.run_id,
+                    process_id=self._process_id or "",
+                    node_id=node.id,
+                    metadata={"agent": node.config.agent, "error": str(e)},
+                )
+            )
             await self._trigger_escalation(
                 node, state, str(e),
                 EscalationTrigger.SCHEMA_VALIDATION_FAILURE,
@@ -591,6 +616,22 @@ class ProcessRunner:
             input_state=record["input_state_snapshot"],
             decision=record,
             confidence=record["confidence"],
+        )
+
+        # Emit decision.evaluated before escalated/taken branch
+        self._event_emitter.emit(
+            create_event(
+                EventType.DECISION_EVALUATED,
+                run_id=self.run_id,
+                process_id=self._process_id or "",
+                node_id=node.id,
+                metadata={
+                    "mode": record["mode"],
+                    "selected_edge": result.selected_edge,
+                    "confidence": result.confidence,
+                    "escalated": result.escalated,
+                },
+            )
         )
 
         if result.escalated:

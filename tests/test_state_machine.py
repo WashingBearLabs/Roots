@@ -33,6 +33,7 @@ class TestValidTransitions:
             (RunStatus.RUNNING, RunStatus.FAILED),
             (RunStatus.RUNNING, RunStatus.CANCELLED),
             (RunStatus.PAUSED, RunStatus.RUNNING),
+            (RunStatus.PAUSED, RunStatus.FAILED),
             (RunStatus.PAUSED, RunStatus.CANCELLED),
         ],
     )
@@ -51,6 +52,7 @@ class TestValidTransitions:
             (RunStatus.RUNNING, RunStatus.FAILED),
             (RunStatus.RUNNING, RunStatus.CANCELLED),
             (RunStatus.PAUSED, RunStatus.RUNNING),
+            (RunStatus.PAUSED, RunStatus.FAILED),
             (RunStatus.PAUSED, RunStatus.CANCELLED),
         ],
     )
@@ -79,7 +81,6 @@ class TestInvalidTransitions:
             (RunStatus.PENDING, RunStatus.COMPLETED),
             (RunStatus.PENDING, RunStatus.PAUSED),
             (RunStatus.PAUSED, RunStatus.COMPLETED),
-            (RunStatus.PAUSED, RunStatus.FAILED),
         ],
     )
     def test_invalid_transition_raises(self, current: RunStatus, target: RunStatus) -> None:

@@ -81,13 +81,11 @@ async def _create_run(client: AsyncClient) -> str:
 @pytest.mark.asyncio
 async def test_pause_running_run(client, roots_instance):
     """POST /runs/{run_id}/pause transitions running→paused."""
-    run_id = await _create_run(client)
-
-    # Wait for run to start executing (transition to running)
-    await asyncio.sleep(0.1)
-
-    # Force status to running so we can test pause
-    await roots_instance.storage.update_run_status(run_id, "running")
+    await _create_process(client)
+    # Create run directly in storage to control status
+    run = await roots_instance.storage.create_run("proc-1", {"key": "value"})
+    run_id = run.id
+    await roots_instance.storage.update_run_status(run_id, "running", "start")
 
     resp = await client.post(f"/runs/{run_id}/pause")
     assert resp.status_code == 200
@@ -126,10 +124,10 @@ async def test_pause_not_found(client):
 @pytest.mark.asyncio
 async def test_resume_paused_run(client, roots_instance, fastapi_app):
     """POST /runs/{run_id}/resume transitions paused→running and restarts execution."""
-    run_id = await _create_run(client)
-    await asyncio.sleep(0.1)
-
-    # Force to paused state
+    await _create_process(client)
+    run = await roots_instance.storage.create_run("proc-1", {"key": "value"})
+    run_id = run.id
+    await roots_instance.storage.update_run_status(run_id, "running", "start")
     await roots_instance.storage.update_run_status(run_id, "paused")
 
     resp = await client.post(f"/runs/{run_id}/resume")
@@ -170,11 +168,10 @@ async def test_resume_not_found(client):
 @pytest.mark.asyncio
 async def test_pause_resume_cycle(client, roots_instance):
     """Full pause→resume cycle works correctly."""
-    run_id = await _create_run(client)
-    await asyncio.sleep(0.1)
-
-    # Force to running
-    await roots_instance.storage.update_run_status(run_id, "running")
+    await _create_process(client)
+    run = await roots_instance.storage.create_run("proc-1", {"key": "value"})
+    run_id = run.id
+    await roots_instance.storage.update_run_status(run_id, "running", "start")
 
     # Pause
     resp = await client.post(f"/runs/{run_id}/pause")

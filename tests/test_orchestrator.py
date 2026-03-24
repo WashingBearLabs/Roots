@@ -436,6 +436,7 @@ class TestTickReturnsCorrectly:
         emitter: EventEmitter,
     ) -> None:
         proc, run_id = await _setup_run(sqlite_storage)
+        await sqlite_storage.update_run_status(run_id, "running")
         await sqlite_storage.update_run_status(run_id, "completed")
 
         runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
