@@ -3,7 +3,14 @@
 import pytest
 
 from roots.core.schema import (
+    Aggregation,
+    AgentNodeConfig,
+    AgentPoolNodeConfig,
     BackoffStrategy,
+    DecisionEdge,
+    DecisionMode,
+    DecisionNodeConfig,
+    ExecutionMode,
     NodeDefinition,
     NodeType,
     OnExhaustion,
@@ -172,3 +179,172 @@ class TestNodeDefinition:
                 config={},
             )
             assert node.type == nt
+
+
+class TestAgentNodeConfig:
+    def test_valid_config(self) -> None:
+        cfg = AgentNodeConfig(agent="summarizer", output_key="summary")
+        assert cfg.agent == "summarizer"
+        assert cfg.output_key == "summary"
+
+    def test_requires_agent(self) -> None:
+        with pytest.raises(ValueError):
+            AgentNodeConfig(output_key="summary")  # type: ignore[call-arg]
+
+    def test_requires_output_key(self) -> None:
+        with pytest.raises(ValueError):
+            AgentNodeConfig(agent="summarizer")  # type: ignore[call-arg]
+
+
+class TestAgentPoolNodeConfig:
+    def test_valid_config(self) -> None:
+        cfg = AgentPoolNodeConfig(
+            agents=["a1", "a2"],
+            execution_mode=ExecutionMode.PARALLEL,
+            output_key="result",
+        )
+        assert cfg.agents == ["a1", "a2"]
+        assert cfg.execution_mode == ExecutionMode.PARALLEL
+        assert cfg.aggregation == Aggregation.MERGE_ALL
+        assert cfg.output_key == "result"
+
+    def test_requires_at_least_one_agent(self) -> None:
+        with pytest.raises(ValueError, match="at least"):
+            AgentPoolNodeConfig(
+                agents=[],
+                execution_mode=ExecutionMode.SEQUENTIAL,
+                output_key="result",
+            )
+
+    def test_all_execution_modes(self) -> None:
+        for mode in ExecutionMode:
+            cfg = AgentPoolNodeConfig(
+                agents=["a1"],
+                execution_mode=mode,
+                output_key="out",
+            )
+            assert cfg.execution_mode == mode
+
+
+class TestDecisionEdge:
+    def test_all_fields(self) -> None:
+        edge = DecisionEdge(
+            target="node-2",
+            condition="x > 0",
+            label="Positive",
+            description="Route when x is positive",
+        )
+        assert edge.target == "node-2"
+        assert edge.condition == "x > 0"
+        assert edge.label == "Positive"
+        assert edge.description == "Route when x is positive"
+
+    def test_minimal_edge(self) -> None:
+        edge = DecisionEdge(target="node-2")
+        assert edge.target == "node-2"
+        assert edge.condition is None
+        assert edge.label is None
+        assert edge.description is None
+
+
+class TestDecisionNodeConfig:
+    def test_valid_deterministic(self) -> None:
+        cfg = DecisionNodeConfig(
+            mode=DecisionMode.DETERMINISTIC,
+            edges=[
+                DecisionEdge(target="a", condition="x > 0"),
+                DecisionEdge(target="b", condition="x <= 0"),
+            ],
+        )
+        assert cfg.mode == DecisionMode.DETERMINISTIC
+        assert len(cfg.edges) == 2
+
+    def test_deterministic_requires_condition_on_every_edge(self) -> None:
+        with pytest.raises(
+            ValueError, match="non-empty condition.*deterministic"
+        ):
+            DecisionNodeConfig(
+                mode=DecisionMode.DETERMINISTIC,
+                edges=[
+                    DecisionEdge(target="a", condition="x > 0"),
+                    DecisionEdge(target="b"),
+                ],
+            )
+
+    def test_deterministic_rejects_empty_condition(self) -> None:
+        with pytest.raises(
+            ValueError, match="non-empty condition.*deterministic"
+        ):
+            DecisionNodeConfig(
+                mode=DecisionMode.DETERMINISTIC,
+                edges=[DecisionEdge(target="a", condition="")],
+            )
+
+    @pytest.mark.parametrize(
+        "mode",
+        [
+            DecisionMode.AI_BOUNDED,
+            DecisionMode.AI_CHECKPOINT,
+            DecisionMode.AI_AUTONOMOUS,
+        ],
+    )
+    def test_ai_modes_require_confidence_threshold(
+        self, mode: DecisionMode
+    ) -> None:
+        with pytest.raises(
+            ValueError, match="confidence_threshold is required"
+        ):
+            DecisionNodeConfig(
+                mode=mode,
+                edges=[DecisionEdge(target="a")],
+            )
+
+    @pytest.mark.parametrize(
+        "mode",
+        [
+            DecisionMode.AI_BOUNDED,
+            DecisionMode.AI_CHECKPOINT,
+            DecisionMode.AI_AUTONOMOUS,
+        ],
+    )
+    def test_ai_modes_valid_with_threshold(self, mode: DecisionMode) -> None:
+        cfg = DecisionNodeConfig(
+            mode=mode,
+            confidence_threshold=0.8,
+            edges=[DecisionEdge(target="a")],
+        )
+        assert cfg.confidence_threshold == 0.8
+
+    def test_requires_at_least_one_edge(self) -> None:
+        with pytest.raises(ValueError, match="at least"):
+            DecisionNodeConfig(
+                mode=DecisionMode.DETERMINISTIC,
+                edges=[],
+            )
+
+    def test_confidence_threshold_bounds(self) -> None:
+        with pytest.raises(ValueError):
+            DecisionNodeConfig(
+                mode=DecisionMode.AI_BOUNDED,
+                confidence_threshold=1.5,
+                edges=[DecisionEdge(target="a")],
+            )
+        with pytest.raises(ValueError):
+            DecisionNodeConfig(
+                mode=DecisionMode.AI_BOUNDED,
+                confidence_threshold=-0.1,
+                edges=[DecisionEdge(target="a")],
+            )
+
+    def test_optional_fields(self) -> None:
+        cfg = DecisionNodeConfig(
+            mode=DecisionMode.AI_BOUNDED,
+            confidence_threshold=0.5,
+            model="gpt-4",
+            context_prompt="Decide the route",
+            checkpoint_prompt="Are you sure?",
+            edges=[DecisionEdge(target="a")],
+        )
+        assert cfg.model == "gpt-4"
+        assert cfg.context_prompt == "Decide the route"
+        assert cfg.checkpoint_prompt == "Are you sure?"

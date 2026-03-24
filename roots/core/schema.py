@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 if TYPE_CHECKING:
     from typing import Self
@@ -46,6 +46,67 @@ class RetryConfig(BaseModel):
             raise ValueError(
                 "fallback_edge is required when on_exhaustion is 'route'"
             )
+        return self
+
+
+class ExecutionMode(StrEnum):
+    PARALLEL = "parallel"
+    SEQUENTIAL = "sequential"
+    FIRST_PASS = "first_pass"
+
+
+class Aggregation(StrEnum):
+    MERGE_ALL = "merge_all"
+
+
+class DecisionMode(StrEnum):
+    DETERMINISTIC = "deterministic"
+    AI_BOUNDED = "ai_bounded"
+    AI_CHECKPOINT = "ai_checkpoint"
+    AI_AUTONOMOUS = "ai_autonomous"
+
+
+class AgentNodeConfig(BaseModel):
+    agent: str
+    output_key: str
+
+
+class AgentPoolNodeConfig(BaseModel):
+    agents: list[str] = Field(min_length=1)
+    execution_mode: ExecutionMode
+    aggregation: Aggregation = Aggregation.MERGE_ALL
+    output_key: str
+
+
+class DecisionEdge(BaseModel):
+    target: str
+    condition: str | None = None
+    label: str | None = None
+    description: str | None = None
+
+
+class DecisionNodeConfig(BaseModel):
+    mode: DecisionMode
+    confidence_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    model: str | None = None
+    context_prompt: str | None = None
+    checkpoint_prompt: str | None = None
+    edges: list[DecisionEdge] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_mode_constraints(self) -> Self:
+        if self.mode == DecisionMode.DETERMINISTIC:
+            for edge in self.edges:
+                if not edge.condition:
+                    raise ValueError(
+                        "all edges must have a non-empty condition "
+                        "when mode is 'deterministic'"
+                    )
+        else:
+            if self.confidence_threshold is None:
+                raise ValueError(
+                    "confidence_threshold is required for AI decision modes"
+                )
         return self
 
 
