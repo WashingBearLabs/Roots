@@ -65,13 +65,13 @@ Fork/join enables parallel branch execution within a process graph. A fork node 
 - **Branch context in events:** All events emitted during branch execution must include `branch_id` in the event metadata dict. Without this, an event consumer cannot distinguish which branch a `roots.node.entered` event belongs to. Pass `branch_id` into `_execute_branch` and thread it through to the event emitter as `metadata={"branch_id": branch_id}`.
 
 **Acceptance Criteria:**
-- [ ] All branches execute concurrently via asyncio.gather
-- [ ] Each branch maintains its own independent state
-- [ ] Branch execution stops at the join node
-- [ ] Branch results (state dicts) are collected
-- [ ] Branch exceptions are captured (not raised immediately)
-- [ ] Events emitted during branches include branch_id in metadata
-- [ ] Tests verify concurrent execution with timing
+- [x] All branches execute concurrently via asyncio.gather
+- [x] Each branch maintains its own independent state
+- [x] Branch execution stops at the join node
+- [x] Branch results (state dicts) are collected
+- [x] Branch exceptions are captured (not raised immediately)
+- [x] Events emitted during branches include branch_id in metadata
+- [x] Tests verify concurrent execution with timing
 
 ### US-003: Join Node — merge_all Strategy
 
