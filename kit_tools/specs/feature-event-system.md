@@ -107,12 +107,12 @@ The event system provides structured JSON event emission at all process lifecycl
   - Add `Content-Type: application/json` header automatically
 
 **Acceptance Criteria:**
-- [ ] Events are POSTed to configured URL as JSON
-- [ ] Custom headers are included in requests
-- [ ] Timeout is enforced
-- [ ] HTTP errors are logged, not raised
-- [ ] Connection failures are logged, not raised
-- [ ] Tests use httpx mock transport
+- [x] Events are POSTed to configured URL as JSON
+- [x] Custom headers are included in requests
+- [x] Timeout is enforced
+- [x] HTTP errors are logged, not raised
+- [x] Connection failures are logged, not raised
+- [x] Tests use httpx mock transport
 
 ### US-005: WebhookDispatcher (as EventSink)
 
