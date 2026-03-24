@@ -1,13 +1,20 @@
-"""Tests for decision engine (US-001, US-002)."""
+"""Tests for decision engine (US-001, US-002, US-003)."""
+
+import json
 
 import pytest
 
 from roots.core.decision import (
+    AIDecisionResponse,
+    DECISION_TOOL,
     DecisionEngine,
     DecisionEvaluationError,
     DecisionResult,
+    build_decision_messages,
     evaluate_condition,
     flatten_for_eval,
+    parse_ai_response,
+    resolve_model,
 )
 from roots.core.schema import (
     DecisionEdge,
@@ -237,7 +244,7 @@ def _make_decision_node(
 class TestDecisionEngineDeterministic:
     @pytest.fixture
     def engine(self) -> DecisionEngine:
-        return DecisionEngine()
+        return DecisionEngine(default_model="test-model")
 
     @pytest.mark.asyncio
     async def test_single_match(self, engine: DecisionEngine) -> None:
@@ -303,3 +310,248 @@ class TestDecisionEngineDeterministic:
         result = await engine.evaluate(node, {"x": 1})
         assert result.reasoning is not None
         assert "x == 1" in result.reasoning
+
+
+# --- AIDecisionResponse model (US-003) ---
+
+
+class TestAIDecisionResponse:
+    def test_valid_response(self) -> None:
+        resp = AIDecisionResponse(
+            selected_edge_target="node-a",
+            confidence=0.85,
+            reasoning="High severity warrants escalation",
+        )
+        assert resp.selected_edge_target == "node-a"
+        assert resp.confidence == 0.85
+        assert resp.reasoning == "High severity warrants escalation"
+
+    def test_confidence_lower_bound(self) -> None:
+        resp = AIDecisionResponse(
+            selected_edge_target="node-a", confidence=0.0, reasoning="Low"
+        )
+        assert resp.confidence == 0.0
+
+    def test_confidence_upper_bound(self) -> None:
+        resp = AIDecisionResponse(
+            selected_edge_target="node-a", confidence=1.0, reasoning="High"
+        )
+        assert resp.confidence == 1.0
+
+    def test_confidence_below_zero_rejected(self) -> None:
+        with pytest.raises(Exception):
+            AIDecisionResponse(
+                selected_edge_target="node-a", confidence=-0.1, reasoning="Bad"
+            )
+
+    def test_confidence_above_one_rejected(self) -> None:
+        with pytest.raises(Exception):
+            AIDecisionResponse(
+                selected_edge_target="node-a", confidence=1.1, reasoning="Bad"
+            )
+
+    def test_model_validate_from_dict(self) -> None:
+        data = {
+            "selected_edge_target": "node-b",
+            "confidence": 0.5,
+            "reasoning": "Moderate confidence",
+        }
+        resp = AIDecisionResponse.model_validate(data)
+        assert resp.selected_edge_target == "node-b"
+
+
+# --- Prompt template (US-003) ---
+
+
+class TestBuildDecisionMessages:
+    def test_includes_system_prompt(self) -> None:
+        messages = build_decision_messages("Check severity", {}, [
+            DecisionEdge(target="node-a"),
+        ])
+        assert messages[0]["role"] == "system"
+        assert "decision evaluator" in messages[0]["content"]
+
+    def test_includes_context_prompt(self) -> None:
+        messages = build_decision_messages("Check severity", {"x": 1}, [
+            DecisionEdge(target="node-a"),
+        ])
+        assert "Check severity" in messages[1]["content"]
+
+    def test_includes_state_json(self) -> None:
+        state = {"output": {"severity": "critical"}}
+        messages = build_decision_messages(None, state, [
+            DecisionEdge(target="node-a"),
+        ])
+        content = messages[1]["content"]
+        assert '"severity": "critical"' in content
+
+    def test_includes_edge_descriptions(self) -> None:
+        edges = [
+            DecisionEdge(
+                target="escalate",
+                label="Escalate",
+                description="Route to human review",
+            ),
+            DecisionEdge(target="auto-resolve", label="Auto"),
+        ]
+        messages = build_decision_messages("Pick", {}, edges)
+        content = messages[1]["content"]
+        assert "escalate" in content
+        assert "Escalate" in content
+        assert "Route to human review" in content
+        assert "auto-resolve" in content
+
+    def test_no_context_prompt(self) -> None:
+        messages = build_decision_messages(None, {"x": 1}, [
+            DecisionEdge(target="node-a"),
+        ])
+        content = messages[1]["content"]
+        assert "## Context" not in content
+
+    def test_includes_tool_call_instruction(self) -> None:
+        messages = build_decision_messages(None, {}, [
+            DecisionEdge(target="node-a"),
+        ])
+        assert "make_decision" in messages[1]["content"]
+
+
+# --- Model resolution (US-003) ---
+
+
+class TestResolveModel:
+    def test_node_model_takes_precedence(self) -> None:
+        config = DecisionNodeConfig(
+            mode=DecisionMode.AI_BOUNDED,
+            confidence_threshold=0.8,
+            model="gpt-4o",
+            edges=[DecisionEdge(target="a")],
+        )
+        assert resolve_model(config, "claude-sonnet-4-20250514") == "gpt-4o"
+
+    def test_falls_back_to_default(self) -> None:
+        config = DecisionNodeConfig(
+            mode=DecisionMode.AI_BOUNDED,
+            confidence_threshold=0.8,
+            edges=[DecisionEdge(target="a")],
+        )
+        assert resolve_model(config, "claude-sonnet-4-20250514") == "claude-sonnet-4-20250514"
+
+
+# --- Response parsing (US-003) ---
+
+
+class _FakeFunction:
+    def __init__(self, arguments: str) -> None:
+        self.arguments = arguments
+
+
+class _FakeToolCall:
+    def __init__(self, arguments: str) -> None:
+        self.function = _FakeFunction(arguments)
+
+
+class _FakeMessage:
+    def __init__(
+        self,
+        tool_calls: list[_FakeToolCall] | None = None,
+        content: str | None = None,
+    ) -> None:
+        self.tool_calls = tool_calls
+        self.content = content
+
+
+class _FakeChoice:
+    def __init__(self, message: _FakeMessage) -> None:
+        self.message = message
+
+
+class _FakeResponse:
+    def __init__(self, choices: list[_FakeChoice]) -> None:
+        self.choices = choices
+
+
+class TestParseAIResponse:
+    def test_parse_tool_call(self) -> None:
+        args = json.dumps({
+            "selected_edge_target": "node-a",
+            "confidence": 0.9,
+            "reasoning": "Clear match",
+        })
+        response = _FakeResponse([
+            _FakeChoice(_FakeMessage(tool_calls=[_FakeToolCall(args)]))
+        ])
+        result = parse_ai_response(response)
+        assert result.selected_edge_target == "node-a"
+        assert result.confidence == 0.9
+
+    def test_parse_text_fallback(self) -> None:
+        text = json.dumps({
+            "selected_edge_target": "node-b",
+            "confidence": 0.7,
+            "reasoning": "Fallback parse",
+        })
+        response = _FakeResponse([
+            _FakeChoice(_FakeMessage(content=text))
+        ])
+        result = parse_ai_response(response)
+        assert result.selected_edge_target == "node-b"
+        assert result.confidence == 0.7
+
+    def test_parse_text_with_markdown_fences(self) -> None:
+        text = '```json\n{"selected_edge_target": "node-c", "confidence": 0.6, "reasoning": "Fenced"}\n```'
+        response = _FakeResponse([
+            _FakeChoice(_FakeMessage(content=text))
+        ])
+        result = parse_ai_response(response)
+        assert result.selected_edge_target == "node-c"
+
+    def test_parse_failure_raises_error(self) -> None:
+        response = _FakeResponse([
+            _FakeChoice(_FakeMessage(content="I don't know"))
+        ])
+        with pytest.raises(DecisionEvaluationError, match="Could not parse"):
+            parse_ai_response(response)
+
+    def test_malformed_json_tool_call_falls_to_text(self) -> None:
+        text = json.dumps({
+            "selected_edge_target": "node-d",
+            "confidence": 0.5,
+            "reasoning": "From text",
+        })
+        response = _FakeResponse([
+            _FakeChoice(_FakeMessage(
+                tool_calls=[_FakeToolCall("{bad json")],
+                content=text,
+            ))
+        ])
+        result = parse_ai_response(response)
+        assert result.selected_edge_target == "node-d"
+
+    def test_empty_tool_calls_falls_to_text(self) -> None:
+        text = json.dumps({
+            "selected_edge_target": "node-e",
+            "confidence": 0.8,
+            "reasoning": "Empty tool_calls",
+        })
+        response = _FakeResponse([
+            _FakeChoice(_FakeMessage(tool_calls=[], content=text))
+        ])
+        result = parse_ai_response(response)
+        assert result.selected_edge_target == "node-e"
+
+
+# --- DECISION_TOOL constant (US-003) ---
+
+
+class TestDecisionTool:
+    def test_tool_structure(self) -> None:
+        assert DECISION_TOOL["type"] == "function"
+        func = DECISION_TOOL["function"]
+        assert func["name"] == "make_decision"
+        params = func["parameters"]
+        assert "selected_edge_target" in params["properties"]
+        assert "confidence" in params["properties"]
+        assert "reasoning" in params["properties"]
+        assert set(params["required"]) == {
+            "selected_edge_target", "confidence", "reasoning",
+        }

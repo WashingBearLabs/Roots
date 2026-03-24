@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from roots.core.schema import DecisionMode, DecisionNodeConfig, NodeDefinition
+from roots.core.schema import DecisionEdge, DecisionMode, DecisionNodeConfig, NodeDefinition
 
 from simpleeval import (
     AttributeDoesNotExist,
@@ -113,8 +114,126 @@ class DecisionResult(BaseModel):
     reasoning: str | None = None
 
 
+class AIDecisionResponse(BaseModel):
+    """Structured response model for AI decision modes."""
+
+    selected_edge_target: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    reasoning: str
+
+
+DECISION_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": "make_decision",
+        "description": "Select the next step in the process",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "selected_edge_target": {
+                    "type": "string",
+                    "description": "The target node ID to route to",
+                },
+                "confidence": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                },
+                "reasoning": {"type": "string"},
+            },
+            "required": ["selected_edge_target", "confidence", "reasoning"],
+        },
+    },
+}
+
+SYSTEM_PROMPT = (
+    "You are a decision evaluator in a process orchestration system. "
+    "Evaluate the current state and select the most appropriate next step."
+)
+
+_MARKDOWN_FENCE_RE = re.compile(r"```(?:json)?\s*([\s\S]*?)```")
+
+
+def build_decision_messages(
+    context_prompt: str | None,
+    state: dict[str, Any],
+    edges: list[DecisionEdge],
+) -> list[dict[str, str]]:
+    """Build the message list for an AI decision LLM call."""
+    edge_descriptions = []
+    for edge in edges:
+        entry = f"- target: {edge.target}"
+        if edge.label:
+            entry += f", label: {edge.label}"
+        if edge.description:
+            entry += f", description: {edge.description}"
+        edge_descriptions.append(entry)
+
+    user_parts: list[str] = []
+    if context_prompt:
+        user_parts.append(f"## Context\n{context_prompt}")
+    user_parts.append(f"## Current State\n```json\n{json.dumps(state, indent=2)}\n```")
+    user_parts.append(f"## Available Edges\n" + "\n".join(edge_descriptions))
+    user_parts.append(
+        "Select the most appropriate next step by calling the make_decision tool."
+    )
+
+    return [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": "\n\n".join(user_parts)},
+    ]
+
+
+def resolve_model(node_config: DecisionNodeConfig, default_model: str) -> str:
+    """Resolve the model to use: node config → default_model."""
+    return node_config.model or default_model
+
+
+def parse_ai_response(response: Any) -> AIDecisionResponse:
+    """Parse an LLM response into AIDecisionResponse.
+
+    Tries tool_calls first, then falls back to parsing text content as JSON.
+
+    Raises:
+        DecisionEvaluationError: If neither path produces a valid response.
+    """
+    message = response.choices[0].message
+
+    # Primary path: tool call
+    if message.tool_calls:
+        try:
+            args = json.loads(message.tool_calls[0].function.arguments)
+            return AIDecisionResponse.model_validate(args)
+        except (json.JSONDecodeError, Exception) as exc:
+            # Fall through to text path
+            pass
+
+    # Fallback path: text content
+    content = message.content
+    if content:
+        # Strip markdown fences if present
+        fence_match = _MARKDOWN_FENCE_RE.search(content)
+        if fence_match:
+            content = fence_match.group(1).strip()
+        try:
+            data = json.loads(content)
+            return AIDecisionResponse.model_validate(data)
+        except (json.JSONDecodeError, Exception):
+            pass
+
+    # Both failed
+    raw = getattr(message, "content", None) or str(message)
+    raise DecisionEvaluationError(
+        expression="AI response parsing",
+        message=f"Could not parse AI response as AIDecisionResponse. Raw: {raw}",
+    )
+
+
 class DecisionEngine:
     """Evaluates decision nodes to determine execution routing."""
+
+    def __init__(self, default_model: str) -> None:
+        self._default_model = default_model
 
     async def evaluate(
         self, node: NodeDefinition, work_item_state: dict[str, Any]
