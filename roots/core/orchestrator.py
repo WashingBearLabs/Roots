@@ -243,8 +243,10 @@ class ProcessRunner:
                 return False
 
             # Step 7: Write output to state if applicable
-            if output is not None and hasattr(node.config, "output_key"):
-                state[node.config.output_key] = output  # type: ignore[union-attr]
+            if output is not None:
+                output_key: str | None = getattr(node.config, "output_key", None)
+                if output_key is not None:
+                    state[output_key] = output
 
             # Step 8: Determine next node (or pause if escalated)
             if self._escalated:
@@ -380,7 +382,7 @@ class ProcessRunner:
         async def _invoke() -> AgentOutput:
             agent_input = AgentInput(
                 work_item_state=state,
-                node_config=config.model_dump(),
+                node_config=config.model_dump(mode="json"),
                 run_id=self.run_id,
             )
             self._event_emitter.emit(

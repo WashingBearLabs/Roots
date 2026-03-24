@@ -384,10 +384,10 @@ async def _check_agent_health(agents: list[dict[str, Any]]) -> list[dict[str, An
     """Ping remote agents and return health results."""
     results = []
     for agent in agents:
-        agent_type = agent.get("type", "local")
-        callback_url = agent.get("callback_url")
-        entry = {
-            "name": agent.get("name", "unknown"),
+        agent_type: str = str(agent.get("type", "local"))
+        callback_url: str | None = agent.get("callback_url")  # type: ignore[assignment]
+        entry: dict[str, Any] = {
+            "name": str(agent.get("name", "unknown")),
             "type": agent_type,
             "callback_url": callback_url,
         }
@@ -400,7 +400,7 @@ async def _check_agent_health(agents: list[dict[str, Any]]) -> list[dict[str, An
         start = time.monotonic()
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                await client.get(callback_url)
+                await client.get(str(callback_url))
             elapsed_ms = (time.monotonic() - start) * 1000
             entry["status"] = "healthy"
             entry["response_time_ms"] = round(elapsed_ms, 2)
