@@ -6,11 +6,57 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Any
 
-from mcp import ClientSession
-from mcp.client.sse import sse_client
-from mcp.client.stdio import StdioServerParameters, stdio_client
+try:
+    from mcp import ClientSession
+    from mcp.client.sse import sse_client
+    from mcp.client.stdio import StdioServerParameters, stdio_client
+
+    HAS_MCP = True
+except ImportError:
+    HAS_MCP = False
 
 from roots.agents.invoker import AgentInvocationError
+
+# Characters forbidden in MCP command executable names (shell metacharacters).
+_UNSAFE_COMMAND_CHARS = set(";|&$`\"'\\!#~<>{}()*?[]")
+
+
+def _require_mcp() -> None:
+    """Raise a clear error if the mcp package is not installed."""
+    if not HAS_MCP:
+        raise RuntimeError(
+            "The 'mcp' package is required for MCP features. "
+            "Install it with: pip install mcp"
+        )
+
+
+def _validate_command(command: list[str]) -> None:
+    """Validate a command list for basic safety.
+
+    Rejects empty commands, executables with path traversal components,
+    and executables containing shell metacharacters.
+    """
+    if not command:
+        raise ValueError("MCP server command must not be empty")
+
+    executable = command[0]
+
+    if not executable:
+        raise ValueError("MCP server command executable must not be empty")
+
+    # Reject path traversal
+    if ".." in executable:
+        raise ValueError(
+            f"MCP server command contains path traversal: {executable!r}"
+        )
+
+    # Reject shell metacharacters in the executable name
+    bad_chars = _UNSAFE_COMMAND_CHARS.intersection(executable)
+    if bad_chars:
+        raise ValueError(
+            f"MCP server command contains unsafe characters "
+            f"{bad_chars!r}: {executable!r}"
+        )
 
 SUBPROCESS_SHUTDOWN_TIMEOUT = 5
 
@@ -39,6 +85,7 @@ class MCPGateway:
         Returns a cached connection if one already exists for the URL.
         Raises AgentInvocationError on connection failure.
         """
+        _require_mcp()
         if url in self._connections:
             return self._connections[url]
 
@@ -72,6 +119,8 @@ class MCPGateway:
         Returns a cached connection if one already exists for the command.
         Raises AgentInvocationError on connection failure.
         """
+        _require_mcp()
+        _validate_command(command)
         cmd_key = " ".join(command)
         if cmd_key in self._command_connections:
             return self._command_connections[cmd_key]
