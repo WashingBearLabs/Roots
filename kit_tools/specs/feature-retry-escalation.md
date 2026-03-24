@@ -103,11 +103,11 @@ Retry and escalation extend the orchestrator with production-critical error hand
 - This enables patterns like: "if primary agent fails after 3 tries, route to a simpler fallback agent or a human checkpoint"
 
 **Acceptance Criteria:**
-- [ ] Run continues via fallback edge when retries exhaust with `on_exhaustion: route`
-- [ ] Run does NOT transition to `failed`
-- [ ] Execution continues from the fallback target node
-- [ ] Event metadata indicates fallback routing occurred
-- [ ] Tests verify fallback routing with subsequent node execution
+- [x] Run continues via fallback edge when retries exhaust with `on_exhaustion: route`
+- [x] Run does NOT transition to `failed`
+- [x] Execution continues from the fallback target node
+- [x] Event metadata indicates fallback routing occurred
+- [x] Tests verify fallback routing with subsequent node execution
 
 ### US-004: Escalation Triggers
 
