@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "roots"
+version = "0.1.0"
+description = "A process orchestration framework"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.0",
+    "pyyaml",
+    "fastapi",
+    "uvicorn[standard]",
+    "typer[all]",
+    "litellm",
+    "httpx",
+    "aiosqlite",
+    "asyncpg",
+    "sqlalchemy[asyncio]",
+    "simpleeval",
+    "jsonschema",
+]
+
+[project.scripts]
+roots = "roots.cli.main:app"
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "pyright",
+    "ruff",
+]
+
+[tool.pyright]
+typeCheckingMode = "strict"
+reportMissingTypeStubs = "warning"
+reportUnknownMemberType = "warning"
+reportUnknownVariableType = "warning"
+reportUnknownParameterType = "warning"
+reportPrivateUsage = "warning"
+reportUnusedImport = "warning"
+reportUnusedFunction = "warning"
+reportUnusedVariable = "warning"
+reportUnknownArgumentType = "warning"
+
+[tool.ruff]
+line-length = 88
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

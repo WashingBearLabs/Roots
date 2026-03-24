@@ -1,0 +1,28 @@
+id: simple-linear
+name: Simple Linear Process
+version: "1.0.0"
+description: Minimal two-node sequential process
+nodes:
+  - id: step1
+    type: agent
+    label: First Step
+    config:
+      agent: echo_agent
+      output_key: step1_output
+  - id: step2
+    type: agent
+    label: Second Step
+    config:
+      agent: echo_agent
+      output_key: step2_output
+  - id: done
+    type: end
+    label: Complete
+    config:
+      status: completed
+edges:
+  - from: step1
+    to: step2
+  - from: step2
+    to: done
+entry_point: step1
