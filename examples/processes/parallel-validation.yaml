@@ -1,0 +1,78 @@
+id: parallel-validation
+name: Parallel Validation Process
+version: "1.0.0"
+description: Fork/join with parallel validators and decision gate
+nodes:
+  - id: start
+    type: checkpoint
+    label: Ready to validate
+    config:
+      prompt: "Confirm the work item is ready for validation."
+  - id: split
+    type: fork
+    label: Split for parallel validation
+    config: {}
+  - id: quality_check
+    type: agent
+    label: Quality Check
+    config:
+      agent: quality_checker
+      output_key: quality_result
+  - id: security_check
+    type: agent
+    label: Security Check
+    config:
+      agent: security_checker
+      output_key: security_result
+  - id: compliance_check
+    type: agent
+    label: Compliance Check
+    config:
+      agent: compliance_checker
+      output_key: compliance_result
+  - id: merge
+    type: join
+    label: Merge Results
+    config:
+      merge_strategy: collect
+      collect_key: validation_results
+  - id: gate
+    type: decision
+    label: Validation Gate
+    config:
+      mode: deterministic
+      edges:
+        - target: pass
+          condition: "validation_results.0.state.quality_result.pass == true"
+          label: All checks passed
+        - target: fail
+          condition: "validation_results.0.state.quality_result.pass == false"
+          label: Checks failed
+  - id: pass
+    type: end
+    label: Validation Passed
+    config:
+      status: completed
+  - id: fail
+    type: end
+    label: Validation Failed
+    config:
+      status: failed
+edges:
+  - from: start
+    to: split
+  - from: split
+    to: quality_check
+  - from: split
+    to: security_check
+  - from: split
+    to: compliance_check
+  - from: quality_check
+    to: merge
+  - from: security_check
+    to: merge
+  - from: compliance_check
+    to: merge
+  - from: merge
+    to: gate
+entry_point: start
