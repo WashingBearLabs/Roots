@@ -173,51 +173,66 @@ Five self-contained demo applications that showcase the Roots framework's capabi
 - [x] 4 sample texts produce different outcomes (approve/flag/reject)
 - [x] Process completes in <3 seconds
 
-### US-005: Research Assistant Demo
+### US-005: Research Assistant — Process, Agents, and Server
 
-**Description:** As a new user, I want a research aggregator demo so that I can see fork/join parallel execution and checkpoint-based human approval.
+**Description:** As a demo builder, I want the research assistant's process definition, mock agents, and server setup so that the backend is complete and testable.
 
 **Implementation Hints:**
-- Create `demo/research-assistant/`:
-  - `process.yaml`:
-    - `topic_input` (checkpoint, prompt: "Enter a research topic to investigate")
-    - `split` (fork) → 3 branches
-    - `search_academic` (agent, output_key: academic_results)
-    - `search_news` (agent, output_key: news_results)
-    - `search_web` (agent, output_key: web_results)
-    - `merge` (join, collect, collect_key: research_results)
-    - `summarize` (agent, output_key: summary)
-    - `quality_check` (decision, deterministic) — edges: `approve_publish` if `summary.source_count >= 3`, `insufficient` if `summary.source_count < 3`
-    - `approve_publish` (checkpoint, prompt: "Review the summary and approve for publishing")
-    - `publish` (end, completed) / `insufficient` (end, failed)
-    - Hardcode positions: checkpoint at top, fork/3-branches in middle, join below, decision+checkpoints at bottom
-  - `agents.py`:
-    - `search_academic(input)` — returns `{"papers": [{"title": "...", "abstract": "...", "year": 2025},...]}` based on topic keyword matching. 3-5 results.
-    - `search_news(input)` — returns `{"articles": [{"headline": "...", "source": "...", "date": "..."},...]}`. 3-5 results.
-    - `search_web(input)` — returns `{"pages": [{"title": "...", "url": "...", "snippet": "..."},...]}`. 3-5 results.
-    - `summarize(input)` — combines results into `{"summary_text": "...", "source_count": N, "key_findings": [...]}`
-    - Each search agent sleeps 0.5-1s. Topic string seeds different results (hash-based selection from a pool of canned results).
-  - `static/index.html`:
-    - Layout: graph panel (top 50%), content panels (bottom 50% split into research results + summary)
-    - Initial state: graph shows process paused at `topic_input`. Input field + "Start Research" button.
-    - On submit: `POST /api/runs/{id}/checkpoint` with `{"decision": "approve"}` (the topic is in the work_item, set during run creation). Actually — the topic needs to get into the work item. Approach: create the run with `{"topic": "user's input"}` as the work_item, then resolve the checkpoint to continue.
-    - Fork/join: graph shows 3 parallel branches with individual progress
-    - After merge: results panel shows collected data from all 3 sources in tabs (Academic / News / Web)
-    - After summarize: summary panel shows the generated summary
-    - Second checkpoint: "Approve" / "Reject" buttons appear
-    - Approve → publish (green completion), Reject → insufficient (red)
-  - `run_demo.py`: load process, register 4 agents, run_demo()
+- Create `demo/research-assistant/` directory
+- `process.yaml`:
+  - `topic_input` (checkpoint, prompt: "Enter a research topic to investigate")
+  - `split` (fork) → 3 branches
+  - `search_academic` (agent, output_key: academic_results)
+  - `search_news` (agent, output_key: news_results)
+  - `search_web` (agent, output_key: web_results)
+  - `merge` (join, collect, collect_key: research_results)
+  - `summarize` (agent, output_key: summary)
+  - `quality_check` (decision, deterministic) — edges: `approve_publish` if `summary.source_count >= 3`, `insufficient` if `summary.source_count < 3`
+  - `approve_publish` (checkpoint, prompt: "Review the summary and approve for publishing")
+  - `publish` (end, completed) / `insufficient` (end, failed)
+  - Hardcode node positions in metadata for clean layout
+- `agents.py`:
+  - `search_academic(input)` — returns `{"papers": [{"title": "...", "abstract": "...", "year": 2025},...]}`. 3-5 results based on topic keywords.
+  - `search_news(input)` — returns `{"articles": [{"headline": "...", "source": "...", "date": "..."},...]}`. 3-5 results.
+  - `search_web(input)` — returns `{"pages": [{"title": "...", "url": "...", "snippet": "..."},...]}`. 3-5 results.
+  - `summarize(input)` — combines results into `{"summary_text": "...", "source_count": N, "key_findings": [...]}`
+  - Each search agent sleeps 0.3-0.5s. Topic string seeds different results (hash-based selection from canned results).
+- `run_demo.py`: load process, register 4 agents, call `run_demo()` from demo_server.py. Use same pattern as content-pipeline.
+
+**Acceptance Criteria:**
+- [ ] `demo/research-assistant/process.yaml` parses and validates (including fork/join pairing)
+- [ ] All 4 agents registered and callable
+- [ ] `run_demo.py` starts server successfully
+- [ ] Process can be created and executed via API (test with curl or httpx)
+- [ ] Fork/join executes correctly with collected results
+
+### US-006: Research Assistant — Frontend
+
+**Description:** As a new user, I want the research assistant's web UI so that I can interact with checkpoints and see fork/join execution visually.
+
+**Implementation Hints:**
+- Create `demo/research-assistant/static/index.html`:
+  - Include shared assets: `/common/styles.css`, `/common/graph-renderer.js`, `/common/state-viewer.js`, `/common/event-log.js`, `/common/roots-client.js`
+  - Layout: graph panel (top 50%), content panels (bottom 50% — results left, summary right)
+  - **Initial state:** Topic input field + "Start Research" button. On click: `POST /api/runs` with `{"process_id": "research-assistant", "work_item": {"topic": inputValue}}`. Store `run_id`. The process starts paused at the first checkpoint.
+  - **Checkpoint resolution:** After run creation, auto-resolve the first checkpoint: `POST /api/runs/{id}/checkpoint` with `{"decision": "approve"}`. Then start polling.
+  - **Fork/join visualization:** GraphRenderer shows 3 parallel branches updating as agents complete.
+  - **Results display:** After join completes, show collected research in a tabbed panel (Academic / News / Web) — parse from `work_item_state.research_results` in the graph response.
+  - **Summary display:** After summarize agent, show summary text.
+  - **Second checkpoint:** When process pauses again, show "Approve" / "Reject" buttons. On click: resolve checkpoint with the chosen decision.
+  - **Completion:** Show final status badge (Published / Insufficient).
+  - Quick-select topic buttons: "AI Safety", "Climate Change", "Quantum Computing"
 
 **Acceptance Criteria:**
 - [ ] `python demo/research-assistant/run_demo.py` starts server and opens browser
-- [ ] First checkpoint pauses and shows topic input
+- [ ] Topic input creates run and resolves first checkpoint
 - [ ] Fork/join branches visible executing in parallel
-- [ ] Collected results show all three sources
+- [ ] Collected results show all three sources in tabs
 - [ ] Summary displayed after summarize agent
 - [ ] Second checkpoint shows approve/reject buttons
 - [ ] Approve → completed, Reject → failed
 
-### US-006: Incident Response Demo
+### US-007: Incident Response Demo
 
 **Description:** As a new user, I want a SOC incident triage demo so that I can see AI decisions, confidence thresholds, and escalation in action.
 
@@ -259,7 +274,7 @@ Five self-contained demo applications that showcase the Roots framework's capabi
 - [ ] Emit node fires visible custom event
 - [ ] Mock mode confidence scores are deterministic
 
-### US-007: API Explorer Demo
+### US-008: API Explorer Demo
 
 **Description:** As a new user, I want an API explorer demo so that I can understand all available HTTP endpoints and interact with them directly.
 
@@ -291,7 +306,7 @@ Five self-contained demo applications that showcase the Roots framework's capabi
 - [ ] Webhook events appear in received events log
 - [ ] Process pre-loaded and ready to experiment with
 
-### US-008: Node Explorer — Process and Custom Endpoints
+### US-009: Node Explorer — Process and Custom Endpoints
 
 **Description:** As a demo builder, I want the node explorer's process definition, agents, and custom API endpoints so that step-through execution works.
 
@@ -346,7 +361,7 @@ Five self-contained demo applications that showcase the Roots framework's capabi
 - [ ] `tutorial_content.json` has entries for all 8 types + retry
 - [ ] Tests verify step/reset endpoints work
 
-### US-009: Node Explorer — Tutorial Panel UI
+### US-010: Node Explorer — Tutorial Panel UI
 
 **Description:** As a new user, I want the tutorial panel to explain each node type as I step through the process.
 
@@ -371,7 +386,7 @@ Five self-contained demo applications that showcase the Roots framework's capabi
 - [ ] Retry node shows attempt history
 - [ ] Panel transitions smoothly when node changes
 
-### US-010: Node Explorer — Interactive Controls and Graph
+### US-011: Node Explorer — Interactive Controls and Graph
 
 **Description:** As a new user, I want step-through controls and a live graph so that I can explore the process at my own pace.
 
@@ -410,7 +425,7 @@ Five self-contained demo applications that showcase the Roots framework's capabi
 - [ ] Step counter tracks progress
 - [ ] Process starts paused at welcome checkpoint
 
-### US-011: Demo Landing Page
+### US-012: Demo Landing Page
 
 **Description:** As a new user, I want a landing page that lists all demos and lets me launch any of them.
 
