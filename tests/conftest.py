@@ -19,6 +19,7 @@ from roots.core.schema import (
 )
 
 if TYPE_CHECKING:
+    from roots import Roots
     from roots.storage.base import StorageBackend
 
 
@@ -89,4 +90,18 @@ def sample_process() -> ProcessDefinition:
     )
 
 
-# TODO: roots_instance fixture — created in T1.3 US-007 after Roots class exists
+@pytest.fixture
+async def roots_instance() -> AsyncIterator["Roots"]:
+    from roots import Roots
+    from roots.storage.sqlite import SqliteBackend
+
+    backend = SqliteBackend(":memory:")
+    await backend.initialize()
+    roots = Roots(storage=backend)
+
+    async def echo_agent(input: dict) -> dict:  # noqa: A002
+        return {"output": {"echo": input["work_item_state"]}, "escalate": False}
+
+    await roots.register_agent("echo", echo_agent)
+    yield roots
+    await roots.close()
