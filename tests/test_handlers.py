@@ -558,7 +558,7 @@ class TestDispatchDict:
 
 
 class TestForkJoinStubs:
-    async def test_fork_raises_not_implemented(
+    async def test_fork_no_outbound_edges_raises(
         self,
         sqlite_storage: StorageBackend,
         invoker: AgentInvoker,
@@ -583,17 +583,17 @@ class TestForkJoinStubs:
                     config=EndNodeConfig(status=EndStatus.COMPLETED),
                 ),
             ],
-            edges=[EdgeDefinition(from_node="split", to_node="done")],
+            edges=[],
             entry_point="split",
         )
         await sqlite_storage.save_process(proc)
         run = await sqlite_storage.create_run(proc.id, {})
 
         runner = _make_runner(run.id, sqlite_storage, invoker, decision_engine, emitter)
-        with pytest.raises(NotImplementedError, match="Fork/join execution in T2.2"):
+        with pytest.raises(OrchestrationError, match="no outbound edges"):
             await runner.tick()
 
-    async def test_join_raises_not_implemented(
+    async def test_join_raises_without_branch_results(
         self,
         sqlite_storage: StorageBackend,
         invoker: AgentInvoker,
@@ -625,5 +625,5 @@ class TestForkJoinStubs:
         run = await sqlite_storage.create_run(proc.id, {})
 
         runner = _make_runner(run.id, sqlite_storage, invoker, decision_engine, emitter)
-        with pytest.raises(NotImplementedError, match="Fork/join execution in T2.2"):
+        with pytest.raises(OrchestrationError, match="without branch results"):
             await runner.tick()

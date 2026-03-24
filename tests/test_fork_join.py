@@ -1,4 +1,4 @@
-"""Tests for fork/join (US-001 branch creation, US-002 parallel execution)."""
+"""Tests for fork/join (US-001 branch creation, US-002 parallel execution, US-003 merge_all)."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import pytest
 from roots.agents.invoker import AgentInvoker
 from roots.agents.registry import AgentRegistry
 from roots.core.decision import DecisionEngine
-from roots.core.orchestrator import OrchestrationError, ProcessRunner
+from roots.core.orchestrator import OrchestrationError, ProcessRunner, deep_merge
 from roots.core.schema import (
     AgentNodeConfig,
     EdgeDefinition,
@@ -745,3 +745,339 @@ class TestParallelBranchExecution:
             assert "duration_ms" in branch
             assert isinstance(branch["duration_ms"], int)
             assert branch["duration_ms"] >= 0
+
+
+# --- US-003 Helpers ---
+
+
+async def agent_add_x(input: dict[str, Any]) -> dict[str, Any]:
+    """Agent that adds x-related keys."""
+    return {"output": {"x": 1, "shared": {"from_x": True}}, "escalate": False}
+
+
+async def agent_add_y(input: dict[str, Any]) -> dict[str, Any]:
+    """Agent that adds y-related keys."""
+    return {"output": {"y": 2, "shared": {"from_y": True}}, "escalate": False}
+
+
+async def agent_overlap_a(input: dict[str, Any]) -> dict[str, Any]:
+    """Agent that sets overlapping keys (branch A)."""
+    return {
+        "output": {
+            "winner": "a",
+            "nested": {"level1": {"a_key": 1, "conflict": "a_val"}},
+            "list_val": [1, 2],
+        },
+        "escalate": False,
+    }
+
+
+async def agent_overlap_b(input: dict[str, Any]) -> dict[str, Any]:
+    """Agent that sets overlapping keys (branch B — last writer wins)."""
+    return {
+        "output": {
+            "winner": "b",
+            "nested": {"level1": {"b_key": 2, "conflict": "b_val"}},
+            "list_val": [3, 4],
+        },
+        "escalate": False,
+    }
+
+
+def make_merge_all_process(
+    agent_a: str = "agent_add_x",
+    agent_b: str = "agent_add_y",
+) -> ProcessDefinition:
+    """Fork → 2 agents → Join (merge_all) → End."""
+    return ProcessDefinition(
+        id="merge-all",
+        name="Merge All Test",
+        version="1.0.0",
+        nodes=[
+            NodeDefinition(
+                id="fork1",
+                type=NodeType.FORK,
+                label="Fork",
+                config=ForkNodeConfig(),
+            ),
+            NodeDefinition(
+                id="branch_a",
+                type=NodeType.AGENT,
+                label="Branch A",
+                config=AgentNodeConfig(agent=agent_a, output_key="a_out"),
+            ),
+            NodeDefinition(
+                id="branch_b",
+                type=NodeType.AGENT,
+                label="Branch B",
+                config=AgentNodeConfig(agent=agent_b, output_key="b_out"),
+            ),
+            NodeDefinition(
+                id="join1",
+                type=NodeType.JOIN,
+                label="Join",
+                config=JoinNodeConfig(),
+            ),
+            NodeDefinition(
+                id="done",
+                type=NodeType.END,
+                label="Done",
+                config=EndNodeConfig(status=EndStatus.COMPLETED),
+            ),
+        ],
+        edges=[
+            EdgeDefinition(from_node="fork1", to_node="branch_a"),
+            EdgeDefinition(from_node="fork1", to_node="branch_b"),
+            EdgeDefinition(from_node="branch_a", to_node="join1"),
+            EdgeDefinition(from_node="branch_b", to_node="join1"),
+            EdgeDefinition(from_node="join1", to_node="done"),
+        ],
+        entry_point="fork1",
+        fork_join_map={"fork1": "join1"},
+    )
+
+
+# --- US-003 Tests ---
+
+
+class TestDeepMerge:
+    """Unit tests for the deep_merge utility."""
+
+    def test_disjoint_keys(self) -> None:
+        assert deep_merge({"a": 1}, {"b": 2}) == {"a": 1, "b": 2}
+
+    def test_overlapping_scalar_last_writer_wins(self) -> None:
+        assert deep_merge({"k": "first"}, {"k": "second"}) == {"k": "second"}
+
+    def test_nested_dicts_merged_recursively(self) -> None:
+        base = {"outer": {"a": 1, "inner": {"x": 10}}}
+        override = {"outer": {"b": 2, "inner": {"y": 20}}}
+        result = deep_merge(base, override)
+        assert result == {"outer": {"a": 1, "b": 2, "inner": {"x": 10, "y": 20}}}
+
+    def test_nested_conflict_last_writer_wins(self) -> None:
+        base = {"outer": {"key": "base_val"}}
+        override = {"outer": {"key": "override_val"}}
+        assert deep_merge(base, override) == {"outer": {"key": "override_val"}}
+
+    def test_list_override_replaces(self) -> None:
+        base = {"items": [1, 2, 3]}
+        override = {"items": [4, 5]}
+        assert deep_merge(base, override) == {"items": [4, 5]}
+
+    def test_empty_base(self) -> None:
+        assert deep_merge({}, {"a": 1}) == {"a": 1}
+
+    def test_empty_override(self) -> None:
+        assert deep_merge({"a": 1}, {}) == {"a": 1}
+
+    def test_three_way_merge(self) -> None:
+        """Simulates branch-order merge across 3 branches."""
+        a = {"x": 1, "shared": "a"}
+        b = {"y": 2, "shared": "b"}
+        c = {"z": 3, "shared": "c"}
+        result = deep_merge(deep_merge(a, b), c)
+        assert result == {"x": 1, "y": 2, "z": 3, "shared": "c"}
+
+
+class TestJoinMergeAll:
+    """US-003: Join Node — merge_all Strategy."""
+
+    async def test_branch_outputs_deep_merged_in_order(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Branch outputs are deep-merged in branch order."""
+        invoker._registry.register_local("agent_add_x", agent_add_x)
+        invoker._registry.register_local("agent_add_y", agent_add_y)
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_merge_all_process("agent_add_x", "agent_add_y"),
+            {"input": "hello"},
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        # Tick 1: fork → executes branches → routes to join
+        await runner.tick()
+        # Tick 2: join → merges branch results
+        await runner.tick()
+
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        state = run.work_item_state
+        # Both branches' output_keys should be in merged state
+        assert "a_out" in state
+        assert "b_out" in state
+        # Original input preserved
+        assert state["input"] == "hello"
+
+    async def test_nested_dicts_merged_recursively(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Nested dicts are merged recursively, not replaced."""
+        invoker._registry.register_local("agent_add_x", agent_add_x)
+        invoker._registry.register_local("agent_add_y", agent_add_y)
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_merge_all_process("agent_add_x", "agent_add_y"),
+            {"input": "hello"},
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        await runner.tick()  # fork
+        await runner.tick()  # join
+
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        state = run.work_item_state
+        # a_out has {x: 1, shared: {from_x: True}}
+        # b_out has {y: 2, shared: {from_y: True}}
+        # The branch states both have input + their output_key
+        # Merged state should have both output keys
+        assert "a_out" in state
+        assert "b_out" in state
+
+    async def test_overlapping_keys_last_writer_wins(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Non-dict conflicts resolved by last-writer-wins (branch order)."""
+        invoker._registry.register_local("agent_overlap_a", agent_overlap_a)
+        invoker._registry.register_local("agent_overlap_b", agent_overlap_b)
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_merge_all_process("agent_overlap_a", "agent_overlap_b"),
+            {"input": "test"},
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        await runner.tick()  # fork
+        await runner.tick()  # join
+
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        state = run.work_item_state
+        # Branch B is last — its a_out has overlap keys
+        # Both branches write to different output_keys (a_out, b_out)
+        # But each branch's state has its output_key added
+        # Branch A state: {input: test, a_out: {winner: a, nested: ..., list_val: [1,2]}}
+        # Branch B state: {input: test, b_out: {winner: b, nested: ..., list_val: [3,4]}}
+        # After merge: state has both a_out and b_out, input from last writer (same value)
+        assert "a_out" in state
+        assert "b_out" in state
+        # b_out should have branch B's values (last writer for b_out)
+        assert state["b_out"]["winner"] == "b"
+        assert state["b_out"]["list_val"] == [3, 4]
+        # a_out should have branch A's values
+        assert state["a_out"]["winner"] == "a"
+
+    async def test_merged_state_written_to_work_item(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Merged state is persisted to work item in storage."""
+        invoker._registry.register_local("agent_add_x", agent_add_x)
+        invoker._registry.register_local("agent_add_y", agent_add_y)
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_merge_all_process("agent_add_x", "agent_add_y"),
+            {"input": "persist_test"},
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        await runner.tick()  # fork
+        await runner.tick()  # join
+
+        # Read fresh from storage to confirm persistence
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        assert "a_out" in run.work_item_state
+        assert "b_out" in run.work_item_state
+        assert run.work_item_state["input"] == "persist_test"
+
+    async def test_execution_continues_from_join_outbound_edge(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+        sink: CollectorSink,
+    ) -> None:
+        """Execution continues from join's outbound edge to END node."""
+        invoker._registry.register_local("agent_add_x", agent_add_x)
+        invoker._registry.register_local("agent_add_y", agent_add_y)
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_merge_all_process("agent_add_x", "agent_add_y"),
+            {"input": "continue_test"},
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        await runner.tick()  # fork
+        await runner.tick()  # join
+        await runner.tick()  # end
+
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        assert run.status == RunStatus.COMPLETED
+
+        # Verify run.completed event was emitted
+        completed_events = [
+            e for e in sink.events if e.event == "roots.run.completed"
+        ]
+        assert len(completed_events) == 1
+
+    async def test_merge_with_overlapping_nested_structures(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Overlapping nested structures: dicts merge, scalars last-writer-wins."""
+        invoker._registry.register_local("agent_overlap_a", agent_overlap_a)
+        invoker._registry.register_local("agent_overlap_b", agent_overlap_b)
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_merge_all_process("agent_overlap_a", "agent_overlap_b"),
+            {"input": "nested_test"},
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        await runner.tick()  # fork
+        await runner.tick()  # join
+
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        state = run.work_item_state
+        # a_out has nested structure from agent_overlap_a
+        assert state["a_out"]["nested"]["level1"]["a_key"] == 1
+        assert state["a_out"]["nested"]["level1"]["conflict"] == "a_val"
+        # b_out has nested structure from agent_overlap_b
+        assert state["b_out"]["nested"]["level1"]["b_key"] == 2
+        assert state["b_out"]["nested"]["level1"]["conflict"] == "b_val"

@@ -24,6 +24,8 @@ from roots.core.schema import (
     EndNodeConfig,
     ExecutionMode,
     ForkNodeConfig,
+    JoinNodeConfig,
+    MergeStrategy,
     NodeDefinition,
     NodeType,
 )
@@ -34,6 +36,26 @@ from roots.core.retry import RetryExhaustedError, RetryRoutedError, execute_with
 from roots.storage.base import RunRecord, StorageBackend
 
 logger = logging.getLogger(__name__)
+
+
+def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    """Deep-merge override into base. Returns a new dict.
+
+    - Recursively merges nested dicts
+    - Non-dict values: last writer wins (override replaces base)
+    - Lists: override replaces (not concatenation)
+    """
+    result = dict(base)
+    for key, value in override.items():
+        if (
+            key in result
+            and isinstance(result[key], dict)
+            and isinstance(value, dict)
+        ):
+            result[key] = deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
 
 
 class OrchestrationError(Exception):
@@ -727,6 +749,9 @@ class ProcessRunner:
         # Store branch results for the join node
         self._fork_branch_results = results
 
+        # Route to join node so tick() advances past the fork
+        self._decision_next_node = join_node_id
+
         return None
 
     async def _execute_branch(
@@ -808,7 +833,23 @@ class ProcessRunner:
     async def _handle_join(
         self, node: NodeDefinition, state: dict[str, Any]
     ) -> dict[str, Any] | None:
-        raise NotImplementedError("Fork/join execution in T2.2")
+        assert isinstance(node.config, JoinNodeConfig)
+
+        results = getattr(self, "_fork_branch_results", None)
+        if results is None:
+            raise OrchestrationError(
+                f"Join node '{node.id}' reached without branch results"
+            )
+
+        if node.config.merge_strategy == MergeStrategy.MERGE_ALL:
+            merged: dict[str, Any] = {}
+            for result in results:
+                if isinstance(result, dict):
+                    merged = deep_merge(merged, result)
+            # Write merged state back to work item state
+            state.update(merged)
+
+        return None
 
 
 class Orchestrator:
