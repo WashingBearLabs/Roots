@@ -37,6 +37,230 @@
 <!-- Newest findings at top. Each entry has a unique ID: YYYY-MM-DD-NNN -->
 <!-- Findings are added by /kit-tools:validate-feature -->
 
+### 2026-03-23-029
+| Field | Value |
+|-------|-------|
+| **Category** | quality |
+| **Severity** | warning |
+| **Status** | open |
+| **File** | `roots/agents/registry.py` |
+
+**Description:** The parameter name `callable` on line 42 in `register_local` shadows the Python builtin `callable()`.
+
+**Recommendation:** Rename the parameter to `fn` or `agent_callable` to avoid shadowing the builtin.
+
+---
+
+### 2026-03-23-030
+| Field | Value |
+|-------|-------|
+| **Category** | quality |
+| **Severity** | warning |
+| **Status** | open |
+| **File** | `roots/agents/invoker.py` |
+
+**Description:** The parameter name `input` on lines 70, 123, and 146 shadows the Python builtin `input()` throughout `AgentInvoker` methods.
+
+**Recommendation:** Rename the parameter to `agent_input`.
+
+---
+
+### 2026-03-23-031
+| Field | Value |
+|-------|-------|
+| **Category** | quality |
+| **Severity** | warning |
+| **Status** | open |
+| **File** | `roots/agents/invoker.py` |
+
+**Description:** Lines 125-128 and 148-152 use `assert` statements for internal invariants. Assert statements are stripped when Python runs with `-O`, meaning these checks silently disappear in production.
+
+**Recommendation:** Pass the `AgentRegistration` object directly to `_invoke_local` and `_invoke_remote` instead of re-fetching from the registry, eliminating the need for assert-not-None checks.
+
+---
+
+### 2026-03-23-032
+| Field | Value |
+|-------|-------|
+| **Category** | security |
+| **Severity** | warning |
+| **Status** | open |
+| **File** | `roots/agents/types.py` |
+
+**Description:** The `callback_url` field on `AgentRegistration` (line 23) accepts any arbitrary string with no URL validation. This enables SSRF when `_invoke_remote` posts to that URL.
+
+**Recommendation:** Add a Pydantic `HttpUrl` type or a custom validator restricting the scheme to HTTPS and blocking private/internal IP ranges.
+
+---
+
+### 2026-03-23-033
+| Field | Value |
+|-------|-------|
+| **Category** | security |
+| **Severity** | warning |
+| **Status** | open |
+| **File** | `roots/agents/invoker.py` |
+
+**Description:** The `_invoke_remote` method posts the full `AgentInput` payload to an external URL with no authentication headers. No mechanism exists to attach bearer tokens or API keys to outbound requests.
+
+**Recommendation:** Add support for per-registration authentication credentials (e.g., a header map in `AgentRegistration`) attached to outbound requests.
+
+---
+
+### 2026-03-23-034
+| Field | Value |
+|-------|-------|
+| **Category** | security |
+| **Severity** | warning |
+| **Status** | open |
+| **File** | `roots/agents/invoker.py` |
+
+**Description:** `register_local` accepts any `Callable[..., Any]` with no restriction. If agent registration is ever exposed to untrusted input, this becomes a code execution vector.
+
+**Recommendation:** Ensure agent registration is only available to trusted server-side code. Consider adding callable type restrictions.
+
+---
+
+### 2026-03-23-035
+| Field | Value |
+|-------|-------|
+| **Category** | security |
+| **Severity** | warning |
+| **Status** | open |
+| **File** | `roots/agents/invoker.py` |
+
+**Description:** `response.json()` on line 185 is unpacked with no response size limit. A malicious remote endpoint could return an extremely large JSON payload causing memory exhaustion.
+
+**Recommendation:** Set a maximum response size limit on the httpx request. Consider `model_config = {"extra": "forbid"}` on `AgentOutput`.
+
+---
+
+### 2026-03-23-036
+| Field | Value |
+|-------|-------|
+| **Category** | quality |
+| **Severity** | info |
+| **Status** | open |
+| **File** | `roots/agents/invoker.py` |
+
+**Description:** `_invoke_local` and `_invoke_remote` each re-fetch the registration from the registry, even though `invoke` already retrieved it. Redundant lookups.
+
+**Recommendation:** Pass the `AgentRegistration` object directly to the internal methods.
+
+---
+
+### 2026-03-23-037
+| Field | Value |
+|-------|-------|
+| **Category** | quality |
+| **Severity** | info |
+| **Status** | open |
+| **File** | `roots/agents/invoker.py` |
+
+**Description:** `AgentInvoker.__init__` creates a default `httpx.AsyncClient()` but has no `close()` or async context manager support to clean up the client.
+
+**Recommendation:** Add an `async def close()` method or document that callers must manage their own client lifecycle.
+
+---
+
+### 2026-03-23-038
+| Field | Value |
+|-------|-------|
+| **Category** | quality |
+| **Severity** | info |
+| **Status** | open |
+| **File** | `roots/agents/__init__.py` |
+
+**Description:** The `__init__.py` for the agents package is empty. Key public types are not re-exported.
+
+**Recommendation:** Add public API re-exports with an `__all__` list.
+
+---
+
+### 2026-03-23-039
+| Field | Value |
+|-------|-------|
+| **Category** | quality |
+| **Severity** | info |
+| **Status** | open |
+| **File** | `tests/test_agent_invoker.py`, `tests/test_agent_schema_validation.py` |
+
+**Description:** Test helpers (`_dummy_callable`, `_make_input`) are duplicated across test files.
+
+**Recommendation:** Consider moving shared fixtures into `tests/conftest.py`.
+
+---
+
+### 2026-03-23-040
+| Field | Value |
+|-------|-------|
+| **Category** | security |
+| **Severity** | info |
+| **Status** | open |
+| **File** | `roots/agents/registry.py` |
+
+**Description:** No audit logging of register/deregister operations.
+
+**Recommendation:** Add logging for register/deregister operations (agent name, type, timestamp).
+
+---
+
+### 2026-03-23-041
+| Field | Value |
+|-------|-------|
+| **Category** | security |
+| **Severity** | info |
+| **Status** | open |
+| **File** | `roots/agents/types.py` |
+
+**Description:** The `name` field on `AgentRegistration` has no length or character constraints.
+
+**Recommendation:** Add a field validator constraining `name` to 1-128 characters with an allowed character set.
+
+---
+
+### 2026-03-23-042
+| Field | Value |
+|-------|-------|
+| **Category** | security |
+| **Severity** | info |
+| **Status** | open |
+| **File** | `roots/agents/invoker.py` |
+
+**Description:** Error messages in `AgentInvocationError` include the full remote response text, which could leak internal details if propagated to end users.
+
+**Recommendation:** Truncate or sanitize `response.text` in error messages. Log full response at DEBUG level.
+
+---
+
+### 2026-03-23-043
+| Field | Value |
+|-------|-------|
+| **Category** | testing |
+| **Severity** | info |
+| **Status** | open |
+| **File** | `test suite` |
+
+**Description:** Agent registry test suite: 52 tests passed in 0.44s. Full coverage of all 5 user stories.
+
+**Recommendation:** No action required.
+
+---
+
+### 2026-03-23-044
+| Field | Value |
+|-------|-------|
+| **Category** | compliance |
+| **Severity** | info |
+| **Status** | open |
+| **File** | `feature spec` |
+
+**Description:** All 5 user stories (US-001 through US-005) pass compliance review. All 24 acceptance criteria are met. No scope creep. No TODO comments or placeholder implementations. Implementation closely follows spec including implementation hints.
+
+**Recommendation:** No action required.
+
+---
+
 ### 2026-03-23-001
 | Field | Value |
 |-------|-------|

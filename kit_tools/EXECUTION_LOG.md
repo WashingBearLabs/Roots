@@ -118,3 +118,33 @@
 - Learnings: Advisory locks are session-scoped in PostgreSQL — must pin the connection that acquires the lock (store in _lock_connections dict) so the lock persists until explicitly released; pg_try_advisory_lock(hashtext(run_id)) doesn't care about table existence — must check run exists first to match SQLite behavior of returning False for nonexistent runs; Advisory locks auto-release on connection close, but the run_locks tracking table entry persists — crash recovery requires cleaning stale tracking entries; Parameterized pytest fixtures with pytest.skip() inside the fixture body work cleanly for conditional backend availability; All history, checkpoint, escalation, decision, retry, and webhook methods were already implemented in postgres.py from US-008 — US-009 only needed advisory lock refactoring and parameterized tests; Verifier note: Implementation is solid and complete. All methods mirror the SQLite backend with asyncpg queries. Advisory locking uses session-scoped pg_try_advisory_lock with a run_locks tracking table for check_run_lock visibility. Connection pinning ensures locks stay held. Parameterized test fixture is well-designed with proper cleanup (TRUNCATE CASCADE). All tests pass for SQLite; PostgreSQL tests skip cleanly without errors.
 - Committed: feat(storage-backend): US-009 - PostgreSQL Backend — History, Locking, and Remaining Methods
 
+### US-001: Agent Registration Models (Attempt 1) — PASS
+- Completed: 2026-03-24T04:22:57Z
+- Verified by: independent verifier session
+- Learnings: Pydantic model_config with arbitrary_types_allowed=True is needed for Callable fields; Project uses StrEnum, from __future__ import annotations, and TYPE_CHECKING pattern consistently; Verifier note: Clean implementation matching the spec exactly. All fields, types, defaults, and validation logic are correct. Tests are thorough with good coverage of edge cases.
+- Committed: feat(agent-registry): US-001 - Agent Registration Models
+
+### US-002: Agent Registry (Attempt 1) — PASS
+- Completed: 2026-03-24T04:36:35Z
+- Verified by: independent verifier session
+- Learnings: Verifier note: Clean implementation. Registry is straightforward with correct method signatures matching the spec. Types module provides proper validation (LOCAL requires callable, REMOTE requires callback_url). No scope creep or extraneous changes.
+- Committed: feat(agent-registry): US-002 - Agent Registry
+
+### US-003: Local Callable Invocation (Attempt 1) — PASS
+- Completed: 2026-03-24T04:39:31Z
+- Verified by: independent verifier session
+- Learnings: inspect.iscoroutinefunction is preferred over asyncio.iscoroutinefunction (deprecated since Python 3.14); Pydantic Callable fields type-narrow to Callable | None — assert not None after registry lookup for type safety; Verifier note: Clean implementation matching the spec exactly. Code follows project conventions (Pydantic models, async-first design). AgentInvocationError and AgentNotFoundError have proper attributes. The full input dict passthrough pattern is correctly implemented. No scope creep or extraneous changes.
+- Committed: feat(agent-registry): US-003 - Local Callable Invocation
+
+### US-004: Remote HTTP Invocation (Attempt 1) — PASS
+- Completed: 2026-03-24T04:41:56Z
+- Verified by: independent verifier session
+- Learnings: httpx.MockTransport works well for testing async HTTP clients without real network calls; httpx.AsyncClient accepts a transport parameter for dependency injection in tests; ConnectError must be caught separately from HTTPStatusError and TimeoutException for distinct error messages; Verifier note: Clean implementation. All acceptance criteria are met. The code follows the implementation hints closely: shared httpx.AsyncClient via constructor injection, proper error handling for timeout/connection/HTTP errors, and model_dump(mode='json') for the request body. All tests pass with no regressions.
+- Committed: feat(agent-registry): US-004 - Remote HTTP Invocation
+
+### US-005: Input/Output Schema Validation (Attempt 1) — PASS
+- Completed: 2026-03-24T04:45:09Z
+- Verified by: independent verifier session
+- Learnings: jsonschema.Draft7Validator.iter_errors collects all validation errors at once, avoiding the need to catch and re-raise ValidationError; AgentSchemaValidationError inherits from AgentInvocationError so the orchestrator can catch it as a subtype for escalation handling; Verifier note: Clean implementation. AgentSchemaValidationError properly inherits from AgentInvocationError for orchestrator escalation. Uses Draft7Validator with iter_errors for comprehensive validation. Validation errors include path, message, and validator type. No regressions — full suite passes (325 passed, 80 skipped).
+- Committed: feat(agent-registry): US-005 - Input/Output Schema Validation
+
