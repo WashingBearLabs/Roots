@@ -142,12 +142,12 @@ The decision engine evaluates decision nodes across all four modes: deterministi
 - Add `escalated` (bool, default False) and `ai_recommendation` (optional AIDecisionResponse) to `DecisionResult`
 
 **Acceptance Criteria:**
-- [ ] AI modes call LiteLLM with correct prompt and tool definition
-- [ ] Response is validated — edge target must be in defined edges
-- [ ] Invalid edge target raises DecisionEvaluationError
-- [ ] Confidence below threshold sets `escalated=True` on result
-- [ ] Confidence above threshold returns decision normally
-- [ ] Tests mock `litellm.acompletion` (no real API calls)
+- [x] AI modes call LiteLLM with correct prompt and tool definition
+- [x] Response is validated — edge target must be in defined edges
+- [x] Invalid edge target raises DecisionEvaluationError
+- [x] Confidence below threshold sets `escalated=True` on result
+- [x] Confidence above threshold returns decision normally
+- [x] Tests mock `litellm.acompletion` (no real API calls)
 
 ### US-005: AI Checkpoint Mode
 
