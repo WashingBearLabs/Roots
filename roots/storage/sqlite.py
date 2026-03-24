@@ -626,7 +626,7 @@ class SqliteBackend(StorageBackend):
         events: list[str],
         secret: str | None = None,
     ) -> WebhookRecord:
-        wh_id = str(uuid4())
+        wh_id = f"wh-{uuid4()}"
         now = utcnow()
         await self.db.execute(
             "INSERT INTO webhooks (id, url, events_json, secret, created_at) "
@@ -662,7 +662,21 @@ class SqliteBackend(StorageBackend):
         self, event_type: str
     ) -> list[WebhookRecord]:
         all_hooks = await self.list_webhooks()
-        return [wh for wh in all_hooks if event_type in wh.events]
+        matched: list[WebhookRecord] = []
+        for wh in all_hooks:
+            for pattern in wh.events:
+                if pattern == "*":
+                    matched.append(wh)
+                    break
+                if pattern.endswith(".*"):
+                    prefix = pattern[:-1]  # e.g. "roots.run."
+                    if event_type.startswith(prefix):
+                        matched.append(wh)
+                        break
+                elif pattern == event_type:
+                    matched.append(wh)
+                    break
+        return matched
 
     async def delete_webhook(self, webhook_id: str) -> bool:
         cursor = await self.db.execute(
