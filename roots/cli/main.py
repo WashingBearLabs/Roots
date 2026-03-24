@@ -5,8 +5,10 @@ from __future__ import annotations
 from typing import Optional
 
 import typer
+import uvicorn
 
 from roots import Roots, __version__
+from roots.api.app import create_app
 from roots.storage.sqlite import SqliteBackend
 from roots.storage.postgres import PostgresBackend
 
@@ -69,9 +71,34 @@ def create_roots_from_options(storage: str) -> Roots:
 
 
 @app.command()
-def serve(ctx: typer.Context) -> None:
+def serve(
+    ctx: typer.Context,
+    host: str = typer.Option(
+        "0.0.0.0",
+        help="Host to bind the server to.",
+    ),
+    port: int = typer.Option(
+        8200,
+        help="Port to listen on.",
+    ),
+    reload: bool = typer.Option(
+        False,
+        help="Enable auto-reload for development.",
+    ),
+) -> None:
     """Start the Roots HTTP API server."""
-    typer.echo("serve command (not yet implemented)")
+    storage = ctx.obj["storage"]
+    roots_instance = create_roots_from_options(storage)
+
+    app_instance = create_app(roots_instance)
+
+    backend_label = storage if not _is_postgres_dsn(storage) else "PostgreSQL"
+    typer.echo(f"Roots server starting...")
+    typer.echo(f"  URL:     http://{host}:{port}")
+    typer.echo(f"  Storage: {backend_label}")
+    typer.echo("")
+
+    uvicorn.run(app_instance, host=host, port=port, log_level="info", reload=reload)
 
 
 @app.command()

@@ -1,14 +1,26 @@
-"""Tests for CLI Scaffolding (US-001)."""
+"""Tests for CLI (US-001 scaffolding + US-002 serve command)."""
 
 from __future__ import annotations
 
 import pytest
 from typer.testing import CliRunner
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from roots.cli.main import app, _is_postgres_dsn, _create_roots_from_options
 
 runner = CliRunner()
+
+
+def _mock_serve():
+    """Return stacked patches that mock create_roots_from_options and uvicorn.run."""
+    mock_roots = MagicMock()
+    return (
+        patch("roots.cli.main.create_roots_from_options", return_value=mock_roots),
+        patch("roots.cli.main.uvicorn.run"),
+    )
+
+
+# --- US-001: CLI Scaffolding ---
 
 
 def test_help_shows_all_subcommands():
@@ -28,22 +40,28 @@ def test_version_flag():
 
 def test_storage_option_default():
     """--storage defaults to roots.db."""
-    result = runner.invoke(app, ["serve"])
-    assert result.exit_code == 0
+    p1, p2 = _mock_serve()
+    with p1, p2:
+        result = runner.invoke(app, ["serve"])
+        assert result.exit_code == 0
 
 
 def test_verbose_option():
     """-v / --verbose is accepted."""
-    result = runner.invoke(app, ["--verbose", "serve"])
-    assert result.exit_code == 0
-    result = runner.invoke(app, ["-v", "serve"])
-    assert result.exit_code == 0
+    p1, p2 = _mock_serve()
+    with p1, p2:
+        result = runner.invoke(app, ["--verbose", "serve"])
+        assert result.exit_code == 0
+        result = runner.invoke(app, ["-v", "serve"])
+        assert result.exit_code == 0
 
 
 def test_storage_option_custom():
     """--storage accepts custom paths."""
-    result = runner.invoke(app, ["--storage", "/tmp/custom.db", "serve"])
-    assert result.exit_code == 0
+    p1, p2 = _mock_serve()
+    with p1, p2:
+        result = runner.invoke(app, ["--storage", "/tmp/custom.db", "serve"])
+        assert result.exit_code == 0
 
 
 def test_subcommand_help_serve():
@@ -94,3 +112,121 @@ async def test_create_roots_postgres_dsn():
         mock_cls.assert_called_once_with("postgresql://localhost/roots")
         mock_backend.initialize.assert_awaited_once()
         await roots.close()
+
+
+# --- US-002: roots serve Command ---
+
+
+def test_serve_starts_uvicorn_with_defaults():
+    """serve calls uvicorn.run with default host/port."""
+    mock_roots = MagicMock()
+    mock_app = MagicMock()
+    with (
+        patch("roots.cli.main.create_roots_from_options", return_value=mock_roots),
+        patch("roots.cli.main.uvicorn.run") as mock_uvicorn,
+        patch("roots.cli.main.create_app", return_value=mock_app),
+    ):
+        result = runner.invoke(app, ["serve"])
+        assert result.exit_code == 0
+        mock_uvicorn.assert_called_once_with(
+            mock_app, host="0.0.0.0", port=8200, log_level="info", reload=False,
+        )
+
+
+def test_serve_custom_host_port():
+    """serve accepts --host and --port options."""
+    mock_roots = MagicMock()
+    mock_app = MagicMock()
+    with (
+        patch("roots.cli.main.create_roots_from_options", return_value=mock_roots),
+        patch("roots.cli.main.uvicorn.run") as mock_uvicorn,
+        patch("roots.cli.main.create_app", return_value=mock_app),
+    ):
+        result = runner.invoke(app, ["serve", "--host", "127.0.0.1", "--port", "9000"])
+        assert result.exit_code == 0
+        mock_uvicorn.assert_called_once_with(
+            mock_app, host="127.0.0.1", port=9000, log_level="info", reload=False,
+        )
+
+
+def test_serve_reload_flag():
+    """serve accepts --reload flag."""
+    mock_roots = MagicMock()
+    mock_app = MagicMock()
+    with (
+        patch("roots.cli.main.create_roots_from_options", return_value=mock_roots),
+        patch("roots.cli.main.uvicorn.run") as mock_uvicorn,
+        patch("roots.cli.main.create_app", return_value=mock_app),
+    ):
+        result = runner.invoke(app, ["serve", "--reload"])
+        assert result.exit_code == 0
+        mock_uvicorn.assert_called_once_with(
+            mock_app, host="0.0.0.0", port=8200, log_level="info", reload=True,
+        )
+
+
+def test_serve_banner_shows_url_and_storage():
+    """serve prints startup banner with URL and storage backend."""
+    mock_roots = MagicMock()
+    with (
+        patch("roots.cli.main.create_roots_from_options", return_value=mock_roots),
+        patch("roots.cli.main.uvicorn.run"),
+    ):
+        result = runner.invoke(app, ["serve", "--host", "127.0.0.1", "--port", "9000"])
+        assert result.exit_code == 0
+        assert "http://127.0.0.1:9000" in result.output
+        assert "roots.db" in result.output
+
+
+def test_serve_banner_storage_custom():
+    """serve banner shows custom storage path."""
+    mock_roots = MagicMock()
+    with (
+        patch("roots.cli.main.create_roots_from_options", return_value=mock_roots),
+        patch("roots.cli.main.uvicorn.run"),
+    ):
+        result = runner.invoke(app, ["--storage", "/data/my.db", "serve"])
+        assert result.exit_code == 0
+        assert "/data/my.db" in result.output
+
+
+def test_serve_banner_postgres_label():
+    """serve banner shows 'PostgreSQL' for postgres DSN."""
+    mock_roots = MagicMock()
+    with (
+        patch("roots.cli.main.create_roots_from_options", return_value=mock_roots),
+        patch("roots.cli.main.uvicorn.run"),
+    ):
+        result = runner.invoke(
+            app, ["--storage", "postgresql://localhost/roots", "serve"]
+        )
+        assert result.exit_code == 0
+        assert "PostgreSQL" in result.output
+
+
+def test_serve_configures_storage():
+    """serve passes --storage option to create_roots_from_options."""
+    mock_roots = MagicMock()
+    with (
+        patch(
+            "roots.cli.main.create_roots_from_options", return_value=mock_roots,
+        ) as mock_create,
+        patch("roots.cli.main.uvicorn.run"),
+    ):
+        result = runner.invoke(app, ["--storage", "/tmp/test.db", "serve"])
+        assert result.exit_code == 0
+        mock_create.assert_called_once_with("/tmp/test.db")
+
+
+def test_serve_creates_app_with_roots():
+    """serve passes roots instance to create_app."""
+    mock_roots = MagicMock()
+    mock_app = MagicMock()
+    with (
+        patch("roots.cli.main.create_roots_from_options", return_value=mock_roots),
+        patch("roots.cli.main.uvicorn.run"),
+        patch("roots.cli.main.create_app", return_value=mock_app) as mock_create_app,
+    ):
+        result = runner.invoke(app, ["serve"])
+        assert result.exit_code == 0
+        mock_create_app.assert_called_once_with(mock_roots)
