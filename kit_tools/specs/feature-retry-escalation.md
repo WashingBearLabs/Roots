@@ -59,16 +59,16 @@ Retry and escalation extend the orchestrator with production-critical error hand
   - For `agent_pool` first_pass mode: retry is per-agent attempt. If agent A fails and is retried, try A again. If A exhausts retries, move to agent B.
 
 **Acceptance Criteria:**
-- [ ] Retry state is persisted to storage before each attempt
-- [ ] Fixed backoff uses constant delay
-- [ ] Linear backoff increases linearly with attempt number
-- [ ] Exponential backoff doubles each attempt
-- [ ] `roots.node.retrying` event emitted on each retry
-- [ ] Successful execution clears retry state
-- [ ] Backoff uses `asyncio.sleep` (non-blocking)
-- [ ] Non-retryable errors (AgentSchemaValidationError, AgentNotFoundError) skip retry and re-raise immediately
-- [ ] Retry wraps individual agents in pools, not the entire pool
-- [ ] Tests verify all three backoff strategies, state persistence, and error classification
+- [x] Retry state is persisted to storage before each attempt
+- [x] Fixed backoff uses constant delay
+- [x] Linear backoff increases linearly with attempt number
+- [x] Exponential backoff doubles each attempt
+- [x] `roots.node.retrying` event emitted on each retry
+- [x] Successful execution clears retry state
+- [x] Backoff uses `asyncio.sleep` (non-blocking)
+- [x] Non-retryable errors (AgentSchemaValidationError, AgentNotFoundError) skip retry and re-raise immediately
+- [x] Retry wraps individual agents in pools, not the entire pool
+- [x] Tests verify all three backoff strategies, state persistence, and error classification
 
 ### US-002: Retry Exhaustion — Fail Mode
 
