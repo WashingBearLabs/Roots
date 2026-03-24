@@ -58,12 +58,12 @@ The agent registry maps agent names to invocation strategies and provides a unif
 - The registry is in-memory but can be persisted to storage backend by the orchestrator for standalone mode
 
 **Acceptance Criteria:**
-- [ ] Agents can be registered and looked up by name
-- [ ] Duplicate registration raises ValueError
-- [ ] `list()` returns all registered agents
-- [ ] `deregister` removes agent and returns True, or False if not found
-- [ ] `register_local` convenience method works correctly
-- [ ] Tests cover register, lookup, list, deregister, duplicate handling
+- [x] Agents can be registered and looked up by name
+- [x] Duplicate registration raises ValueError
+- [x] `list()` returns all registered agents
+- [x] `deregister` removes agent and returns True, or False if not found
+- [x] `register_local` convenience method works correctly
+- [x] Tests cover register, lookup, list, deregister, duplicate handling
 
 ### US-003: Local Callable Invocation
 
