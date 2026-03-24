@@ -27,7 +27,7 @@ from roots.core.schema import (
 from roots.core.state_machine import RunStatus
 from roots.events.emitter import EventEmitter
 from roots.events.types import EventEnvelope, EventType, create_event
-from roots.core.retry import RetryExhaustedError, execute_with_retry
+from roots.core.retry import RetryExhaustedError, RetryRoutedError, execute_with_retry
 from roots.storage.base import RunRecord, StorageBackend
 
 logger = logging.getLogger(__name__)
@@ -142,6 +142,35 @@ class ProcessRunner:
 
             try:
                 output = await self._dispatch_node(node, state)
+            except RetryRoutedError as exc:
+                # Retry exhaustion with on_exhaustion=route:
+                # mark node failed, route to fallback edge, keep running
+                await self._storage.append_history_event(
+                    self.run_id, "failed", node.id,
+                    {"error": exc.last_error, "attempts": exc.max_attempts},
+                )
+                self._event_emitter.emit(
+                    create_event(
+                        EventType.NODE_FAILED,
+                        run_id=self.run_id,
+                        process_id=run.process_id,
+                        node_id=node.id,
+                        node_type=node.type.value,
+                        metadata={
+                            "error": exc.last_error,
+                            "attempts": exc.max_attempts,
+                            "fallback": True,
+                            "fallback_edge": exc.fallback_edge,
+                        },
+                    )
+                )
+                await self._storage.update_run_atomically(
+                    self.run_id,
+                    work_item_state=state,
+                    status=RunStatus.RUNNING,
+                    current_node_id=exc.fallback_edge,
+                )
+                return True
             except RetryExhaustedError as exc:
                 # Retry exhaustion with on_exhaustion=fail:
                 # mark node failed, set run to failed, emit events

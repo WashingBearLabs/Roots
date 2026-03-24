@@ -30,6 +30,22 @@ class RetryExhaustedError(Exception):
         )
 
 
+class RetryRoutedError(Exception):
+    """Raised when all retry attempts are exhausted with on_exhaustion=route."""
+
+    def __init__(
+        self, node_id: str, max_attempts: int, last_error: str, fallback_edge: str
+    ) -> None:
+        self.node_id = node_id
+        self.max_attempts = max_attempts
+        self.last_error = last_error
+        self.fallback_edge = fallback_edge
+        super().__init__(
+            f"Node '{node_id}' exhausted {max_attempts} retry attempts, "
+            f"routing to fallback '{fallback_edge}': {last_error}"
+        )
+
+
 def is_retryable(error: Exception) -> bool:
     """Check whether an error is retryable.
 
@@ -104,13 +120,18 @@ async def execute_with_retry(
                     run_id, node.id, last_error_msg
                 )
                 # Check on_exhaustion mode
-                if retry_config.on_exhaustion == OnExhaustion.FAIL:
-                    raise RetryExhaustedError(
+                if retry_config.on_exhaustion == OnExhaustion.ROUTE:
+                    raise RetryRoutedError(
                         node_id=node.id,
                         max_attempts=max_attempts,
                         last_error=last_error_msg,
+                        fallback_edge=retry_config.fallback_edge or "",
                     )
-                raise
+                raise RetryExhaustedError(
+                    node_id=node.id,
+                    max_attempts=max_attempts,
+                    last_error=last_error_msg,
+                )
 
             # Compute backoff and wait
             delay = compute_backoff(
