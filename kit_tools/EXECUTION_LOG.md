@@ -418,3 +418,33 @@
 - Learnings: Typer sub-app with invoke_without_command=True allows both `roots agents` (list) and `roots agents health` (subcommand) patterns; Rich Console and Table work well inside Typer CLI runner tests — output is captured as plain text; Agent storage returns list[dict[str, Any]] — agents are stored as JSON config blobs, not typed dataclasses; httpx.AsyncClient with 5s timeout follows the same pattern used in the API agents health endpoint; Verifier note: Implementation is solid. All acceptance criteria are fully met. The code uses rich.table.Table for formatted output, proper async backends with cleanup, httpx for health checks, and comprehensive test coverage with mocked backends. No regressions detected.
 - Committed: feat(cli): US-005 - `roots status` and `roots agents` Commands
 
+### US-001: MCP Agent Type and Registration Model (Attempt 1) — PASS
+- Completed: 2026-03-24T09:10:35Z
+- Verified by: independent verifier session
+- Learnings: MCP validation uses has_url == has_cmd idiom to reject both-present and neither-present in a single check; Pydantic model_validator(mode='after') is the established pattern for cross-field validation in this codebase; Verifier note: Clean implementation. The has_url == has_cmd idiom is an elegant XOR-complement check. Error messages match the spec exactly. No regressions in the full test suite (871 passed). Only 2 files changed, well-scoped to the story.
+- Committed: feat(mcp-invocation): US-001 - MCP Agent Type and Registration Model
+
+### US-002: URL-Based MCP Connection and Tool Discovery (Attempt 1) — PASS
+- Completed: 2026-03-24T09:13:46Z
+- Verified by: independent verifier session
+- Learnings: MCP SDK v1.26.0 uses sse_client as async context manager returning (read_stream, write_stream) tuple, then ClientSession wraps those streams; ClientSession.list_tools() returns ListToolsResult with .tools list of Tool objects having name, description, inputSchema fields; ClientSession.call_tool(name, arguments) returns CallToolResult with .content list and .isError bool; sse_client and ClientSession must be manually entered/exited as async context managers when not using 'async with' directly — store cleanup refs for disconnect; Verifier note: Clean implementation. MCPGateway class provides all four required methods (connect_url, discover_tools, call_tool, disconnect) plus a close() for bulk cleanup. Connection caching uses a simple url->connection dict. Error handling consistently wraps in AgentInvocationError with the original exception preserved. Tests are thorough with 14 cases covering happy paths, edge cases, and error conditions.
+- Committed: feat(mcp-invocation): US-002 - URL-Based MCP Connection and Tool Discovery
+
+### US-003: Command-Based MCP Subprocess Lifecycle (Attempt 1) — PASS
+- Completed: 2026-03-24T09:19:03Z
+- Verified by: independent verifier session
+- Learnings: MCP SDK's stdio_client takes StdioServerParameters(command=str, args=list[str]) — command is the executable, args are the remaining arguments; stdio_client is an async context manager yielding (read_stream, write_stream) — same pattern as sse_client, so ClientSession wraps identically; MCP SDK's built-in PROCESS_TERMINATION_TIMEOUT is 2 seconds; story required 5 seconds so explicit subprocess management was added alongside context manager cleanup; Command connections use a separate _command_connections dict keyed by joined command string, keeping URL and command namespaces independent; Verifier note: Implementation is clean and follows the same patterns as the existing URL-based connection code. One note: connect_command() does not populate the MCPConnection.process field — the subprocess is managed internally by mcp's stdio_client context manager. disconnect_command() handles this gracefully via the `if connection.process` guard, and subprocess cleanup happens through the context manager __aexit__. This is a reasonable design choice given the mcp library's API.
+- Committed: feat(mcp-invocation): US-003 - Command-Based MCP Subprocess Lifecycle
+
+### US-004: MCP Tool Invocation via AgentInvoker (Attempt 1) — PASS
+- Completed: 2026-03-24T09:22:37Z
+- Verified by: independent verifier session
+- Learnings: MCPGateway is injected as optional dependency into AgentInvoker — keeps existing local/remote paths unchanged; asyncio.wait_for wraps the gateway.call_tool coroutine to enforce timeout_seconds from registration; MCP error results (isError=True) are detected and raised as AgentInvocationError before mapping to AgentOutput; AgentInvocationError is re-raised without wrapping to preserve gateway-level error messages; work_item_state dict is passed directly as MCP tool arguments — MCP tools define their own input schema; Verifier note: Clean implementation. All 6 criteria are fully met. The code correctly extends AgentInvoker with _invoke_mcp, handles both URL and command-based MCP connections, maps state to arguments, wraps results in AgentOutput, enforces timeouts via asyncio.wait_for, and converts all error paths to AgentInvocationError. Test coverage is thorough with 9 dedicated MCP tests. Full test suite passes (905 passed, 80 skipped).
+- Committed: feat(mcp-invocation): US-004 - MCP Tool Invocation via AgentInvoker
+
+### US-005: MCP Agent Auto-Registration (Attempt 1) — PASS
+- Completed: 2026-03-24T09:26:13Z
+- Verified by: independent verifier session
+- Learnings: register_mcp_server lives on the Roots class (not AgentRegistry) since it needs both the gateway and registry; MCPGateway is now instantiated eagerly in Roots.__init__ and passed to AgentInvoker, enabling both auto-registration and invocation through the same gateway instance; Name sanitization uses re.sub(r'[^a-zA-Z0-9]', '_', tool_name) to replace all non-alphanumeric characters with underscores; Roots.close() now also closes the MCPGateway to clean up any connections established during auto-registration; Verifier note: Clean implementation. All acceptance criteria are met. The code properly validates mutual exclusivity of url/command parameters, sanitizes tool names, respects tool_filter, populates input schemas, and returns agent names. The AgentRegistration model in types.py has proper validation for MCP agents (requires mcp_tool_name and exactly one of mcp_server_url/mcp_server_command). The close() method properly cleans up MCP gateway connections.
+- Committed: feat(mcp-invocation): US-005 - MCP Agent Auto-Registration
+
