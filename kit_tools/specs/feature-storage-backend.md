@@ -231,11 +231,11 @@ The storage backend provides the persistence layer for all Roots state. It defin
 - Add parameterized test fixture: `@pytest.fixture(params=["sqlite", "postgres"])` that yields the appropriate backend. This way the same test suite runs against both backends.
 
 **Acceptance Criteria:**
-- [ ] All history, checkpoint, escalation, decision, retry, webhook methods work
-- [ ] Advisory lock acquisition and release work
-- [ ] Advisory locks auto-release on connection drop
-- [ ] Parameterized tests run same suite against both backends
-- [ ] PostgreSQL tests skip cleanly when no database available
+- [x] All history, checkpoint, escalation, decision, retry, webhook methods work
+- [x] Advisory lock acquisition and release work
+- [x] Advisory locks auto-release on connection drop
+- [x] Parameterized tests run same suite against both backends
+- [x] PostgreSQL tests skip cleanly when no database available
 
 ## Out of Scope
 
