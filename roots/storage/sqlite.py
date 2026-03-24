@@ -20,6 +20,7 @@ from roots.storage.base import (
     RetryState,
     RunRecord,
     StorageBackend,
+    StorageError,
     WebhookRecord,
 )
 
@@ -392,7 +393,12 @@ class SqliteBackend(StorageBackend):
         prompt: str,
         ai_recommendation: dict[str, Any] | None = None,
     ) -> str:
-        cp_id = str(uuid4())
+        existing = await self.get_pending_checkpoint(run_id)
+        if existing is not None:
+            raise StorageError(
+                f"Run {run_id} already has a pending checkpoint"
+            )
+        cp_id = f"ckpt-{uuid4()}"
         now = utcnow().isoformat()
         await self.db.execute(
             "INSERT INTO checkpoints "
@@ -457,7 +463,12 @@ class SqliteBackend(StorageBackend):
         reason: str,
         work_item_snapshot: dict[str, Any],
     ) -> str:
-        esc_id = str(uuid4())
+        existing = await self.get_pending_escalation(run_id)
+        if existing is not None:
+            raise StorageError(
+                f"Run {run_id} already has a pending escalation"
+            )
+        esc_id = f"esc-{uuid4()}"
         now = utcnow().isoformat()
         await self.db.execute(
             "INSERT INTO escalations "

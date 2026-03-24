@@ -10,6 +10,13 @@ from typing import Any
 from roots.core.schema import ProcessDefinition
 
 
+# --- Exceptions ---
+
+
+class StorageError(Exception):
+    """Raised when a storage operation violates a constraint."""
+
+
 # --- Data Models ---
 
 
