@@ -9,8 +9,8 @@
 
 > **TEMPLATE_INTENT:** Persistent record of code quality, security, and intent alignment findings from automated validation. Tracks findings across sessions with status tracking and archival.
 
-> Last updated: 2026-03-23
-> Updated by: Claude (validate-feature — orchestrator-engine)
+> Last updated: 2026-03-24
+> Updated by: Claude (validate-feature — retry-escalation)
 
 ---
 
@@ -36,6 +36,89 @@
 
 <!-- Newest findings at top. Each entry has a unique ID: YYYY-MM-DD-NNN -->
 <!-- Findings are added by /kit-tools:validate-feature -->
+
+### 2026-03-24 — Retry & Escalation Validation
+
+| ID | Category | Severity | File | Status |
+|----|----------|----------|------|--------|
+| 2026-03-24-001 | quality | warning | `roots/core/checkpoint.py` | open |
+| 2026-03-24-002 | quality | warning | `roots/core/orchestrator.py` | open |
+| 2026-03-24-003 | quality | warning | `roots/__init__.py` | open |
+| 2026-03-24-004 | quality | warning | `roots/__init__.py` | open |
+| 2026-03-24-005 | quality | warning | `roots/__init__.py` | open |
+| 2026-03-24-006 | quality | warning | `roots/core/orchestrator.py` | open |
+| 2026-03-24-007 | security | warning | `roots/events/webhooks.py` | open |
+| 2026-03-24-008 | security | warning | `roots/agents/invoker.py` | open |
+| 2026-03-24-009 | security | warning | `roots/events/sinks.py` | open |
+| 2026-03-24-010 | security | warning | `roots/storage/postgres.py` | open |
+| 2026-03-24-011 | security | warning | `roots/core/decision.py` | open |
+| 2026-03-24-012 | quality | info | `roots/core/orchestrator.py` | open |
+| 2026-03-24-013 | quality | info | `roots/core/retry.py` | open |
+| 2026-03-24-014 | quality | info | `roots/storage/base.py` | open |
+| 2026-03-24-015 | security | info | `roots/core/validator.py` | open |
+| 2026-03-24-016 | security | info | `roots/storage/postgres.py` | open |
+| 2026-03-24-017 | security | info | `roots/agents/invoker.py` | open |
+| 2026-03-24-018 | compliance | info | `feature spec` | open |
+| 2026-03-24-019 | testing | info | `test suite` | open |
+
+**2026-03-24-001** — `assert next_node is not None` at line 196 in `_resolve_escalation()` is used for runtime validation. Assertions are stripped under `python -O`, allowing `None` to pass through silently.
+> Recommendation: Replace with explicit `if next_node is None: raise ResolutionError(...)` check, consistent with other validation patterns in the same file.
+
+**2026-03-24-002** — `tick()` method (lines 67-264) is ~200 lines with 11 numbered steps, deeply nested try/except/finally blocks, and mixed concerns (locking, state transitions, event emission, error handling).
+> Recommendation: Extract step groups into focused private methods (e.g., `_acquire_and_load_run()`, `_execute_and_persist()`, `_handle_retry_routed()`).
+
+**2026-03-24-003** — `resolve_checkpoint()` method (lines 184-314) is ~130 lines with three near-identical code paths for approve/reject/redirect, each duplicating checkpoint/escalation resolution and event emission logic.
+> Recommendation: Extract shared resolve-record logic into a helper, or delegate to `checkpoint.resolve_pending()` which already implements this cleanly.
+
+**2026-03-24-004** — Lines 247 and 268 use raw string literals ("running", "failed") instead of `RunStatus` enum values. Inconsistent with `orchestrator.py` which correctly uses `RunStatus.RUNNING`/`RunStatus.FAILED`.
+> Recommendation: Import `RunStatus` and use enum values consistently.
+
+**2026-03-24-005** — `resolve_checkpoint()` duplicates resolution logic already present in `roots.core.checkpoint.resolve_pending()`. The two implementations have subtle differences (e.g., no redirect target validation on approve, different event metadata).
+> Recommendation: Refactor `Roots.resolve_checkpoint()` to delegate to `checkpoint.resolve_pending()` rather than re-implementing.
+
+**2026-03-24-006** — `EndNodeConfig` is re-imported inside `_resolve_next()` at line 305 despite already being imported at module scope (line 23).
+> Recommendation: Remove the local import on line 305.
+
+**2026-03-24-007** — Webhook HMAC signature sent as bare hex digest without algorithm prefix in `X-Roots-Signature` header (line 44). Webhook secrets stored in plaintext in both SQLite and PostgreSQL backends.
+> Recommendation: (1) Prefix header with `sha256=`. (2) Hash or encrypt webhook secrets at rest. (3) Document `hmac.compare_digest` usage for receivers.
+
+**2026-03-24-008** — `_invoke_remote` (lines 145-185) posts work item state to arbitrary `callback_url` with no URL validation or allowlist. SSRF risk via malicious registration pointing to internal services or cloud metadata endpoints. No response size limits.
+> Recommendation: Validate `callback_url` at registration, rejecting private/internal IPs. Set response size limits on httpx client.
+
+**2026-03-24-009** — `HttpSink` accepts arbitrary URL with no validation. Could be used for SSRF if URL is derived from user input. No TLS verification configuration.
+> Recommendation: Validate sink URL at construction time. Enforce HTTPS-only in production. Document that URLs should be treated as trusted configuration.
+
+**2026-03-24-010** — PostgreSQL DSN accepted as plain string with no protection against logging or exposure in error messages. `_lock_connections` dict has no upper bound, risking connection pool exhaustion.
+> Recommendation: Ensure DSN is never logged. Add maximum limit to `_lock_connections`. Document secure DSN sourcing.
+
+**2026-03-24-011** — Full work item state is sent to LLM providers in `build_decision_messages` (line 203) with no filtering or redaction. Configurable model name per-node could route LLM calls to unintended providers.
+> Recommendation: Add configurable field allowlist/blocklist for state sent to LLMs. Validate model string against approved list.
+
+**2026-03-24-012** — Lines 306 and 322 use fragile `getattr` chain to access edge target: `getattr(first_edge, "to_node", None) or getattr(first_edge, "target", None)`. Same pattern in `checkpoint.py`.
+> Recommendation: Add a uniform accessor method on edge types or create a helper function.
+
+**2026-03-24-013** — In `execute_with_retry()`, the `NODE_RETRYING` event reports `"attempt": current_attempt` which is the just-failed attempt, not the upcoming retry. Semantics could be clearer.
+> Recommendation: Add clarifying comment or rename field to `"failed_attempt"`.
+
+**2026-03-24-014** — `update_run_status()` abstract method accepts `status` as plain `str` rather than `RunStatus` enum. Cannot enforce valid status values at the type level.
+> Recommendation: Type the `status` parameter as `RunStatus` across the storage interface.
+
+**2026-03-24-015** — `load_process_yaml` uses `yaml.safe_load` (correct), but no file size limit check before `file_path.read_text()`. Large YAML file could cause memory exhaustion.
+> Recommendation: Add file size check before reading, rejecting files above ~1MB.
+
+**2026-03-24-016** — Parameterized queries used consistently in both postgres.py and sqlite.py. No SQL injection vulnerabilities found.
+> Recommendation: No action needed. Continue using parameterized queries.
+
+**2026-03-24-017** — Default `timeout_seconds` for remote agents is 300s (5 minutes). Combined with parallel pool execution, many long-running connections could accumulate.
+> Recommendation: Consider shorter default (30-60s). Add connection pool limits.
+
+**2026-03-24-018** — All 34 acceptance criteria across 5 user stories (US-001 through US-005) fully addressed. No scope creep detected. No TODO comments or placeholder implementations. Implementation aligns with feature spec goals and technical considerations.
+> Recommendation: No action required.
+
+**2026-03-24-019** — Retry & escalation test suite: 669 passed, 80 skipped (PostgreSQL — no `ROOTS_POSTGRES_DSN`), 0 failures in 2.94s. 36 warnings (expected unreachable-node warnings in validator/graph tests).
+> Recommendation: No action required.
+
+---
 
 ### 2026-03-23 — Orchestrator Engine Validation
 

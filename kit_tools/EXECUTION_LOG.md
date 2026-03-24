@@ -268,3 +268,33 @@
 - Learnings: Echo agent must return dict with 'output' and 'escalate' keys to match AgentOutput model — consistent with prior learnings; RunRecord uses 'work_item_state' field, not 'state'; The parallel-validation YAML has 9 nodes (not 10 as might be expected from the hint) — the gate decision node uses config edges rather than top-level edges per schema requirements; SqliteBackend requires explicit initialize() call before use — Roots constructor does not call it; Verifier note: Clean implementation. All files match the spec's implementation hints closely. Full test suite passes with no regressions (594 passed, 80 skipped). The example script runs successfully as a standalone program.
 - Committed: feat(orchestrator-engine): US-009 - Example Process YAML Files
 
+### US-001: Retry Execution with Backoff (Attempt 1) — PASS
+- Completed: 2026-03-24T06:48:24Z
+- Verified by: independent verifier session
+- Learnings: Storage already has get_retry_state/increment_retry/clear_retry methods and RetryState dataclass — no storage changes needed; EventEmitter dispatches to sinks via asyncio.create_task, so tests must call emitter.close() to flush pending tasks before asserting on events; AgentSchemaValidationError is a subclass of AgentInvocationError, so is_retryable must check for it BEFORE checking AgentInvocationError; Wrapping _invoke_pool_agent with execute_with_retry covers all pool modes (parallel, sequential, first_pass) since they all call _invoke_pool_agent; Verifier note: Implementation is clean and complete. All 10 acceptance criteria are fully met. Code follows project conventions. Tests are thorough with 33 passing tests covering unit and integration scenarios.
+- Committed: feat(retry-escalation): US-001 - Retry Execution with Backoff
+
+### US-002: Retry Exhaustion — Fail Mode (Attempt 1) — PASS
+- Completed: 2026-03-24T06:54:49Z
+- Verified by: independent verifier session
+- Learnings: AgentInvocationError wraps the original error message, so assertions on last_error should use 'in' rather than exact match; Default on_exhaustion is OnExhaustion.FAIL, so existing tests expecting raw RuntimeError on exhaustion needed updating; SqliteBackend uses list_history_events() not get_run_history() to retrieve run history; Verifier note: Implementation is solid. RetryExhaustedError cleanly separates the exhaustion-with-fail path from generic exceptions. The orchestrator catches it at the right level, persists failure state atomically, and emits both node-level and run-level failure events with error metadata. Both unit and integration tests thoroughly cover the exhaustion path. Code follows project conventions.
+- Committed: feat(retry-escalation): US-002 - Retry Exhaustion — Fail Mode
+
+### US-003: Retry Exhaustion — Route Mode (Attempt 1) — PASS
+- Completed: 2026-03-24T06:58:17Z
+- Verified by: independent verifier session
+- Learnings: RetryRoutedError follows the same pattern as RetryExhaustedError but carries fallback_edge for routing; RetryRoutedError must be caught BEFORE RetryExhaustedError in orchestrator since route mode previously fell through to a bare re-raise; The tick() method returns True on route fallback to continue execution from the fallback node; Verifier note: Implementation is clean and well-structured. RetryRoutedError is a distinct exception from RetryExhaustedError, caught before it in the handler chain. The orchestrator correctly marks the node as failed in history, emits the NODE_FAILED event with fallback metadata, sets current_node_id to the fallback target, keeps status RUNNING, and returns True to continue. All 37 existing tests plus 6 new route tests pass with no regressions.
+- Committed: feat(retry-escalation): US-003 - Retry Exhaustion — Route Mode
+
+### US-004: Escalation Triggers (Attempt 1) — PASS
+- Completed: 2026-03-24T07:04:43Z
+- Verified by: independent verifier session
+- Learnings: AgentSchemaValidationError raised inside an agent callable gets wrapped in AgentInvocationError by _invoke_local — to test schema validation escalation, register the agent with an output_schema and have the agent return non-conforming output so the invoker raises the error after _invoke_local returns; create_escalation_from_error sets run status to PAUSED and the tick loop also sets PAUSED via _escalated flag — double-write is redundant but harmless and keeps the function self-contained per spec; The _trigger_escalation method now delegates to create_escalation_from_error which handles storage, status update, and event emission in one call; Verifier note: Implementation is clean and well-structured. EscalationTrigger enum, create_escalation_from_error function, and orchestrator integration points all match the spec. The escalation.py module is minimal and focused. Integration in orchestrator.py follows the exact pattern specified: schema validation catches AgentSchemaValidationError, confidence uses DecisionResult.escalated, and agent explicit signal checks result.escalate after successful invocation. All 29 tests pass with real SQLite storage.
+- Committed: feat(retry-escalation): US-004 - Escalation Triggers
+
+### US-005: Checkpoint and Escalation Resolution (Attempt 1) — PASS
+- Completed: 2026-03-24T07:10:30Z
+- Verified by: independent verifier session
+- Learnings: When a confidence escalation creates both a checkpoint (with ai_recommendation) and an escalation record, resolve_pending must detect the escalation-type checkpoint and route to the escalation resolution path to resolve both records; CheckpointRecord has a checkpoint_type field ('planned' vs 'escalation') that distinguishes planned checkpoints from escalation-related checkpoints; Storage already has resolve_checkpoint and resolve_escalation methods that set status='resolved' and record resolution JSON; Verifier note: Implementation is clean and well-structured. The resolve_pending function correctly checks for pending checkpoint first, then escalation, matching the spec. The escalation-type checkpoint bridging logic (line 49-53) correctly handles the case where a checkpoint was created as part of an escalation flow. All 7 acceptance criteria are fully met with comprehensive test coverage.
+- Committed: feat(retry-escalation): US-005 - Checkpoint and Escalation Resolution
+
