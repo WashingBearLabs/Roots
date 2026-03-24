@@ -60,11 +60,11 @@ The HTTP API is a FastAPI server exposing the full Roots framework via REST endp
 - `GET /processes/{id}/validate`: validate without saving. Return `{valid: bool, errors: [str]}`.
 
 **Acceptance Criteria:**
-- [ ] Full CRUD lifecycle works
-- [ ] Validation endpoint returns detailed errors
-- [ ] 404 on non-existent process ID
-- [ ] 201 on create, 204 on delete
-- [ ] Tests cover CRUD lifecycle and validation
+- [x] Full CRUD lifecycle works
+- [x] Validation endpoint returns detailed errors
+- [x] 404 on non-existent process ID
+- [x] 201 on create, 204 on delete
+- [x] Tests cover CRUD lifecycle and validation
 
 ### US-003: Run CRUD Routes
 
