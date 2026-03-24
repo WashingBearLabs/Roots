@@ -44,11 +44,11 @@ The event system provides structured JSON event emission at all process lifecycl
 - Factory function `create_event(event_type, run_id, process_id, **kwargs) -> EventEnvelope` — sets timestamp to now, passes through optional fields
 
 **Acceptance Criteria:**
-- [ ] All 18 event types defined in enum
-- [ ] EventEnvelope model validates all fields
-- [ ] `create_event` factory produces valid envelopes with auto-timestamp
-- [ ] Envelope serializes to JSON cleanly (datetime as ISO string)
-- [ ] Tests verify event creation for each lifecycle category
+- [x] All 18 event types defined in enum
+- [x] EventEnvelope model validates all fields
+- [x] `create_event` factory produces valid envelopes with auto-timestamp
+- [x] Envelope serializes to JSON cleanly (datetime as ISO string)
+- [x] Tests verify event creation for each lifecycle category
 
 ### US-002: Event Emitter with Bounded Buffer
 
