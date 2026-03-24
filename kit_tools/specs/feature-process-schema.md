@@ -173,13 +173,13 @@ The process schema layer is the foundation of Roots. It defines the Pydantic v2 
 - Define `ProcessValidationError(Exception)`: `errors: list[str]`
 
 **Acceptance Criteria:**
-- [ ] Decision nodes with top-level outbound edges are rejected
-- [ ] Non-terminal nodes without outbound edges are flagged
-- [ ] Missing end nodes are flagged
-- [ ] Unreachable nodes produce warnings
-- [ ] Invalid fallback_edge references are caught
-- [ ] All errors returned together (not one at a time)
-- [ ] Tests cover each rule independently
+- [x] Decision nodes with top-level outbound edges are rejected
+- [x] Non-terminal nodes without outbound edges are flagged
+- [x] Missing end nodes are flagged
+- [x] Unreachable nodes produce warnings
+- [x] Invalid fallback_edge references are caught
+- [x] All errors returned together (not one at a time)
+- [x] Tests cover each rule independently
 
 ### US-008: Structural Validator — Fork/Join Pairing
 
