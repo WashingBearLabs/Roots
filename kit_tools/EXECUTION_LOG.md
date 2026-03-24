@@ -328,3 +328,57 @@
 - Learnings: Partial failure handling is centralized in _handle_join before the merge strategy logic — classify results into successes/failures first, then apply strategy-specific merging; When _join_metadata is None, it must not be passed as metadata= to create_event because EventEnvelope.metadata does not accept None — conditionally include the kwarg instead; The existing US-004 test test_collect_without_allow_partial_skips_failed needed updating to match US-005 semantics: allow_partial=False now raises OrchestrationError instead of silently skipping failed branches; Failed branch info uses { branch_id, entry_node, error_message } format and is stored in state['_failed_branches']; Verifier note: Implementation is clean and well-structured. The failure classification logic in _handle_join correctly handles all four scenarios (all success, partial with allow, partial without allow, all fail). The all-fail check precedes the allow_partial check, ensuring correct behavior. Both merge strategies (merge_all and collect) handle partial failures correctly. All 44 fork/join tests and 13 orchestrator tests pass.
 - Committed: feat(fork-join): US-005 - Partial Failure Handling
 
+### US-001: FastAPI Application Factory (Attempt 1) — PASS
+- Completed: 2026-03-24T07:49:44Z
+- Verified by: independent verifier session
+- Learnings: pytest-flask plugin intercepts fixtures named 'app' — rename to 'fastapi_app' to avoid conflict; CORS middleware with allow_origins=['*'] reflects the requesting Origin header rather than returning literal '*' — assert header presence, not exact value; Verifier note: Clean implementation matching all acceptance criteria. All 7 US-001 tests pass. Regression tests (test_webhooks.py) also pass (9/9). Code follows the implementation hints precisely: app factory pattern, dependency injection via get_roots, CORS with allow_all, 4 routers with correct prefixes, and correct endpoint responses.
+- Committed: feat(http-api): US-001 - FastAPI Application Factory
+
+### US-002: Process CRUD Routes (Attempt 1) — PASS
+- Completed: 2026-03-24T07:55:20Z
+- Verified by: independent verifier session
+- Learnings: get_roots dependency caused circular import when imported from app.py into routers — moved to roots/api/deps.py to break the cycle; parse_process_dict raises pydantic ValidationError on invalid input; _format_validation_errors converts to user-friendly strings; Storage save_process uses INSERT OR REPLACE — no separate update method needed, but created_at is not returned so we generate it at API layer; validate_structure returns structural errors (graph-level) after Pydantic schema validation passes; Verifier note: Implementation is clean and complete. All 15 US-002 tests pass, and the full suite (735 tests) shows no regressions. One minor test quality issue: test_validate_process_with_errors creates a valid process and asserts valid=True, never actually testing the error path of the validation endpoint. This doesn't fail the story since the implementation is correct and there is sufficient test coverage overall, but it's worth noting for future improvement.
+- Committed: feat(http-api): US-002 - Process CRUD Routes
+
+### US-003: Run CRUD Routes (Attempt 1) — PASS
+- Completed: 2026-03-24T07:58:51Z
+- Verified by: independent verifier session
+- Learnings: start_run returns a RunRecord with status 'pending' — the transition to 'running' happens inside execute_run, so the POST response reflects 'pending' before the background task kicks in; Background task GC prevention uses app.state._background_tasks set with add_done_callback(set.discard) pattern; Query param named 'status' conflicts with fastapi.status import — renamed to 'run_status' and passed as status= to storage.list_runs; Verifier note: Implementation is clean and follows the spec precisely. All CRUD operations are implemented with proper error handling (404, 409). Background task management uses the idiomatic asyncio pattern with done callbacks for cleanup. The query parameter for status filter uses 'run_status' to avoid shadowing the 'status' module import, which is a reasonable choice.
+- Committed: feat(http-api): US-003 - Run CRUD Routes
+
+### US-004: Run Lifecycle Routes (Attempt 1) — PASS
+- Completed: 2026-03-24T08:02:21Z
+- Verified by: independent verifier session
+- Learnings: Resume restarts execution via asyncio.create_task using the same GC-prevention pattern from create_run; InvalidTransitionError exposes current, target, and valid_targets attributes for building 409 detail messages; Resuming a run mid-execution may fail if current_node_id is None — the orchestrator expects a valid node to resume from; Verifier note: Implementation is clean and follows existing patterns from the cancel_run endpoint. State machine transitions are properly validated. 409 error messages match the spec format. Resume correctly restarts background execution via asyncio.create_task. All tests pass.
+- Committed: feat(http-api): US-004 - Run Lifecycle Routes
+
+### US-005: Checkpoint and Escalation Resolution Routes (Attempt 1) — PASS
+- Completed: 2026-03-24T08:06:31Z
+- Verified by: independent verifier session
+- Learnings: Checkpoint router uses prefix='/runs' with tags=['checkpoints'] since endpoints are nested under /runs/{run_id}/checkpoint; resolve_checkpoint on Roots class handles all three decisions (approve/reject/redirect) including state transitions and event emission — the router validates inputs then delegates; Escalation records use 'trigger_type' and 'reason' fields mapped to 'type' and 'prompt' in the checkpoint response model for a unified API; Verifier note: Implementation is clean and complete. All 8 acceptance criteria are met. Router is properly registered in app.py. Models follow existing conventions. Background task management uses the same pattern as run routes. Minor deprecation warning for HTTP_422_UNPROCESSABLE_ENTITY (should be HTTP_422_UNPROCESSABLE_CONTENT) but this is non-blocking.
+- Committed: feat(http-api): US-005 - Checkpoint and Escalation Resolution Routes
+
+### US-006: Agent Registry Routes (Attempt 1) — PASS
+- Completed: 2026-03-24T08:10:34Z
+- Verified by: independent verifier session
+- Learnings: AgentRegistry already existed with register/deregister/get/list methods — the router wraps these with HTTP endpoints; Storage layer already had save_agent/get_agent/list_agents/delete_agent — used INSERT OR REPLACE, created_at generated at API layer; The agents router stub was already created and registered in app.py — only needed to add endpoint implementations; Health check for remote agents uses httpx.AsyncClient with 5s timeout; unreachable URLs return unhealthy with error details; Local agents always return healthy status without any network call; Verifier note: Implementation is clean and complete. All four endpoints (GET /agents, POST /agents, DELETE /agents/{name}, GET /agents/{name}/health) are implemented per spec. Models are well-defined in models.py. Storage persistence is verified. Test coverage is thorough with both happy and error paths.
+- Committed: feat(http-api): US-006 - Agent Registry Routes
+
+### US-007: Webhook Routes (Attempt 1) — PASS
+- Completed: 2026-03-24T08:13:55Z
+- Verified by: independent verifier session
+- Learnings: Webhook router stub and app.py registration were already in place — only needed to add endpoint implementations; Storage layer already had create_webhook/list_webhooks/delete_webhook/list_webhooks_by_pattern — no storage changes needed; WebhookRecord dataclass in storage/base.py provides id, url, events, secret, created_at fields; Test ping uses httpx.AsyncClient with 10s timeout; mocked in tests via patch on the module-level httpx import; Verifier note: Implementation is clean and follows project conventions. Routes use dependency injection via get_roots, models are in the shared models.py, and the router is properly structured with prefix/tags. The test ping endpoint correctly iterates webhooks to find by ID (slightly inefficient but functionally correct). All tests pass.
+- Committed: feat(http-api): US-007 - Webhook Routes
+
+### US-008: Graph Data Read Endpoints (Attempt 1) — PASS
+- Completed: 2026-03-24T08:18:40Z
+- Verified by: independent verifier session
+- Learnings: Graph router uses empty prefix with full paths since endpoints span /processes and /runs prefixes; Process graph endpoint uses 1 storage query (get_process), run graph delegates to roots.get_run_graph which uses 3 queries internally; OrchestrationError from get_run_graph is caught and converted to 404 in the run graph endpoint; GraphEdgeResponse uses from_node/to_node field names (not from/to) since 'from' is a Python reserved word; Verifier note: Clean implementation. Process graph endpoint uses 1 storage query, run graph delegates to get_run_graph which uses 3 queries (load run, load process, load history). The hint said max 2 per endpoint, but the run graph query count is in the core library not the route layer. Tests are thorough with good coverage of both happy paths and error cases.
+- Committed: feat(http-api): US-008 - Graph Data Read Endpoints
+
+### US-009: Graph Mutation Endpoints (Attempt 1) — PASS
+- Completed: 2026-03-24T08:23:47Z
+- Verified by: independent verifier session
+- Learnings: EdgeDefinition uses Field(alias='from') so construction requires model_validate with dict using 'from' key, not from_node parameter; validate_structure checks that non-end/non-decision/non-join nodes have outbound edges, so adding disconnected agent nodes always fails validation; NodeDefinition.validate_node is a @model_validator, not a callable method — to re-validate after mutation, reconstruct the node via constructor; ProcessDefinition._node_map must be manually updated after mutating process.nodes since it's computed in model_validator; Verifier note: Implementation is clean and follows the spec closely. All mutation endpoints have proper rollback on validation failure, correct HTTP status codes (201 for creates, 204 for deletes, 200 for updates), and 404 handling. Request/response models in models.py are well-structured. All 812 tests pass with 0 failures.
+- Committed: feat(http-api): US-009 - Graph Mutation Endpoints
+

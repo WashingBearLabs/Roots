@@ -10,7 +10,7 @@
 > **TEMPLATE_INTENT:** Persistent record of code quality, security, and intent alignment findings from automated validation. Tracks findings across sessions with status tracking and archival.
 
 > Last updated: 2026-03-24
-> Updated by: Claude (validate-feature — fork-join)
+> Updated by: Claude (validate-feature — http-api)
 
 ---
 
@@ -36,6 +36,105 @@
 
 <!-- Newest findings at top. Each entry has a unique ID: YYYY-MM-DD-NNN -->
 <!-- Findings are added by /kit-tools:validate-feature -->
+
+### 2026-03-24 — HTTP API Validation
+
+| ID | Category | Severity | File | Status |
+|----|----------|----------|------|--------|
+| 2026-03-24-038 | security | warning | `roots/api/app.py` | resolved |
+| 2026-03-24-039 | security | warning | `roots/api/models.py` | open |
+| 2026-03-24-040 | security | warning | `roots/api/routers/agents.py` | open |
+| 2026-03-24-041 | security | warning | `roots/api/routers/webhooks.py` | open |
+| 2026-03-24-042 | security | warning | `roots/api/models.py` | open |
+| 2026-03-24-043 | security | warning | `roots/api/routers/agents.py` | open |
+| 2026-03-24-044 | security | warning | `roots/events/webhooks.py` | open |
+| 2026-03-24-045 | quality | warning | `roots/api/app.py` | open |
+| 2026-03-24-046 | quality | warning | `roots/api/routers/agents.py` | open |
+| 2026-03-24-047 | quality | warning | `roots/api/routers/agents.py` | open |
+| 2026-03-24-048 | quality | warning | `roots/api/routers/checkpoints.py` | open |
+| 2026-03-24-049 | quality | warning | `roots/api/routers/checkpoints.py` | open |
+| 2026-03-24-050 | quality | warning | `roots/api/routers/runs.py` | open |
+| 2026-03-24-051 | quality | warning | `roots/api/routers/graph.py` | open |
+| 2026-03-24-052 | quality | warning | `roots/api/routers/processes.py` | open |
+| 2026-03-24-053 | quality | warning | `roots/api/routers/webhooks.py` | open |
+| 2026-03-24-054 | quality | info | `roots/api/routers/webhooks.py` | open |
+| 2026-03-24-055 | quality | info | `roots/api/models.py` | open |
+| 2026-03-24-056 | quality | info | `tests/` | open |
+| 2026-03-24-057 | security | info | `roots/api/app.py` | open |
+| 2026-03-24-058 | security | info | `roots/api/routers/runs.py` | open |
+| 2026-03-24-059 | compliance | info | `roots/api/routers/runs.py` | open |
+| 2026-03-24-060 | testing | info | `test suite` | open |
+
+**2026-03-24-038** — CORS misconfiguration: `allow_credentials=True` combined with `allow_origins=["*"]`. Credentials flag is meaningless without auth and creates a dangerous default if auth is added later.
+> Recommendation: Set `allow_credentials=False`. **RESOLVED:** Fixed in this validation pass.
+
+**2026-03-24-039** — `WebhookResponse` model includes the `secret` field, exposing HMAC signing secrets in list and create API responses.
+> Recommendation: Exclude `secret` from `WebhookResponse` or mask it. Return secret only on creation via a separate response model.
+
+**2026-03-24-040** — SSRF risk: `callback_url` in agent registration is not validated. Could target internal services or cloud metadata endpoints.
+> Recommendation: Validate callback URLs at registration time. Block private/internal IP ranges and metadata endpoints.
+
+**2026-03-24-041** — SSRF risk: webhook URLs not validated at registration. `POST /webhooks/{id}/test` makes outbound requests to user-supplied URLs.
+> Recommendation: Apply URL validation at registration. Block private/internal addresses.
+
+**2026-03-24-042** — No request body size limits on `dict[str, Any]` fields in `ProcessCreateRequest` and `RunCreateRequest`. Large payloads could exhaust server memory.
+> Recommendation: Configure max request body size in ASGI server or add middleware.
+
+**2026-03-24-043** — Agent health check error response includes raw `str(exc)` which could leak internal details (DNS failures, internal IPs).
+> Recommendation: Return generic error message in API response, log full exception server-side.
+
+**2026-03-24-044** — Webhook HMAC signatures lack timestamp/nonce, enabling replay attacks on captured deliveries.
+> Recommendation: Include timestamp header in signed payload. Document replay rejection window for receivers.
+
+**2026-03-24-045** — Version string `"0.1.0"` duplicated in `FastAPI()` constructor and root endpoint response.
+> Recommendation: Extract to module-level constant `APP_VERSION`.
+
+**2026-03-24-046** — Router accesses private `roots._agent_registry` directly in multiple places, coupling API layer to internal implementation.
+> Recommendation: Add public methods on `Roots` class (e.g., `list_agents()`, `register_agent()`) and call those instead.
+
+**2026-03-24-047** — Bare `except Exception` in agent health check catches overly broad exception categories.
+> Recommendation: Catch `httpx.HTTPError` specifically for network/protocol errors.
+
+**2026-03-24-048** — `CheckpointResolveRequest.decision` uses `str` type with manual validation instead of `Literal["approve", "reject", "redirect"]`.
+> Recommendation: Use `Literal` type in Pydantic model for automatic 422 responses.
+
+**2026-03-24-049** — `resolve_checkpoint` function is 93 lines, exceeding 50-line guideline. Handles validation, lookup, resolution, and background task spawning.
+> Recommendation: Extract validation and background task logic into helper functions.
+
+**2026-03-24-050** — Background task management pattern (check `_background_tasks`, create set, add task, register callback) is duplicated across `runs.py` and `checkpoints.py`.
+> Recommendation: Extract shared helper function (e.g., `schedule_background_task`) to `deps.py`.
+
+**2026-03-24-051** — Router directly mutates private `process._node_map` attribute in graph mutation endpoints.
+> Recommendation: Add public methods on `ProcessDefinition` for node map maintenance.
+
+**2026-03-24-052** — Imports private function `_format_validation_errors` from `roots.core.validator` across module boundaries.
+> Recommendation: Make it public by removing the underscore prefix.
+
+**2026-03-24-053** — Bare `except Exception` in webhook test endpoint catches overly broad exception categories.
+> Recommendation: Catch `httpx.HTTPError` specifically.
+
+**2026-03-24-054** — `test_webhook` iterates all webhooks via `list_webhooks()` and filters in Python for O(n) lookup.
+> Recommendation: Add `get_webhook(webhook_id)` method to storage backend for direct lookup.
+
+**2026-03-24-055** — `GraphNodeResponse` uses `str | None` for `started_at`/`completed_at` while other models use `datetime`. Inconsistent typing.
+> Recommendation: Use `datetime | None` for consistency, or document the reason.
+
+**2026-03-24-056** — Test fixtures (`fastapi_app`, `client`) duplicated across multiple test files instead of centralized in `conftest.py`.
+> Recommendation: Move shared fixtures to `conftest.py` and extend for variants.
+
+**2026-03-24-057** — Root endpoint exposes framework name and version to unauthenticated callers, aiding fingerprinting.
+> Recommendation: Minor concern. Consider restricting to authenticated users if auth is added.
+
+**2026-03-24-058** — No rate limiting on resource-intensive endpoints (`POST /runs`, `POST /webhooks/{id}/test`).
+> Recommendation: Add rate limiting middleware for production deployment. (Out of scope per feature spec.)
+
+**2026-03-24-059** — Run status query parameter named `run_status` (line 56) instead of `status` as specified in feature spec US-003.
+> Recommendation: Use `Query(alias="status")` or update feature spec to reflect actual name.
+
+**2026-03-24-060** — Test suite: 812 passed, 80 skipped (postgres tests), 0 failures in 16.28s. All HTTP API user stories have test coverage.
+> Recommendation: No action required.
+
+---
 
 ### 2026-03-24 — Fork/Join Validation
 
