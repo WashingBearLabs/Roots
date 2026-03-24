@@ -1,8 +1,9 @@
-"""Tests for CLI (US-001 scaffolding + US-002 serve command)."""
+"""Tests for CLI (US-001 scaffolding + US-002 serve command + US-003 validate)."""
 
 from __future__ import annotations
 
 import pytest
+import yaml
 from typer.testing import CliRunner
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -230,3 +231,119 @@ def test_serve_creates_app_with_roots():
         result = runner.invoke(app, ["serve"])
         assert result.exit_code == 0
         mock_create_app.assert_called_once_with(mock_roots)
+
+
+# --- US-003: roots validate Command ---
+
+
+def _valid_process_dict():
+    """Return a minimal valid process definition dict."""
+    return {
+        "id": "proc-1",
+        "name": "Test Process",
+        "version": "1.0.0",
+        "entry_point": "start",
+        "nodes": [
+            {
+                "id": "start",
+                "type": "agent",
+                "label": "Start Agent",
+                "config": {"agent": "summarizer", "output_key": "summary"},
+            },
+            {
+                "id": "done",
+                "type": "end",
+                "label": "End",
+                "config": {"status": "completed"},
+            },
+        ],
+        "edges": [{"from": "start", "to": "done"}],
+    }
+
+
+def test_validate_valid_file(tmp_path):
+    """validate shows green checkmark and exits 0 for valid file."""
+    f = tmp_path / "good.yaml"
+    f.write_text(yaml.dump(_valid_process_dict()))
+    result = runner.invoke(app, ["validate", str(f)])
+    assert result.exit_code == 0
+    assert "✓" in result.output
+    assert str(f) in result.output
+
+
+def test_validate_invalid_file(tmp_path):
+    """validate shows red X with error details and exits 1 for invalid file."""
+    f = tmp_path / "bad.yaml"
+    f.write_text("id: proc-bad\nname: Bad\n")
+    result = runner.invoke(app, ["validate", str(f)])
+    assert result.exit_code == 1
+    assert "✗" in result.output
+    assert str(f) in result.output
+
+
+def test_validate_invalid_file_shows_error_details(tmp_path):
+    """validate error output includes field details."""
+    data = _valid_process_dict()
+    data["entry_point"] = "nonexistent"
+    f = tmp_path / "bad.yaml"
+    f.write_text(yaml.dump(data))
+    result = runner.invoke(app, ["validate", str(f)])
+    assert result.exit_code == 1
+    assert "entry_point" in result.output or "nonexistent" in result.output
+
+
+def test_validate_directory(tmp_path):
+    """validate scans directory for all .yaml/.yml files."""
+    good = tmp_path / "good.yaml"
+    good.write_text(yaml.dump(_valid_process_dict()))
+    bad = tmp_path / "bad.yml"
+    bad.write_text("not: a process\n")
+    txt = tmp_path / "readme.txt"
+    txt.write_text("ignore me")
+    result = runner.invoke(app, ["validate", str(tmp_path)])
+    assert result.exit_code == 1
+    assert "✓" in result.output
+    assert "✗" in result.output
+    # txt file should not appear
+    assert "readme.txt" not in result.output
+
+
+def test_validate_directory_all_valid(tmp_path):
+    """validate exits 0 when all files in directory are valid."""
+    for name in ("a.yaml", "b.yml"):
+        (tmp_path / name).write_text(yaml.dump(_valid_process_dict()))
+    result = runner.invoke(app, ["validate", str(tmp_path)])
+    assert result.exit_code == 0
+
+
+def test_validate_nonexistent_path():
+    """validate exits 1 for nonexistent path."""
+    result = runner.invoke(app, ["validate", "/nonexistent/path.yaml"])
+    assert result.exit_code == 1
+
+
+def test_validate_yaml_syntax_error(tmp_path):
+    """validate reports YAML syntax errors."""
+    f = tmp_path / "broken.yaml"
+    f.write_text(":\n  bad: [yaml\n")
+    result = runner.invoke(app, ["validate", str(f)])
+    assert result.exit_code == 1
+    assert "✗" in result.output
+
+
+def test_validate_empty_directory(tmp_path):
+    """validate exits 1 for directory with no YAML files."""
+    result = runner.invoke(app, ["validate", str(tmp_path)])
+    assert result.exit_code == 1
+
+
+def test_validate_error_includes_node_context(tmp_path):
+    """validate errors include node ID context for node-level failures."""
+    data = _valid_process_dict()
+    # Remove required config field to trigger node-level validation error
+    data["nodes"][0]["config"] = {}
+    f = tmp_path / "bad.yaml"
+    f.write_text(yaml.dump(data))
+    result = runner.invoke(app, ["validate", str(f)])
+    assert result.exit_code == 1
+    assert "start" in result.output or "agent" in result.output

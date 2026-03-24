@@ -102,9 +102,47 @@ def serve(
 
 
 @app.command()
-def validate(ctx: typer.Context) -> None:
+def validate(
+    ctx: typer.Context,
+    path: str = typer.Argument(
+        ...,
+        help="YAML file or directory to validate.",
+    ),
+) -> None:
     """Validate process definition YAML files."""
-    typer.echo("validate command (not yet implemented)")
+    from pathlib import Path as _Path
+
+    from roots.core.validator import validate_process_yaml
+
+    target = _Path(path)
+    if target.is_dir():
+        files = sorted(
+            p for p in target.iterdir()
+            if p.suffix in (".yaml", ".yml") and p.is_file()
+        )
+    elif target.is_file():
+        files = [target]
+    else:
+        typer.echo(typer.style(f"Path not found: {path}", fg=typer.colors.RED))
+        raise typer.Exit(code=1)
+
+    if not files:
+        typer.echo(typer.style(f"No YAML files found in {path}", fg=typer.colors.RED))
+        raise typer.Exit(code=1)
+
+    has_errors = False
+    for filepath in files:
+        errors = validate_process_yaml(filepath)
+        if errors:
+            has_errors = True
+            typer.echo(typer.style(f"✗ {filepath}", fg=typer.colors.RED))
+            for error in errors:
+                typer.echo(f"  {error}")
+        else:
+            typer.echo(typer.style(f"✓ {filepath}", fg=typer.colors.GREEN))
+
+    if has_errors:
+        raise typer.Exit(code=1)
 
 
 @app.command()
