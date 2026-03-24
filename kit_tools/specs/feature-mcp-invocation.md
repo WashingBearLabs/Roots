@@ -38,11 +38,11 @@ MCP agent invocation extends the agent registry with a third invocation type. MC
 - Error messages: `"MCP agent requires mcp_tool_name"`, `"MCP agent requires exactly one of mcp_server_url or mcp_server_command"`
 
 **Acceptance Criteria:**
-- [ ] `AgentType.mcp` is valid
-- [ ] MCP registration requires tool name + one connection method
-- [ ] Both connection methods simultaneously rejected
-- [ ] Neither connection method rejected
-- [ ] Tests cover all validation cases
+- [x] `AgentType.mcp` is valid
+- [x] MCP registration requires tool name + one connection method
+- [x] Both connection methods simultaneously rejected
+- [x] Neither connection method rejected
+- [x] Tests cover all validation cases
 
 ### US-002: URL-Based MCP Connection and Tool Discovery
 
