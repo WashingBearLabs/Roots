@@ -105,12 +105,12 @@ The agent registry maps agent names to invocation strategies and provides a unif
 - Create a shared `httpx.AsyncClient` instance in the invoker (reuse connections)
 
 **Acceptance Criteria:**
-- [ ] Remote agents are called via HTTP POST with correct payload
-- [ ] Response is parsed into AgentOutput
-- [ ] Timeout is enforced per agent registration
-- [ ] HTTP errors produce AgentInvocationError with status code
-- [ ] Connection failures produce AgentInvocationError
-- [ ] Tests use httpx mock transport (no real HTTP calls)
+- [x] Remote agents are called via HTTP POST with correct payload
+- [x] Response is parsed into AgentOutput
+- [x] Timeout is enforced per agent registration
+- [x] HTTP errors produce AgentInvocationError with status code
+- [x] Connection failures produce AgentInvocationError
+- [x] Tests use httpx mock transport (no real HTTP calls)
 
 ### US-005: Input/Output Schema Validation
 
