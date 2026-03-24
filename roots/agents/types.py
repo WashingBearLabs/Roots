@@ -42,6 +42,9 @@ class AgentRegistration(BaseModel):
             raise ValueError(
                 "callback_url is required when agent_type is 'remote'"
             )
+        if self.agent_type == AgentType.REMOTE and self.callback_url:
+            from roots.core.url_validator import validate_url
+            validate_url(self.callback_url)
         if self.agent_type == AgentType.MCP:
             if self.mcp_tool_name is None:
                 raise ValueError("MCP agent requires mcp_tool_name")

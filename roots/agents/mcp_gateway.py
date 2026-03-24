@@ -64,6 +64,16 @@ def _validate_command(command: list[str]) -> None:
             f"{bad_chars!r}: {executable!r}"
         )
 
+    # Reject shell metacharacters in arguments
+    _UNSAFE_ARG_CHARS = set(";|&$`(){}<>")
+    for i, arg in enumerate(command[1:], start=1):
+        bad_arg_chars = _UNSAFE_ARG_CHARS.intersection(arg)
+        if bad_arg_chars:
+            raise ValueError(
+                f"MCP server command argument {i} contains unsafe characters "
+                f"{bad_arg_chars!r}: {arg!r}"
+            )
+
 SUBPROCESS_SHUTDOWN_TIMEOUT = 5
 
 

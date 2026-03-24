@@ -122,6 +122,18 @@ async def agent_health(
 
     # Remote agent — GET callback_url with 5s timeout
     assert agent.callback_url is not None
+
+    # Defense-in-depth SSRF check (registration-time validation is primary)
+    from roots.core.url_validator import validate_url, SSRFError
+    try:
+        validate_url(agent.callback_url)
+    except SSRFError as exc:
+        return AgentHealthResponse(
+            name=name,
+            status="unhealthy",
+            error=f"SSRF protection: {exc}",
+        )
+
     start = time.monotonic()
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:

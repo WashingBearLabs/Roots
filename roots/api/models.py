@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 # --- Process models ---
@@ -131,6 +131,12 @@ class WebhookCreateRequest(BaseModel):
     url: str
     events: list[str] = ["roots.run.*"]
     secret: str | None = None
+
+    @field_validator("url")
+    @classmethod
+    def validate_webhook_url(cls, v: str) -> str:
+        from roots.core.url_validator import validate_url
+        return validate_url(v)
 
 
 class WebhookResponse(BaseModel):

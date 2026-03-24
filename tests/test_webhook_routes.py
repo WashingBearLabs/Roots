@@ -48,7 +48,7 @@ async def test_create_webhook(client):
     data = resp.json()
     assert data["url"] == "https://example.com/hook"
     assert data["events"] == ["roots.run.*"]
-    assert data["secret"] == "s3cret"
+    assert data["secret"] == "****"
     assert "id" in data
     assert "created_at" in data
 

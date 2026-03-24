@@ -196,7 +196,7 @@ def validate_structure(process: ProcessDefinition) -> list[str]:
     return errors
 
 
-def _format_validation_errors(
+def format_validation_errors(
     error: ValidationError, raw_data: dict[str, Any] | None = None
 ) -> list[str]:
     """Transform Pydantic ValidationError into user-friendly messages.
@@ -303,6 +303,6 @@ def validate_process_yaml(path: str | Path) -> list[str]:
     try:
         process = parse_process_dict(data_dict)
     except ValidationError as exc:
-        return _format_validation_errors(exc, raw_data=data_dict)
+        return format_validation_errors(exc, raw_data=data_dict)
 
     return validate_structure(process)

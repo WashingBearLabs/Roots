@@ -9,6 +9,7 @@ from roots.agents.registry import AgentRegistry
 from roots.agents.invoker import AgentInvoker
 from roots.agents.mcp_gateway import MCPGateway  # noqa: F401
 from roots.agents.types import AgentRegistration, AgentType
+from roots.core.checkpoint import ResolutionDecision, ResolutionError, resolve_pending
 from roots.core.decision import DecisionEngine
 from roots.core.orchestrator import Orchestrator, OrchestrationError
 from roots.core.validator import load_process_yaml

@@ -83,8 +83,8 @@ def create_roots_from_options(storage: str) -> Roots:
 def serve(
     ctx: typer.Context,
     host: str = typer.Option(
-        "0.0.0.0",
-        help="Host to bind the server to.",
+        "127.0.0.1",
+        help="Host to bind the server to. Use 0.0.0.0 to expose to network (no auth in v1 — use with caution).",
     ),
     port: int = typer.Option(
         8200,

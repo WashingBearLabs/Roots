@@ -18,7 +18,7 @@ def _record_to_response(record: WebhookRecord) -> WebhookResponse:
         id=record.id,
         url=record.url,
         events=record.events,
-        secret=record.secret,
+        secret="****" if record.secret else None,
         created_at=record.created_at,
     )
 

@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from roots import Roots
+
+logger = logging.getLogger(__name__)
 from roots.api.deps import get_roots
 from roots.api.models import HistoryEventResponse, RunCreateRequest, RunResponse
 from roots.core.state_machine import InvalidTransitionError, RunStatus, transition
@@ -41,6 +44,12 @@ async def create_run(
     run = await roots.start_run(body.process_id, body.work_item)
 
     task = asyncio.create_task(roots.execute_run(run.id))
+
+    def _on_task_done(t: asyncio.Task) -> None:
+        if not t.cancelled() and t.exception():
+            logger.error("Background run execution failed: %s", t.exception())
+
+    task.add_done_callback(_on_task_done)
 
     if not hasattr(request.app.state, "_background_tasks"):
         request.app.state._background_tasks = set()
@@ -159,6 +168,13 @@ async def resume_run(
     await roots.storage.update_run_status(run_id, RunStatus.RUNNING)
 
     task = asyncio.create_task(roots.execute_run(run_id))
+
+    def _on_task_done(t: asyncio.Task) -> None:
+        if not t.cancelled() and t.exception():
+            logger.error("Background run execution failed: %s", t.exception())
+
+    task.add_done_callback(_on_task_done)
+
     if not hasattr(request.app.state, "_background_tasks"):
         request.app.state._background_tasks = set()
     request.app.state._background_tasks.add(task)

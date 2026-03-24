@@ -18,7 +18,7 @@ from roots.api.models import (
     ProcessValidationResponse,
 )
 from roots.core.validator import (
-    _format_validation_errors,
+    format_validation_errors,
     parse_process_dict,
     validate_structure,
 )
@@ -39,7 +39,7 @@ async def create_process(
     try:
         process = parse_process_dict(body.definition)
     except ValidationError as exc:
-        errors = _format_validation_errors(exc, raw_data=body.definition)
+        errors = format_validation_errors(exc, raw_data=body.definition)
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=errors,
@@ -111,7 +111,7 @@ async def update_process(
     try:
         process = parse_process_dict(body.definition)
     except ValidationError as exc:
-        errors = _format_validation_errors(exc, raw_data=body.definition)
+        errors = format_validation_errors(exc, raw_data=body.definition)
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=errors,

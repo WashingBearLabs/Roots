@@ -132,7 +132,7 @@ def test_serve_starts_uvicorn_with_defaults():
         result = runner.invoke(app, ["serve"])
         assert result.exit_code == 0
         mock_uvicorn.assert_called_once_with(
-            mock_app, host="0.0.0.0", port=8200, log_level="info", reload=False,
+            mock_app, host="127.0.0.1", port=8200, log_level="info", reload=False,
         )
 
 
@@ -164,7 +164,7 @@ def test_serve_reload_flag():
         result = runner.invoke(app, ["serve", "--reload"])
         assert result.exit_code == 0
         mock_uvicorn.assert_called_once_with(
-            mock_app, host="0.0.0.0", port=8200, log_level="info", reload=True,
+            mock_app, host="127.0.0.1", port=8200, log_level="info", reload=True,
         )
 
 

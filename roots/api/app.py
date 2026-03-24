@@ -19,11 +19,12 @@ if TYPE_CHECKING:
     from roots import Roots
 
 
-def create_app(roots: "Roots") -> FastAPI:
+def create_app(roots: "Roots", cors_origins: list[str] | None = None) -> FastAPI:
     """Create a configured FastAPI application.
 
     Args:
         roots: The Roots framework instance to expose via the API.
+        cors_origins: Allowed CORS origins. Defaults to ["*"].
 
     Returns:
         A FastAPI application with all routers registered.
@@ -32,10 +33,11 @@ def create_app(roots: "Roots") -> FastAPI:
 
     app.state.roots = roots
 
+    # TODO: Restrict CORS origins before adding authentication
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
+        allow_origins=cors_origins if cors_origins is not None else ["*"],
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )

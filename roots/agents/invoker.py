@@ -69,8 +69,14 @@ class AgentInvoker:
         mcp_gateway: MCPGateway | None = None,
     ) -> None:
         self._registry = registry
+        self._owns_client = http_client is None
         self._http_client = http_client or httpx.AsyncClient()
         self._mcp_gateway = mcp_gateway
+
+    async def close(self) -> None:
+        """Close the HTTP client if we own it."""
+        if self._owns_client:
+            await self._http_client.aclose()
 
     async def invoke(self, agent_name: str, input: AgentInput) -> AgentOutput:
         """Invoke a registered agent by name.
@@ -152,11 +158,22 @@ class AgentInvoker:
     async def _invoke_remote(
         self, agent_name: str, input: AgentInput
     ) -> AgentOutput:
+        from roots.core.url_validator import validate_url, SSRFError
+
         registration = self._registry.get(agent_name)
         assert registration is not None
         assert registration.callback_url is not None, (
             "REMOTE agent must have a callback_url"
         )
+
+        try:
+            validate_url(registration.callback_url)
+        except SSRFError as exc:
+            raise AgentInvocationError(
+                agent_name=agent_name,
+                message=f"SSRF protection: {exc}",
+                original=exc,
+            ) from exc
 
         try:
             response = await self._http_client.post(
