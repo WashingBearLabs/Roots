@@ -181,11 +181,11 @@ The decision engine evaluates decision nodes across all four modes: deterministi
 - Actually, simpler: just add a `to_decision_record()` method on `DecisionResult` that produces the data dict for storage
 
 **Acceptance Criteria:**
-- [ ] `DecisionResult.to_decision_record()` produces a complete record dict
-- [ ] Record includes: mode, selected edge, confidence, reasoning, input state snapshot
-- [ ] Deterministic decisions are recorded (confidence 1.0, no reasoning)
-- [ ] AI decisions include reasoning from the AI response
-- [ ] Tests verify record format for all modes
+- [x] `DecisionResult.to_decision_record()` produces a complete record dict
+- [x] Record includes: mode, selected edge, confidence, reasoning, input state snapshot
+- [x] Deterministic decisions are recorded (confidence 1.0, no reasoning)
+- [x] AI decisions include reasoning from the AI response
+- [x] Tests verify record format for all modes
 
 ## Out of Scope
 
