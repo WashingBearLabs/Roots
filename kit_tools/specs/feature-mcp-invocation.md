@@ -105,12 +105,12 @@ MCP agent invocation extends the agent registry with a third invocation type. MC
   - Enforce `timeout_seconds` from registration
 
 **Acceptance Criteria:**
-- [ ] MCP tools invoked via standard `invoker.invoke()` interface
-- [ ] State maps to tool arguments
-- [ ] MCP result maps to AgentOutput
-- [ ] Timeout enforced
-- [ ] MCP errors produce AgentInvocationError
-- [ ] Tests verify invocation with mock MCP
+- [x] MCP tools invoked via standard `invoker.invoke()` interface
+- [x] State maps to tool arguments
+- [x] MCP result maps to AgentOutput
+- [x] Timeout enforced
+- [x] MCP errors produce AgentInvocationError
+- [x] Tests verify invocation with mock MCP
 
 ### US-005: MCP Agent Auto-Registration
 
