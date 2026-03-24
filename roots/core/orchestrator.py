@@ -9,10 +9,11 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
-from roots.agents.invoker import AgentInvoker
+from roots.agents.invoker import AgentInvoker, AgentSchemaValidationError
 from roots.agents.registry import AgentRegistry
 from roots.agents.types import AgentInput, AgentOutput
 from roots.core.decision import DecisionEngine
+from roots.core.escalation import EscalationTrigger, create_escalation_from_error
 from roots.core.schema import (
     AgentNodeConfig,
     AgentPoolNodeConfig,
@@ -359,17 +360,26 @@ class ProcessRunner:
             )
             return result
 
-        result = await execute_with_retry(
-            node=node,
-            execute_fn=_invoke,
-            storage=self._storage,
-            run_id=self.run_id,
-            emitter=self._event_emitter,
-            process_id=self._process_id or "",
-        )
+        try:
+            result = await execute_with_retry(
+                node=node,
+                execute_fn=_invoke,
+                storage=self._storage,
+                run_id=self.run_id,
+                emitter=self._event_emitter,
+                process_id=self._process_id or "",
+            )
+        except AgentSchemaValidationError as e:
+            await self._trigger_escalation(
+                node, state, str(e),
+                EscalationTrigger.SCHEMA_VALIDATION_FAILURE,
+            )
+            return None
         if result.escalate:
             await self._trigger_escalation(
-                node, state, result.escalation_reason or "Agent requested escalation"
+                node, state,
+                result.escalation_reason or "Agent requested escalation",
+                EscalationTrigger.AGENT_EXPLICIT_SIGNAL,
             )
         return result.output
 
@@ -380,12 +390,19 @@ class ProcessRunner:
         config = node.config
         agents = config.agents
 
-        if config.execution_mode == ExecutionMode.PARALLEL:
-            return await self._pool_parallel(node, agents, state)
-        elif config.execution_mode == ExecutionMode.SEQUENTIAL:
-            return await self._pool_sequential(node, agents, state)
-        else:  # FIRST_PASS
-            return await self._pool_first_pass(node, agents, state)
+        try:
+            if config.execution_mode == ExecutionMode.PARALLEL:
+                return await self._pool_parallel(node, agents, state)
+            elif config.execution_mode == ExecutionMode.SEQUENTIAL:
+                return await self._pool_sequential(node, agents, state)
+            else:  # FIRST_PASS
+                return await self._pool_first_pass(node, agents, state)
+        except AgentSchemaValidationError as e:
+            await self._trigger_escalation(
+                node, state, str(e),
+                EscalationTrigger.SCHEMA_VALIDATION_FAILURE,
+            )
+            return None
 
     async def _invoke_pool_agent(
         self, node: NodeDefinition, agent_name: str, state: dict[str, Any]
@@ -419,7 +436,7 @@ class ProcessRunner:
             )
             return result
 
-        return await execute_with_retry(
+        result = await execute_with_retry(
             node=node,
             execute_fn=_invoke,
             storage=self._storage,
@@ -427,6 +444,7 @@ class ProcessRunner:
             emitter=self._event_emitter,
             process_id=self._process_id or "",
         )
+        return result
 
     async def _pool_parallel(
         self,
@@ -504,19 +522,26 @@ class ProcessRunner:
         )
 
     async def _trigger_escalation(
-        self, node: NodeDefinition, state: dict[str, Any], reason: str
+        self,
+        node: NodeDefinition,
+        state: dict[str, Any],
+        reason: str,
+        trigger: EscalationTrigger = EscalationTrigger.AGENT_EXPLICIT_SIGNAL,
     ) -> None:
         """Flag escalation and create an escalation record.
 
         The tick loop reads ``_escalated`` and writes PAUSED status atomically.
         """
         self._escalated = True
-        await self._storage.create_escalation(
+        await create_escalation_from_error(
+            storage=self._storage,
             run_id=self.run_id,
             node_id=node.id,
-            trigger_type="agent_explicit_signal",
+            trigger=trigger,
             reason=reason,
-            work_item_snapshot=state,
+            work_item_state=state,
+            emitter=self._event_emitter,
+            process_id=self._process_id or "",
         )
 
     # --- Decision, Checkpoint, Emit, End Handlers (US-004) ---
@@ -550,7 +575,12 @@ class ProcessRunner:
                 if result.ai_recommendation
                 else None,
             )
-            self._escalated = True
+            # Create escalation record with confidence trigger
+            await self._trigger_escalation(
+                node, state,
+                "AI confidence below threshold",
+                EscalationTrigger.CONFIDENCE_BELOW_THRESHOLD,
+            )
             self._event_emitter.emit(
                 create_event(
                     EventType.DECISION_ESCALATED,
