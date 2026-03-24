@@ -59,12 +59,12 @@ The process schema layer is the foundation of Roots. It defines the Pydantic v2 
 - Use Pydantic `model_validator(mode="after")` to enforce: retry is only valid on `agent` and `agent_pool` node types. Raise `ValueError("retry config is only valid on agent and agent_pool nodes")`.
 
 **Acceptance Criteria:**
-- [ ] `NodeType` enum has all 8 values
-- [ ] `RetryConfig` validates all fields with correct defaults
-- [ ] `RetryConfig` requires `fallback_edge` when `on_exhaustion` is `route`
-- [ ] `NodeDefinition` accepts valid node definitions
-- [ ] `NodeDefinition` rejects retry config on non-agent node types
-- [ ] Tests in `tests/test_schema.py` cover all node types and retry validation edge cases
+- [x] `NodeType` enum has all 8 values
+- [x] `RetryConfig` validates all fields with correct defaults
+- [x] `RetryConfig` requires `fallback_edge` when `on_exhaustion` is `route`
+- [x] `NodeDefinition` accepts valid node definitions
+- [x] `NodeDefinition` rejects retry config on non-agent node types
+- [x] Tests in `tests/test_schema.py` cover all node types and retry validation edge cases
 
 ### US-003: Agent, AgentPool, and Decision Config Models
 
