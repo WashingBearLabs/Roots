@@ -12,6 +12,7 @@ from roots.api.routers.agents import router as agents_router
 from roots.api.routers.checkpoints import router as checkpoints_router
 from roots.api.routers.processes import router as processes_router
 from roots.api.routers.runs import router as runs_router
+from roots.api.routers.graph import router as graph_router
 from roots.api.routers.webhooks import router as webhooks_router
 
 if TYPE_CHECKING:
@@ -44,6 +45,7 @@ def create_app(roots: "Roots") -> FastAPI:
     app.include_router(checkpoints_router)
     app.include_router(agents_router)
     app.include_router(webhooks_router)
+    app.include_router(graph_router)
 
     @app.get("/")
     async def root() -> dict[str, str]:

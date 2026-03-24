@@ -145,3 +145,34 @@ class WebhookTestResult(BaseModel):
     status: str  # "delivered" | "failed"
     response_code: int | None = None
     error: str | None = None
+
+
+# --- Graph models ---
+
+
+class GraphNodeResponse(BaseModel):
+    id: str
+    type: str
+    label: str
+    status: str
+    started_at: str | None = None
+    completed_at: str | None = None
+    position: dict[str, Any]
+    metadata: dict[str, Any]
+
+
+class GraphEdgeResponse(BaseModel):
+    id: str
+    from_node: str
+    to_node: str
+    condition: str | None = None
+    status: str
+    label: str | None = None
+
+
+class GraphResponse(BaseModel):
+    process_id: str
+    run_id: str | None = None
+    run_status: str | None = None
+    nodes: list[GraphNodeResponse]
+    edges: list[GraphEdgeResponse]
