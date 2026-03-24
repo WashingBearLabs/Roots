@@ -1,0 +1,77 @@
+id: content-pipeline
+name: Content Moderation Pipeline
+version: "1.0.0"
+description: Classifies content, analyzes it in parallel, and routes based on scores
+nodes:
+  - id: classify
+    type: agent
+    label: Classify Content
+    config:
+      agent: classify_content
+      output_key: classify_output
+    metadata:
+      position: {x: 220, y: 0}
+
+  - id: analyze
+    type: agent_pool
+    label: Analyze Content
+    config:
+      agents:
+        - sentiment_analyzer
+        - toxicity_scorer
+        - spam_detector
+      execution_mode: parallel
+      aggregation: merge_all
+      output_key: analysis_output
+    metadata:
+      position: {x: 220, y: 140}
+
+  - id: route
+    type: decision
+    label: Route Decision
+    config:
+      mode: deterministic
+      edges:
+        - target: approve
+          condition: "analysis_output.toxicity_score < 0.3 and analysis_output.spam_score < 0.3"
+          label: Clean content
+        - target: flag_review
+          condition: "analysis_output.toxicity_score >= 0.3 and analysis_output.toxicity_score < 0.7"
+          label: Needs review
+        - target: reject
+          condition: "analysis_output.toxicity_score >= 0.7 or analysis_output.spam_score >= 0.7"
+          label: Toxic or spam
+    metadata:
+      position: {x: 220, y: 280}
+
+  - id: approve
+    type: end
+    label: Approved
+    config:
+      status: completed
+    metadata:
+      position: {x: 40, y: 420}
+
+  - id: flag_review
+    type: end
+    label: Flagged for Review
+    config:
+      status: completed
+    metadata:
+      position: {x: 220, y: 420}
+
+  - id: reject
+    type: end
+    label: Rejected
+    config:
+      status: failed
+    metadata:
+      position: {x: 400, y: 420}
+
+edges:
+  - from: classify
+    to: analyze
+  - from: analyze
+    to: route
+
+entry_point: classify

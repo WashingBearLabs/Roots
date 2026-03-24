@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Content Pipeline — Roots Demo</title>
+  <link rel="stylesheet" href="/common/styles.css">
+  <style>
+    main {
+      grid-template-columns: 60% 40%;
+      grid-template-rows: auto 1fr;
+    }
+    .input-bar {
+      grid-column: 1 / -1;
+      display: flex;
+      gap: 0.75rem;
+      align-items: flex-start;
+    }
+    .input-bar textarea {
+      flex: 1;
+      min-height: 60px;
+      padding: 0.5rem;
+      font-family: inherit;
+      font-size: 0.875rem;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      resize: vertical;
+    }
+    .input-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .sample-buttons {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .sample-buttons button {
+      font-size: 0.75rem;
+      padding: 0.3rem 0.6rem;
+    }
+    #graph-panel {
+      overflow: auto;
+    }
+    #results-panel {
+      overflow-y: auto;
+    }
+    .result-section {
+      margin-bottom: 1rem;
+    }
+    .result-section h3 {
+      font-size: 0.85rem;
+      margin-bottom: 0.5rem;
+      color: var(--gray);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .result-data {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.75rem;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 0.8rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .outcome-badge {
+      display: inline-block;
+      padding: 0.4rem 1rem;
+      border-radius: var(--radius);
+      font-size: 1rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-top: 0.5rem;
+    }
+    .outcome-badge.approved { background: var(--green); color: #1a1a2e; }
+    .outcome-badge.flagged  { background: var(--yellow); color: #1a1a2e; }
+    .outcome-badge.rejected { background: var(--red); color: #fff; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Content Moderation Pipeline</h1>
+      <span class="status-badge pending" id="process-status">ready</span>
+    </header>
+
+    <main>
+      <div class="input-bar">
+        <textarea id="content-input" placeholder="Enter text to moderate..."></textarea>
+        <div class="input-controls">
+          <button class="btn-primary" id="submit-btn">Submit</button>
+          <div class="sample-buttons">
+            <button class="btn-outline" data-sample="clean">Clean article</button>
+            <button class="btn-outline" data-sample="mild">Mild comment</button>
+            <button class="btn-outline" data-sample="toxic">Toxic post</button>
+            <button class="btn-outline" data-sample="spam">Spam message</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" id="graph-panel">
+        <h2>Process Graph</h2>
+        <div id="graph-container"></div>
+      </div>
+
+      <div class="card panel-scroll" id="results-panel">
+        <h2>Results</h2>
+        <div id="results-container">
+          <p class="text-gray">Submit text to see results...</p>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      Powered by <a href="#">Roots</a>
+    </footer>
+  </div>
+
+  <script src="/common/graph-renderer.js"></script>
+  <script src="/common/roots-client.js"></script>
+  <script>
+    const SAMPLES = {
+      clean: "This is an excellent article about renewable energy research. The study presents helpful analysis of solar panel efficiency improvements and their wonderful impact on sustainable development.",
+      mild: "I think this comment is pretty stupid and dumb. The approach seems bad but not terrible. The author could have done a much better analysis.",
+      toxic: "You are so stupid and an idiot. I hate this kind of dumb content. The person who wrote this is a complete moron and a loser.",
+      spam: "BUY NOW!!! AMAZING DEAL!!! Visit https://example.com/deal and https://example.com/offer for the BEST PRICES EVER!!!!!! Don't miss out!!!!!!"
+    };
+
+    const client = new RootsClient();
+    const graphRenderer = new GraphRenderer(document.getElementById('graph-container'));
+    const statusBadge = document.getElementById('process-status');
+    const submitBtn = document.getElementById('submit-btn');
+    const textarea = document.getElementById('content-input');
+    const resultsContainer = document.getElementById('results-container');
+    let currentRunId = null;
+    let previousState = null;
+
+    // Load initial process graph
+    client.getProcessGraph('content-pipeline').then(data => {
+      graphRenderer.render(data);
+    }).catch(() => {});
+
+    // Sample buttons
+    document.querySelectorAll('[data-sample]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        textarea.value = SAMPLES[btn.dataset.sample];
+      });
+    });
+
+    // Submit
+    submitBtn.addEventListener('click', async () => {
+      const text = textarea.value.trim();
+      if (!text) return;
+
+      submitBtn.disabled = true;
+      previousState = null;
+      resultsContainer.innerHTML = '<p class="text-blue">Processing...</p>';
+      updateStatus('running');
+
+      try {
+        const run = await client.createRun('content-pipeline', { text });
+        currentRunId = run.id;
+        client.startPolling(run.id, onGraphUpdate);
+      } catch (err) {
+        resultsContainer.innerHTML = `<p class="text-red">Error: ${err.message}</p>`;
+        updateStatus('failed');
+        submitBtn.disabled = false;
+      }
+    });
+
+    function onGraphUpdate(graphData) {
+      graphRenderer.update(graphData);
+
+      const runStatus = graphData.run_status;
+      updateStatus(runStatus);
+
+      // Fetch run details for work_item_state
+      if (currentRunId) {
+        client.getRun(currentRunId).then(run => {
+          renderResults(run.work_item_state, graphData);
+        }).catch(() => {});
+      }
+
+      if (runStatus === 'completed' || runStatus === 'failed') {
+        submitBtn.disabled = false;
+      }
+    }
+
+    function updateStatus(status) {
+      statusBadge.textContent = status;
+      statusBadge.className = 'status-badge ' + status;
+    }
+
+    function renderResults(state, graphData) {
+      let html = '';
+
+      // Classification output
+      if (state.classify_output) {
+        html += renderSection('Classification', state.classify_output);
+      }
+
+      // Analysis outputs
+      if (state.analysis_output) {
+        const ao = state.analysis_output;
+        if (ao.sentiment !== undefined) {
+          html += renderSection('Sentiment Analysis', {
+            sentiment: ao.sentiment,
+            sentiment_score: ao.sentiment_score
+          });
+        }
+        if (ao.toxicity_score !== undefined) {
+          html += renderSection('Toxicity Score', {
+            toxicity_score: ao.toxicity_score,
+            flagged_words: ao.flagged_words
+          });
+        }
+        if (ao.spam_score !== undefined) {
+          html += renderSection('Spam Detection', {
+            spam_score: ao.spam_score,
+            indicators: ao.indicators
+          });
+        }
+      }
+
+      // Decision outcome
+      const routeNode = (graphData.nodes || []).find(n => n.id === 'route');
+      if (routeNode && routeNode.status === 'completed') {
+        const approveNode = (graphData.nodes || []).find(n => n.id === 'approve');
+        const flagNode = (graphData.nodes || []).find(n => n.id === 'flag_review');
+        const rejectNode = (graphData.nodes || []).find(n => n.id === 'reject');
+
+        let outcome = '';
+        let outcomeClass = '';
+        if (approveNode && (approveNode.status === 'completed' || approveNode.status === 'running')) {
+          outcome = 'Approved';
+          outcomeClass = 'approved';
+        } else if (flagNode && (flagNode.status === 'completed' || flagNode.status === 'running')) {
+          outcome = 'Flagged for Review';
+          outcomeClass = 'flagged';
+        } else if (rejectNode && (rejectNode.status === 'completed' || rejectNode.status === 'failed' || rejectNode.status === 'running')) {
+          outcome = 'Rejected';
+          outcomeClass = 'rejected';
+        }
+
+        if (outcome) {
+          html += `<div class="result-section"><h3>Decision</h3><span class="outcome-badge ${outcomeClass}">${outcome}</span></div>`;
+        }
+      }
+
+      if (html) {
+        resultsContainer.innerHTML = html;
+      }
+    }
+
+    function renderSection(title, data) {
+      return `<div class="result-section"><h3>${title}</h3><div class="result-data">${JSON.stringify(data, null, 2)}</div></div>`;
+    }
+  </script>
+</body>
+</html>
