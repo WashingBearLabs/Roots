@@ -125,6 +125,30 @@ class DecisionResult(BaseModel):
     ai_recommendation: AIDecisionResponse | None = None
     checkpoint_prompt: str | None = None
 
+    def to_decision_record(self, input_state: dict[str, Any]) -> dict[str, Any]:
+        """Produce a complete record dict for decision history storage.
+
+        Args:
+            input_state: The work item state snapshot at the time of decision.
+
+        Returns:
+            Dict with mode, selected_edge, confidence, reasoning,
+            escalated, and input_state_snapshot.
+        """
+        record: dict[str, Any] = {
+            "mode": self.mode,
+            "selected_edge": self.selected_edge,
+            "confidence": self.confidence,
+            "reasoning": self.reasoning,
+            "escalated": self.escalated,
+            "input_state_snapshot": input_state,
+        }
+        if self.checkpoint_prompt is not None:
+            record["checkpoint_prompt"] = self.checkpoint_prompt
+        if self.ai_recommendation is not None:
+            record["ai_recommendation"] = self.ai_recommendation.model_dump()
+        return record
+
 
 DECISION_TOOL: dict[str, Any] = {
     "type": "function",

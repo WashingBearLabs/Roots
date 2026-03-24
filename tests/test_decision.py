@@ -1,4 +1,4 @@
-"""Tests for decision engine (US-001, US-002, US-003, US-004, US-005)."""
+"""Tests for decision engine (US-001, US-002, US-003, US-004, US-005, US-006)."""
 
 import json
 from unittest.mock import AsyncMock, patch
@@ -968,3 +968,140 @@ class TestDecisionEngineAICheckpoint:
         )
         with pytest.raises(DecisionEvaluationError, match="invalid edge target"):
             await engine.evaluate(node, {})
+
+
+# --- DecisionResult.to_decision_record (US-006) ---
+
+
+class TestDecisionResultToDecisionRecord:
+    def test_deterministic_record(self) -> None:
+        """Deterministic decisions produce a record with confidence 1.0."""
+        result = DecisionResult(
+            selected_edge="node-a",
+            mode=DecisionMode.DETERMINISTIC,
+            confidence=1.0,
+            reasoning="Matched condition: status == 'done'",
+        )
+        state = {"status": "done"}
+        record = result.to_decision_record(state)
+
+        assert record["mode"] == "deterministic"
+        assert record["selected_edge"] == "node-a"
+        assert record["confidence"] == 1.0
+        assert record["reasoning"] == "Matched condition: status == 'done'"
+        assert record["escalated"] is False
+        assert record["input_state_snapshot"] == {"status": "done"}
+        assert "ai_recommendation" not in record
+        assert "checkpoint_prompt" not in record
+
+    def test_ai_bounded_record_includes_reasoning(self) -> None:
+        """AI bounded decisions include reasoning from AI response."""
+        ai_resp = AIDecisionResponse(
+            selected_edge_target="node-b",
+            confidence=0.9,
+            reasoning="High severity warrants escalation",
+        )
+        result = DecisionResult(
+            selected_edge="node-b",
+            mode=DecisionMode.AI_BOUNDED,
+            confidence=0.9,
+            reasoning="High severity warrants escalation",
+            ai_recommendation=ai_resp,
+        )
+        state = {"output": {"severity": "critical"}}
+        record = result.to_decision_record(state)
+
+        assert record["mode"] == "ai_bounded"
+        assert record["selected_edge"] == "node-b"
+        assert record["confidence"] == 0.9
+        assert record["reasoning"] == "High severity warrants escalation"
+        assert record["escalated"] is False
+        assert record["input_state_snapshot"] == {"output": {"severity": "critical"}}
+        assert record["ai_recommendation"] == {
+            "selected_edge_target": "node-b",
+            "confidence": 0.9,
+            "reasoning": "High severity warrants escalation",
+        }
+
+    def test_ai_autonomous_escalated_record(self) -> None:
+        """AI autonomous escalated decisions are recorded correctly."""
+        ai_resp = AIDecisionResponse(
+            selected_edge_target="node-a",
+            confidence=0.3,
+            reasoning="Very uncertain",
+        )
+        result = DecisionResult(
+            selected_edge="node-a",
+            mode=DecisionMode.AI_AUTONOMOUS,
+            confidence=0.3,
+            reasoning="Very uncertain",
+            escalated=True,
+            ai_recommendation=ai_resp,
+        )
+        record = result.to_decision_record({"x": 1})
+
+        assert record["mode"] == "ai_autonomous"
+        assert record["escalated"] is True
+        assert record["confidence"] == 0.3
+        assert record["ai_recommendation"]["reasoning"] == "Very uncertain"
+
+    def test_ai_checkpoint_record_includes_prompt(self) -> None:
+        """AI checkpoint decisions include checkpoint_prompt."""
+        ai_resp = AIDecisionResponse(
+            selected_edge_target="node-a",
+            confidence=0.95,
+            reasoning="Strong signal",
+        )
+        result = DecisionResult(
+            selected_edge="node-a",
+            mode=DecisionMode.AI_CHECKPOINT,
+            confidence=0.95,
+            reasoning="Strong signal",
+            escalated=True,
+            ai_recommendation=ai_resp,
+            checkpoint_prompt="Do you approve?",
+        )
+        record = result.to_decision_record({"status": "ready"})
+
+        assert record["mode"] == "ai_checkpoint"
+        assert record["escalated"] is True
+        assert record["checkpoint_prompt"] == "Do you approve?"
+        assert record["ai_recommendation"] is not None
+
+    def test_record_contains_all_required_keys(self) -> None:
+        """Every record must contain mode, selected_edge, confidence, reasoning,
+        escalated, and input_state_snapshot."""
+        result = DecisionResult(
+            selected_edge="node-a",
+            mode=DecisionMode.DETERMINISTIC,
+            confidence=1.0,
+        )
+        record = result.to_decision_record({"key": "value"})
+
+        required_keys = {
+            "mode", "selected_edge", "confidence", "reasoning",
+            "escalated", "input_state_snapshot",
+        }
+        assert required_keys.issubset(record.keys())
+
+    def test_input_state_snapshot_is_passed_through(self) -> None:
+        """The input_state_snapshot is the state dict passed in."""
+        state = {"nested": {"value": 42}}
+        result = DecisionResult(
+            selected_edge="node-a",
+            mode=DecisionMode.DETERMINISTIC,
+            confidence=1.0,
+        )
+        record = result.to_decision_record(state)
+        assert record["input_state_snapshot"] == state
+
+    def test_deterministic_no_ai_recommendation(self) -> None:
+        """Deterministic records should not include ai_recommendation."""
+        result = DecisionResult(
+            selected_edge="node-a",
+            mode=DecisionMode.DETERMINISTIC,
+            confidence=1.0,
+            reasoning="Matched condition: x == 1",
+        )
+        record = result.to_decision_record({"x": 1})
+        assert "ai_recommendation" not in record
