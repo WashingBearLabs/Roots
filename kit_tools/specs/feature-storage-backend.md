@@ -86,11 +86,11 @@ The storage backend provides the persistence layer for all Roots state. It defin
 - Use `datetime.now(datetime.UTC).isoformat()` for all timestamps
 
 **Acceptance Criteria:**
-- [ ] `SqliteBackend(":memory:")` creates all tables on `initialize()`
-- [ ] Process CRUD works: save, get by ID, list all, delete
-- [ ] Agent CRUD works: save, get by name, list all, delete
-- [ ] Process round-trip preserves all fields (serialize→store→load→compare)
-- [ ] Tests use the `sqlite_storage` fixture from conftest
+- [x] `SqliteBackend(":memory:")` creates all tables on `initialize()`
+- [x] Process CRUD works: save, get by ID, list all, delete
+- [x] Agent CRUD works: save, get by name, list all, delete
+- [x] Process round-trip preserves all fields (serialize→store→load→compare)
+- [x] Tests use the `sqlite_storage` fixture from conftest
 
 ### US-003: SQLite — Run Lifecycle and Work Item State
 
