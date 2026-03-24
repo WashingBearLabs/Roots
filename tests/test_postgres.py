@@ -38,7 +38,8 @@ async def pg_storage() -> AsyncIterator[StorageBackend]:
     async with backend.pool.acquire() as conn:
         await conn.execute(
             "TRUNCATE processes, agents, runs, run_history, checkpoints, "
-            "escalations, decision_history, retry_state, webhooks CASCADE"
+            "escalations, decision_history, retry_state, webhooks, "
+            "run_locks CASCADE"
         )
     yield backend
     await backend.close()
@@ -96,6 +97,7 @@ async def test_initialize_creates_tables(pg_storage: StorageBackend) -> None:
         "processes",
         "retry_state",
         "run_history",
+        "run_locks",
         "runs",
         "webhooks",
     ])
@@ -399,3 +401,34 @@ async def test_full_run_lifecycle(pg_storage: StorageBackend) -> None:
     assert loaded is not None
     assert loaded.status == "completed"
     assert loaded.work_item_state["result"] == "success"
+
+
+# --- Advisory Lock Specific ---
+
+
+async def test_advisory_lock_auto_release_on_disconnect(
+    pg_storage: StorageBackend,
+) -> None:
+    """Advisory locks auto-release when the holding connection drops."""
+    from roots.storage.postgres import PostgresBackend
+
+    backend: PostgresBackend = pg_storage  # type: ignore[assignment]
+
+    run = await backend.create_run("proc-1", {})
+    acquired = await backend.acquire_run_lock(run.id, "owner-1")
+    assert acquired is True
+
+    # Forcibly close the pinned connection (simulates crash / disconnect)
+    pinned_conn = backend._lock_connections.pop(run.id)
+    await pinned_conn.close()
+
+    # Clean up the tracking table entry (would be stale after crash)
+    async with backend.pool.acquire() as conn:
+        await conn.execute("DELETE FROM run_locks WHERE run_id = $1", run.id)
+
+    # Advisory lock was auto-released — a new owner can acquire it
+    acquired2 = await backend.acquire_run_lock(run.id, "owner-2")
+    assert acquired2 is True
+
+    locked_by, _ = await backend.check_run_lock(run.id)
+    assert locked_by == "owner-2"

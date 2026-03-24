@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
@@ -116,6 +116,12 @@ CREATE TABLE IF NOT EXISTS webhooks (
     secret TEXT,
     created_at TIMESTAMPTZ
 );
+
+CREATE TABLE IF NOT EXISTS run_locks (
+    run_id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    locked_at TIMESTAMPTZ NOT NULL
+);
 """
 
 
@@ -134,6 +140,7 @@ class PostgresBackend(StorageBackend):
     def __init__(self, dsn: str) -> None:
         self._dsn = dsn
         self._pool: asyncpg.Pool | None = None  # type: ignore[type-arg]
+        self._lock_connections: dict[str, asyncpg.Connection] = {}  # type: ignore[type-arg]
 
     @property
     def pool(self) -> asyncpg.Pool:  # type: ignore[type-arg]
@@ -149,6 +156,9 @@ class PostgresBackend(StorageBackend):
             await conn.execute(_SCHEMA_SQL)
 
     async def close(self) -> None:
+        for conn in self._lock_connections.values():
+            await self.pool.release(conn)
+        self._lock_connections.clear()
         if self._pool is not None:
             await self._pool.close()
             self._pool = None
@@ -782,7 +792,7 @@ class PostgresBackend(StorageBackend):
                 run_id,
             )
 
-    # --- Locking ---
+    # --- Locking (advisory locks) ---
 
     async def acquire_run_lock(
         self,
@@ -790,35 +800,66 @@ class PostgresBackend(StorageBackend):
         owner_id: str,
         stale_timeout_seconds: int = 300,
     ) -> bool:
-        now = utcnow()
-        stale_threshold = now - timedelta(seconds=stale_timeout_seconds)
-        async with self.pool.acquire() as conn:
-            result = await conn.execute(
-                "UPDATE runs SET locked_by = $1, locked_at = $2 "
-                "WHERE id = $3 AND (locked_by IS NULL OR locked_at < $4)",
+        conn = await self.pool.acquire()
+        try:
+            # Verify the run exists
+            row = await conn.fetchrow(
+                "SELECT id FROM runs WHERE id = $1", run_id
+            )
+            if row is None:
+                await self.pool.release(conn)
+                return False
+            # Try session-scoped advisory lock keyed on run_id hash
+            acquired = await conn.fetchval(
+                "SELECT pg_try_advisory_lock(hashtext($1))", run_id
+            )
+            if not acquired:
+                await self.pool.release(conn)
+                return False
+            # Record in tracking table for check_run_lock visibility
+            now = utcnow()
+            await conn.execute(
+                "INSERT INTO run_locks (run_id, owner_id, locked_at) "
+                "VALUES ($1, $2, $3) "
+                "ON CONFLICT (run_id) DO UPDATE SET owner_id = $2, locked_at = $3",
+                run_id,
                 owner_id,
                 now,
-                run_id,
-                stale_threshold,
             )
-        return result == "UPDATE 1"
+            # Pin connection so advisory lock stays held
+            self._lock_connections[run_id] = conn
+            return True
+        except Exception:
+            await self.pool.release(conn)
+            raise
 
     async def release_run_lock(self, run_id: str, owner_id: str) -> None:
-        async with self.pool.acquire() as conn:
-            await conn.execute(
-                "UPDATE runs SET locked_by = NULL, locked_at = NULL "
-                "WHERE id = $1 AND locked_by = $2",
-                run_id,
-                owner_id,
+        conn = self._lock_connections.pop(run_id, None)
+        if conn is None:
+            return
+        try:
+            # Verify ownership via tracking table before releasing
+            row = await conn.fetchrow(
+                "SELECT owner_id FROM run_locks WHERE run_id = $1", run_id
             )
+            if row is not None and row["owner_id"] == owner_id:
+                await conn.execute(
+                    "SELECT pg_advisory_unlock(hashtext($1))", run_id
+                )
+                await conn.execute(
+                    "DELETE FROM run_locks WHERE run_id = $1", run_id
+                )
+        finally:
+            await self.pool.release(conn)
 
     async def check_run_lock(
         self, run_id: str
     ) -> tuple[str | None, datetime | None]:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
-                "SELECT locked_by, locked_at FROM runs WHERE id = $1", run_id
+                "SELECT owner_id, locked_at FROM run_locks WHERE run_id = $1",
+                run_id,
             )
         if row is None:
             return (None, None)
-        return (row["locked_by"], row["locked_at"])
+        return (row["owner_id"], row["locked_at"])

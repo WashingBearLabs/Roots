@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 
@@ -29,6 +30,34 @@ async def sqlite_storage() -> AsyncIterator[StorageBackend]:
     await backend.initialize()
     yield backend
     await backend.close()
+
+
+@pytest.fixture(params=["sqlite", "postgres"])
+async def storage(request: pytest.FixtureRequest) -> AsyncIterator[StorageBackend]:
+    """Parameterized fixture that yields both SQLite and PostgreSQL backends."""
+    if request.param == "sqlite":
+        from roots.storage.sqlite import SqliteBackend
+
+        backend = SqliteBackend(":memory:")
+        await backend.initialize()
+        yield backend
+        await backend.close()
+    else:
+        dsn = os.environ.get("ROOTS_POSTGRES_DSN")
+        if not dsn:
+            pytest.skip("PostgreSQL not available (ROOTS_POSTGRES_DSN not set)")
+        from roots.storage.postgres import PostgresBackend
+
+        backend = PostgresBackend(dsn)
+        await backend.initialize()
+        async with backend.pool.acquire() as conn:
+            await conn.execute(
+                "TRUNCATE processes, agents, runs, run_history, checkpoints, "
+                "escalations, decision_history, retry_state, webhooks, "
+                "run_locks CASCADE"
+            )
+        yield backend
+        await backend.close()
 
 
 @pytest.fixture
