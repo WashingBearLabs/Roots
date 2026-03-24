@@ -123,6 +123,7 @@ class DecisionResult(BaseModel):
     reasoning: str | None = None
     escalated: bool = False
     ai_recommendation: AIDecisionResponse | None = None
+    checkpoint_prompt: str | None = None
 
 
 DECISION_TOOL: dict[str, Any] = {
@@ -261,6 +262,9 @@ class DecisionEngine:
         if node.config.mode in (DecisionMode.AI_BOUNDED, DecisionMode.AI_AUTONOMOUS):
             return await self._evaluate_ai(node, work_item_state)
 
+        if node.config.mode == DecisionMode.AI_CHECKPOINT:
+            return await self._evaluate_ai_checkpoint(node, work_item_state)
+
         raise NotImplementedError(
             f"Decision mode '{node.config.mode}' is not yet implemented"
         )
@@ -352,4 +356,56 @@ class DecisionEngine:
             confidence=ai_response.confidence,
             reasoning=ai_response.reasoning,
             ai_recommendation=ai_response,
+        )
+
+    async def _evaluate_ai_checkpoint(
+        self,
+        node: NodeDefinition,
+        work_item_state: dict[str, Any],
+    ) -> DecisionResult:
+        """Evaluate an AI checkpoint decision node.
+
+        Same as AI bounded/autonomous but always escalates for human confirmation.
+        """
+        assert isinstance(node.config, DecisionNodeConfig)
+
+        model = resolve_model(node.config, self._default_model)
+        messages = build_decision_messages(
+            node.config.context_prompt,
+            work_item_state,
+            node.config.edges,
+        )
+
+        response = await litellm.acompletion(
+            model=model,
+            messages=messages,
+            tools=[DECISION_TOOL],
+            tool_choice={"type": "function", "function": {"name": "make_decision"}},
+        )
+
+        ai_response = parse_ai_response(response)
+
+        # Validate edge target is in defined edges
+        valid_targets = {edge.target for edge in node.config.edges}
+        if ai_response.selected_edge_target not in valid_targets:
+            raise DecisionEvaluationError(
+                expression="AI edge selection",
+                message=(
+                    f"AI selected invalid edge target "
+                    f"'{ai_response.selected_edge_target}'. "
+                    f"Valid targets: {sorted(valid_targets)}"
+                ),
+                node_id=node.id,
+                context=work_item_state,
+            )
+
+        # Checkpoint mode always escalates regardless of confidence
+        return DecisionResult(
+            selected_edge=ai_response.selected_edge_target,
+            mode=node.config.mode,
+            confidence=ai_response.confidence,
+            reasoning=ai_response.reasoning,
+            escalated=True,
+            ai_recommendation=ai_response,
+            checkpoint_prompt=node.config.checkpoint_prompt,
         )

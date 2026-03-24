@@ -1,4 +1,4 @@
-"""Tests for decision engine (US-001, US-002, US-003, US-004)."""
+"""Tests for decision engine (US-001, US-002, US-003, US-004, US-005)."""
 
 import json
 from unittest.mock import AsyncMock, patch
@@ -808,3 +808,163 @@ class TestDecisionEngineAIAutonomous:
         )
         result = await engine.evaluate(node, {})
         assert result.escalated is False
+
+
+# --- DecisionResult: checkpoint_prompt field (US-005) ---
+
+
+class TestDecisionResultCheckpointPrompt:
+    def test_default_none(self) -> None:
+        result = DecisionResult(
+            selected_edge="node-a", mode="deterministic", confidence=1.0
+        )
+        assert result.checkpoint_prompt is None
+
+    def test_checkpoint_prompt_set(self) -> None:
+        result = DecisionResult(
+            selected_edge="node-a",
+            mode="ai_checkpoint",
+            confidence=0.9,
+            checkpoint_prompt="Please confirm this decision",
+        )
+        assert result.checkpoint_prompt == "Please confirm this decision"
+
+
+# --- AI Checkpoint mode (US-005) ---
+
+
+class TestDecisionEngineAICheckpoint:
+    @pytest.fixture
+    def engine(self) -> DecisionEngine:
+        return DecisionEngine(default_model="test-model")
+
+    @pytest.mark.asyncio
+    @patch("roots.core.decision.litellm.acompletion", new_callable=AsyncMock)
+    async def test_always_escalates_above_threshold(
+        self, mock_acompletion: AsyncMock, engine: DecisionEngine
+    ) -> None:
+        """Checkpoint mode always escalates, even when confidence is high."""
+        mock_acompletion.return_value = _fake_litellm_response(
+            "node-a", 0.95, "Very confident"
+        )
+        node = _make_ai_decision_node(
+            mode=DecisionMode.AI_CHECKPOINT,
+            edges=[DecisionEdge(target="node-a"), DecisionEdge(target="node-b")],
+            confidence_threshold=0.8,
+        )
+        result = await engine.evaluate(node, {"x": 1})
+        assert result.escalated is True
+        assert result.selected_edge == "node-a"
+        assert result.mode == "ai_checkpoint"
+        assert result.confidence == 0.95
+
+    @pytest.mark.asyncio
+    @patch("roots.core.decision.litellm.acompletion", new_callable=AsyncMock)
+    async def test_always_escalates_below_threshold(
+        self, mock_acompletion: AsyncMock, engine: DecisionEngine
+    ) -> None:
+        """Checkpoint mode escalates even when confidence is below threshold."""
+        mock_acompletion.return_value = _fake_litellm_response(
+            "node-b", 0.3, "Low confidence"
+        )
+        node = _make_ai_decision_node(
+            mode=DecisionMode.AI_CHECKPOINT,
+            edges=[DecisionEdge(target="node-a"), DecisionEdge(target="node-b")],
+            confidence_threshold=0.8,
+        )
+        result = await engine.evaluate(node, {"x": 1})
+        assert result.escalated is True
+        assert result.confidence == 0.3
+
+    @pytest.mark.asyncio
+    @patch("roots.core.decision.litellm.acompletion", new_callable=AsyncMock)
+    async def test_always_escalates_at_threshold(
+        self, mock_acompletion: AsyncMock, engine: DecisionEngine
+    ) -> None:
+        """Checkpoint mode escalates even at exact threshold."""
+        mock_acompletion.return_value = _fake_litellm_response(
+            "node-a", 0.8, "At threshold"
+        )
+        node = _make_ai_decision_node(
+            mode=DecisionMode.AI_CHECKPOINT,
+            edges=[DecisionEdge(target="node-a")],
+            confidence_threshold=0.8,
+        )
+        result = await engine.evaluate(node, {})
+        assert result.escalated is True
+
+    @pytest.mark.asyncio
+    @patch("roots.core.decision.litellm.acompletion", new_callable=AsyncMock)
+    async def test_includes_ai_recommendation(
+        self, mock_acompletion: AsyncMock, engine: DecisionEngine
+    ) -> None:
+        """AI recommendation is included in the result."""
+        mock_acompletion.return_value = _fake_litellm_response(
+            "node-a", 0.9, "Strong signal"
+        )
+        node = _make_ai_decision_node(
+            mode=DecisionMode.AI_CHECKPOINT,
+            edges=[DecisionEdge(target="node-a")],
+            confidence_threshold=0.8,
+        )
+        result = await engine.evaluate(node, {"status": "ready"})
+        assert result.ai_recommendation is not None
+        assert result.ai_recommendation.selected_edge_target == "node-a"
+        assert result.ai_recommendation.confidence == 0.9
+        assert result.ai_recommendation.reasoning == "Strong signal"
+
+    @pytest.mark.asyncio
+    @patch("roots.core.decision.litellm.acompletion", new_callable=AsyncMock)
+    async def test_checkpoint_prompt_passed_through(
+        self, mock_acompletion: AsyncMock, engine: DecisionEngine
+    ) -> None:
+        """checkpoint_prompt from node config is passed through in result."""
+        mock_acompletion.return_value = _fake_litellm_response(
+            "node-a", 0.9, "OK"
+        )
+        node = NodeDefinition(
+            id="cp-1",
+            type=NodeType.DECISION,
+            label="Checkpoint Decision",
+            config=DecisionNodeConfig(
+                mode=DecisionMode.AI_CHECKPOINT,
+                confidence_threshold=0.8,
+                edges=[DecisionEdge(target="node-a")],
+                checkpoint_prompt="Do you approve this routing?",
+            ),
+        )
+        result = await engine.evaluate(node, {})
+        assert result.checkpoint_prompt == "Do you approve this routing?"
+
+    @pytest.mark.asyncio
+    @patch("roots.core.decision.litellm.acompletion", new_callable=AsyncMock)
+    async def test_checkpoint_prompt_none_when_not_set(
+        self, mock_acompletion: AsyncMock, engine: DecisionEngine
+    ) -> None:
+        """checkpoint_prompt is None when not configured on the node."""
+        mock_acompletion.return_value = _fake_litellm_response(
+            "node-a", 0.9, "OK"
+        )
+        node = _make_ai_decision_node(
+            mode=DecisionMode.AI_CHECKPOINT,
+            edges=[DecisionEdge(target="node-a")],
+            confidence_threshold=0.8,
+        )
+        result = await engine.evaluate(node, {})
+        assert result.checkpoint_prompt is None
+
+    @pytest.mark.asyncio
+    @patch("roots.core.decision.litellm.acompletion", new_callable=AsyncMock)
+    async def test_invalid_edge_target_raises_error(
+        self, mock_acompletion: AsyncMock, engine: DecisionEngine
+    ) -> None:
+        """Invalid edge target raises DecisionEvaluationError."""
+        mock_acompletion.return_value = _fake_litellm_response(
+            "nonexistent", 0.9, "Bad target"
+        )
+        node = _make_ai_decision_node(
+            mode=DecisionMode.AI_CHECKPOINT,
+            edges=[DecisionEdge(target="node-a")],
+        )
+        with pytest.raises(DecisionEvaluationError, match="invalid edge target"):
+            await engine.evaluate(node, {})
