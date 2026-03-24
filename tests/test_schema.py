@@ -11,6 +11,7 @@ from roots.core.schema import (
     DecisionEdge,
     DecisionMode,
     DecisionNodeConfig,
+    EdgeDefinition,
     EmitNodeConfig,
     EndNodeConfig,
     EndStatus,
@@ -21,6 +22,7 @@ from roots.core.schema import (
     NodeDefinition,
     NodeType,
     OnExhaustion,
+    ProcessDefinition,
     RetryConfig,
 )
 
@@ -569,3 +571,220 @@ class TestConfigDiscriminator:
                 label="Checkpoint",
                 config={},
             )
+
+
+def _make_node(
+    id: str,
+    node_type: NodeType = NodeType.AGENT,
+    config: dict[str, Any] | None = None,
+) -> NodeDefinition:
+    """Helper to create a NodeDefinition for tests."""
+    if config is None:
+        config = VALID_CONFIGS[node_type]
+    return NodeDefinition(id=id, type=node_type, label=f"Node {id}", config=config)
+
+
+def _make_process(**overrides: Any) -> ProcessDefinition:
+    """Helper to create a minimal valid ProcessDefinition."""
+    defaults: dict[str, Any] = {
+        "id": "proc-1",
+        "name": "Test Process",
+        "version": "1.0.0",
+        "nodes": [
+            _make_node("start"),
+            _make_node("end", NodeType.END),
+        ],
+        "edges": [
+            EdgeDefinition(from_node="start", to_node="end"),
+        ],
+        "entry_point": "start",
+    }
+    defaults.update(overrides)
+    return ProcessDefinition(**defaults)
+
+
+class TestEdgeDefinition:
+    def test_create_with_aliases(self) -> None:
+        edge = EdgeDefinition(**{"from": "a", "to": "b"})
+        assert edge.from_node == "a"
+        assert edge.to_node == "b"
+
+    def test_create_with_field_names(self) -> None:
+        edge = EdgeDefinition(from_node="a", to_node="b")
+        assert edge.from_node == "a"
+        assert edge.to_node == "b"
+
+    def test_auto_generated_id(self) -> None:
+        edge = EdgeDefinition(from_node="a", to_node="b")
+        assert edge.id is not None
+        assert len(edge.id) > 0
+
+    def test_unique_ids(self) -> None:
+        e1 = EdgeDefinition(from_node="a", to_node="b")
+        e2 = EdgeDefinition(from_node="a", to_node="b")
+        assert e1.id != e2.id
+
+    def test_explicit_id(self) -> None:
+        edge = EdgeDefinition(id="my-edge", from_node="a", to_node="b")
+        assert edge.id == "my-edge"
+
+    def test_optional_fields_default(self) -> None:
+        edge = EdgeDefinition(from_node="a", to_node="b")
+        assert edge.label is None
+        assert edge.condition is None
+        assert edge.emit_event is False
+
+    def test_all_fields(self) -> None:
+        edge = EdgeDefinition(
+            id="e-1",
+            from_node="a",
+            to_node="b",
+            label="Next",
+            condition="x > 0",
+            emit_event=True,
+        )
+        assert edge.id == "e-1"
+        assert edge.from_node == "a"
+        assert edge.to_node == "b"
+        assert edge.label == "Next"
+        assert edge.condition == "x > 0"
+        assert edge.emit_event is True
+
+    def test_serialization_uses_aliases(self) -> None:
+        edge = EdgeDefinition(from_node="a", to_node="b")
+        data = edge.model_dump(by_alias=True, mode="json")
+        assert "from" in data
+        assert "to" in data
+        assert "from_node" not in data
+        assert "to_node" not in data
+
+
+class TestProcessDefinition:
+    def test_valid_process(self) -> None:
+        proc = _make_process()
+        assert proc.id == "proc-1"
+        assert proc.name == "Test Process"
+        assert proc.version == "1.0.0"
+        assert len(proc.nodes) == 2
+        assert len(proc.edges) == 1
+        assert proc.entry_point == "start"
+
+    def test_optional_fields_default(self) -> None:
+        proc = _make_process()
+        assert proc.description is None
+        assert proc.work_item_schema is None
+
+    def test_optional_fields_set(self) -> None:
+        proc = _make_process(
+            description="A test process",
+            work_item_schema="schemas/work_item.json",
+        )
+        assert proc.description == "A test process"
+        assert proc.work_item_schema == "schemas/work_item.json"
+
+    def test_entry_point_must_exist(self) -> None:
+        with pytest.raises(ValueError, match="entry_point.*nonexistent"):
+            _make_process(entry_point="nonexistent")
+
+    def test_edge_from_node_must_exist(self) -> None:
+        with pytest.raises(ValueError, match="unknown from node.*ghost"):
+            _make_process(
+                edges=[EdgeDefinition(from_node="ghost", to_node="end")]
+            )
+
+    def test_edge_to_node_must_exist(self) -> None:
+        with pytest.raises(ValueError, match="unknown to node.*ghost"):
+            _make_process(
+                edges=[EdgeDefinition(from_node="start", to_node="ghost")]
+            )
+
+    def test_get_node_found(self) -> None:
+        proc = _make_process()
+        node = proc.get_node("start")
+        assert node is not None
+        assert node.id == "start"
+
+    def test_get_node_not_found(self) -> None:
+        proc = _make_process()
+        assert proc.get_node("nonexistent") is None
+
+    def test_get_outbound_edges_non_decision(self) -> None:
+        proc = _make_process()
+        edges = proc.get_outbound_edges("start")
+        assert len(edges) == 1
+        assert isinstance(edges[0], EdgeDefinition)
+        assert edges[0].to_node == "end"
+
+    def test_get_outbound_edges_no_edges(self) -> None:
+        proc = _make_process()
+        edges = proc.get_outbound_edges("end")
+        assert edges == []
+
+    def test_get_outbound_edges_unknown_node(self) -> None:
+        proc = _make_process()
+        edges = proc.get_outbound_edges("nonexistent")
+        assert edges == []
+
+    def test_get_outbound_edges_decision_node_uses_config_edges(self) -> None:
+        decision_node = _make_node(
+            "decide",
+            NodeType.DECISION,
+            {
+                "mode": "deterministic",
+                "edges": [
+                    {"target": "a", "condition": "x > 0"},
+                    {"target": "b", "condition": "x <= 0"},
+                ],
+            },
+        )
+        node_a = _make_node("a")
+        node_b = _make_node("b")
+        proc = _make_process(
+            nodes=[decision_node, node_a, node_b],
+            edges=[
+                EdgeDefinition(from_node="a", to_node="b"),
+            ],
+            entry_point="decide",
+        )
+        edges = proc.get_outbound_edges("decide")
+        assert len(edges) == 2
+        assert all(isinstance(e, DecisionEdge) for e in edges)
+
+    def test_decision_outbound_ignores_top_level_edges(self) -> None:
+        decision_node = _make_node(
+            "decide",
+            NodeType.DECISION,
+            {
+                "mode": "deterministic",
+                "edges": [{"target": "a", "condition": "x > 0"}],
+            },
+        )
+        node_a = _make_node("a")
+        node_b = _make_node("b")
+        proc = _make_process(
+            nodes=[decision_node, node_a, node_b],
+            edges=[
+                EdgeDefinition(from_node="decide", to_node="b"),
+            ],
+            entry_point="decide",
+        )
+        edges = proc.get_outbound_edges("decide")
+        assert len(edges) == 1
+        assert isinstance(edges[0], DecisionEdge)
+        assert edges[0].target == "a"
+
+    def test_non_decision_outbound_uses_top_level_edges(self) -> None:
+        node_a = _make_node("a")
+        node_b = _make_node("b")
+        node_c = _make_node("c")
+        proc = _make_process(
+            nodes=[node_a, node_b, node_c],
+            edges=[
+                EdgeDefinition(from_node="a", to_node="b"),
+                EdgeDefinition(from_node="a", to_node="c"),
+            ],
+            entry_point="a",
+        )
+        edges = proc.get_outbound_edges("a")
+        assert len(edges) == 2
+        assert all(isinstance(e, EdgeDefinition) for e in edges)

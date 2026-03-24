@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 if TYPE_CHECKING:
     from typing import Self
@@ -194,3 +195,67 @@ class NodeDefinition(BaseModel):
         if self.metadata is None:
             self.metadata = {}
         return self
+
+
+class EdgeDefinition(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    from_node: str = Field(alias="from")
+    to_node: str = Field(alias="to")
+    label: str | None = None
+    condition: str | None = None
+    emit_event: bool = False
+
+
+class ProcessDefinition(BaseModel):
+    id: str
+    name: str
+    version: str
+    description: str | None = None
+    work_item_schema: str | None = None
+    nodes: list[NodeDefinition]
+    edges: list[EdgeDefinition]
+    entry_point: str
+
+    _node_map: dict[str, NodeDefinition] = {}
+
+    @model_validator(mode="after")
+    def validate_process(self) -> Self:
+        self._node_map = {node.id: node for node in self.nodes}
+
+        if self.entry_point not in self._node_map:
+            raise ValueError(
+                f"entry_point '{self.entry_point}' does not reference "
+                f"an existing node"
+            )
+
+        for edge in self.edges:
+            if edge.from_node not in self._node_map:
+                raise ValueError(
+                    f"edge '{edge.id}' references unknown from node "
+                    f"'{edge.from_node}'"
+                )
+            if edge.to_node not in self._node_map:
+                raise ValueError(
+                    f"edge '{edge.id}' references unknown to node "
+                    f"'{edge.to_node}'"
+                )
+
+        return self
+
+    def get_node(self, node_id: str) -> NodeDefinition | None:
+        return self._node_map.get(node_id)
+
+    def get_outbound_edges(
+        self, node_id: str
+    ) -> list[EdgeDefinition | DecisionEdge]:
+        node = self._node_map.get(node_id)
+        if node is None:
+            return []
+        if (
+            node.type == NodeType.DECISION
+            and isinstance(node.config, DecisionNodeConfig)
+        ):
+            return list(node.config.edges)
+        return [e for e in self.edges if e.from_node == node_id]
