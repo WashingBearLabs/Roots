@@ -8,6 +8,8 @@ import logging
 import sys
 from pathlib import Path
 
+import httpx
+
 from roots.events.types import EventEnvelope
 
 logger = logging.getLogger(__name__)
@@ -69,4 +71,45 @@ class FileSink(EventSink):
                 "FileSink serialization/write error for event %s",
                 getattr(event, "event", "unknown"),
                 exc_info=True,
+            )
+
+
+class HttpSink(EventSink):
+    """POSTs events as JSON to a remote HTTP endpoint."""
+
+    def __init__(
+        self,
+        url: str,
+        headers: dict[str, str] | None = None,
+        timeout_seconds: float = 10,
+    ) -> None:
+        self._url = url
+        self._headers = headers or {}
+        self._timeout = timeout_seconds
+        self._client: httpx.AsyncClient | None = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None:
+            self._client = httpx.AsyncClient(timeout=self._timeout)
+        return self._client
+
+    async def emit(self, event: EventEnvelope) -> None:
+        try:
+            body = event.model_dump_json()
+            merged_headers = {**self._headers, "Content-Type": "application/json"}
+            response = await self._get_client().post(
+                self._url, content=body, headers=merged_headers
+            )
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            logger.warning(
+                "HttpSink HTTP error %s for event %s",
+                exc.response.status_code,
+                getattr(event, "event", "unknown"),
+            )
+        except (httpx.TimeoutException, httpx.ConnectError) as exc:
+            logger.warning(
+                "HttpSink connection/timeout error for event %s: %s",
+                getattr(event, "event", "unknown"),
+                exc,
             )
