@@ -150,12 +150,12 @@ The process schema layer is the foundation of Roots. It defines the Pydantic v2 
 - Rule for node context: if the error's `loc` starts with `('nodes', <index>, ...)`, look up the node at that index and include its `id` and `type` in the message.
 
 **Acceptance Criteria:**
-- [ ] Valid YAML files parse into ProcessDefinition objects
-- [ ] Invalid YAML syntax produces clear parse errors with line numbers
-- [ ] Pydantic validation errors include node ID and type context when applicable
-- [ ] `parse_process_dict` works for API/programmatic use
-- [ ] `validate_process_yaml` returns error list (empty = valid)
-- [ ] Tests cover: valid YAML, YAML syntax error, missing required field, node-level validation error
+- [x] Valid YAML files parse into ProcessDefinition objects
+- [x] Invalid YAML syntax produces clear parse errors with line numbers
+- [x] Pydantic validation errors include node ID and type context when applicable
+- [x] `parse_process_dict` works for API/programmatic use
+- [x] `validate_process_yaml` returns error list (empty = valid)
+- [x] Tests cover: valid YAML, YAML syntax error, missing required field, node-level validation error
 
 ### US-007: Structural Validator — Basic Rules
 
