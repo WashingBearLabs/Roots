@@ -13,7 +13,7 @@ dependencies = [
     "fastapi",
     "uvicorn[standard]",
     "typer[all]",
-    "litellm",
+    "litellm>=1.82.0,<=1.82.6",  # PINNED: versions 1.82.7+ compromised via supply chain attack (2026-03-24)
     "httpx",
     "aiosqlite",
     "asyncpg",
