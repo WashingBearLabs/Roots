@@ -58,11 +58,11 @@ The storage backend provides the persistence layer for all Roots state. It defin
   - **Datetime convention:** Use `datetime.now(datetime.UTC)` everywhere, NEVER `datetime.utcnow()` (deprecated in Python 3.12+). Produces timezone-aware datetimes that work consistently across SQLite (stored as ISO string) and PostgreSQL (TIMESTAMPTZ). Add a helper `utcnow() -> datetime` in a shared `roots/core/utils.py` that wraps this.
 
 **Acceptance Criteria:**
-- [ ] `StorageBackend` ABC with all methods defined and typed
-- [ ] All return type models defined with appropriate fields
-- [ ] `tests/conftest.py` with sqlite_storage fixture and sample process
-- [ ] pytest-asyncio configured in pyproject.toml
-- [ ] Type hints are complete and pyright-compatible
+- [x] `StorageBackend` ABC with all methods defined and typed
+- [x] All return type models defined with appropriate fields
+- [x] `tests/conftest.py` with sqlite_storage fixture and sample process
+- [x] pytest-asyncio configured in pyproject.toml
+- [x] Type hints are complete and pyright-compatible
 
 ### US-002: SQLite — Schema and Process/Agent CRUD
 
