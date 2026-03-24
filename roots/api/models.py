@@ -176,3 +176,48 @@ class GraphResponse(BaseModel):
     run_status: str | None = None
     nodes: list[GraphNodeResponse]
     edges: list[GraphEdgeResponse]
+
+
+# --- Graph mutation models ---
+
+
+class NodeCreateRequest(BaseModel):
+    id: str
+    type: str
+    label: str
+    config: dict[str, Any]
+    metadata: dict[str, Any] | None = None
+
+
+class NodeUpdateRequest(BaseModel):
+    label: str | None = None
+    config: dict[str, Any] | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class EdgeCreateRequest(BaseModel):
+    from_node: str
+    to_node: str
+    label: str | None = None
+    condition: str | None = None
+
+
+class PositionUpdateRequest(BaseModel):
+    x: float
+    y: float
+
+
+class NodeMutationResponse(BaseModel):
+    id: str
+    type: str
+    label: str
+    config: dict[str, Any]
+    metadata: dict[str, Any]
+
+
+class EdgeMutationResponse(BaseModel):
+    id: str
+    from_node: str
+    to_node: str
+    label: str | None = None
+    condition: str | None = None
