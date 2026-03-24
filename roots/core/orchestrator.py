@@ -848,6 +848,29 @@ class ProcessRunner:
                     merged = deep_merge(merged, result)
             # Write merged state back to work item state
             state.update(merged)
+        elif node.config.merge_strategy == MergeStrategy.COLLECT:
+            branches = getattr(self, "_fork_branches", [])
+            collected: list[dict[str, Any]] = []
+            for i, result in enumerate(results):
+                branch_meta = branches[i] if i < len(branches) else {}
+                branch_id = branch_meta.get("branch_id", f"branch-{i}")
+                entry_node = branch_meta.get("entry_node_id")
+                if isinstance(result, BaseException):
+                    if node.config.allow_partial:
+                        collected.append({
+                            "branch_id": branch_id,
+                            "entry_node": entry_node,
+                            "state": None,
+                            "error": str(result),
+                        })
+                    # Skip failed branches when allow_partial is False
+                else:
+                    collected.append({
+                        "branch_id": branch_id,
+                        "entry_node": entry_node,
+                        "state": result,
+                    })
+            state[node.config.collect_key] = collected  # type: ignore[index]
 
         return None
 

@@ -1,4 +1,4 @@
-"""Tests for fork/join (US-001 branch creation, US-002 parallel execution, US-003 merge_all)."""
+"""Tests for fork/join (US-001 branch creation, US-002 parallel execution, US-003 merge_all, US-004 collect)."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from roots.core.schema import (
     EndStatus,
     ForkNodeConfig,
     JoinNodeConfig,
+    MergeStrategy,
     NodeDefinition,
     NodeType,
     ProcessDefinition,
@@ -1081,3 +1082,410 @@ class TestJoinMergeAll:
         # b_out has nested structure from agent_overlap_b
         assert state["b_out"]["nested"]["level1"]["b_key"] == 2
         assert state["b_out"]["nested"]["level1"]["conflict"] == "b_val"
+
+
+# --- US-004 Helpers ---
+
+
+async def agent_hetero_a(input: dict[str, Any]) -> dict[str, Any]:
+    """Agent returning string-heavy output."""
+    return {"output": {"kind": "text", "value": "hello"}, "escalate": False}
+
+
+async def agent_hetero_b(input: dict[str, Any]) -> dict[str, Any]:
+    """Agent returning numeric-heavy output."""
+    return {"output": {"kind": "number", "value": 42}, "escalate": False}
+
+
+async def agent_hetero_c(input: dict[str, Any]) -> dict[str, Any]:
+    """Agent returning list output."""
+    return {"output": {"kind": "list", "value": [1, 2, 3]}, "escalate": False}
+
+
+def make_collect_process(
+    agent_a: str = "echo",
+    agent_b: str = "echo",
+    collect_key: str = "results",
+    allow_partial: bool = False,
+) -> ProcessDefinition:
+    """Fork → 2 agents → Join (collect) → End."""
+    return ProcessDefinition(
+        id="collect-2",
+        name="Collect 2 Branch",
+        version="1.0.0",
+        nodes=[
+            NodeDefinition(
+                id="fork1",
+                type=NodeType.FORK,
+                label="Fork",
+                config=ForkNodeConfig(),
+            ),
+            NodeDefinition(
+                id="branch_a",
+                type=NodeType.AGENT,
+                label="Branch A",
+                config=AgentNodeConfig(agent=agent_a, output_key="a_out"),
+            ),
+            NodeDefinition(
+                id="branch_b",
+                type=NodeType.AGENT,
+                label="Branch B",
+                config=AgentNodeConfig(agent=agent_b, output_key="b_out"),
+            ),
+            NodeDefinition(
+                id="join1",
+                type=NodeType.JOIN,
+                label="Join",
+                config=JoinNodeConfig(
+                    merge_strategy=MergeStrategy.COLLECT,
+                    collect_key=collect_key,
+                    allow_partial=allow_partial,
+                ),
+            ),
+            NodeDefinition(
+                id="done",
+                type=NodeType.END,
+                label="Done",
+                config=EndNodeConfig(status=EndStatus.COMPLETED),
+            ),
+        ],
+        edges=[
+            EdgeDefinition(from_node="fork1", to_node="branch_a"),
+            EdgeDefinition(from_node="fork1", to_node="branch_b"),
+            EdgeDefinition(from_node="branch_a", to_node="join1"),
+            EdgeDefinition(from_node="branch_b", to_node="join1"),
+            EdgeDefinition(from_node="join1", to_node="done"),
+        ],
+        entry_point="fork1",
+        fork_join_map={"fork1": "join1"},
+    )
+
+
+def make_collect_3_branch_process(
+    collect_key: str = "results",
+    allow_partial: bool = False,
+) -> ProcessDefinition:
+    """Fork → 3 heterogeneous agents → Join (collect) → End."""
+    return ProcessDefinition(
+        id="collect-3",
+        name="Collect 3 Branch",
+        version="1.0.0",
+        nodes=[
+            NodeDefinition(
+                id="fork1",
+                type=NodeType.FORK,
+                label="Fork",
+                config=ForkNodeConfig(),
+            ),
+            NodeDefinition(
+                id="branch_a",
+                type=NodeType.AGENT,
+                label="Branch A",
+                config=AgentNodeConfig(agent="hetero_a", output_key="a_out"),
+            ),
+            NodeDefinition(
+                id="branch_b",
+                type=NodeType.AGENT,
+                label="Branch B",
+                config=AgentNodeConfig(agent="hetero_b", output_key="b_out"),
+            ),
+            NodeDefinition(
+                id="branch_c",
+                type=NodeType.AGENT,
+                label="Branch C",
+                config=AgentNodeConfig(agent="hetero_c", output_key="c_out"),
+            ),
+            NodeDefinition(
+                id="join1",
+                type=NodeType.JOIN,
+                label="Join",
+                config=JoinNodeConfig(
+                    merge_strategy=MergeStrategy.COLLECT,
+                    collect_key=collect_key,
+                    allow_partial=allow_partial,
+                ),
+            ),
+            NodeDefinition(
+                id="done",
+                type=NodeType.END,
+                label="Done",
+                config=EndNodeConfig(status=EndStatus.COMPLETED),
+            ),
+        ],
+        edges=[
+            EdgeDefinition(from_node="fork1", to_node="branch_a"),
+            EdgeDefinition(from_node="fork1", to_node="branch_b"),
+            EdgeDefinition(from_node="fork1", to_node="branch_c"),
+            EdgeDefinition(from_node="branch_a", to_node="join1"),
+            EdgeDefinition(from_node="branch_b", to_node="join1"),
+            EdgeDefinition(from_node="branch_c", to_node="join1"),
+            EdgeDefinition(from_node="join1", to_node="done"),
+        ],
+        entry_point="fork1",
+        fork_join_map={"fork1": "join1"},
+    )
+
+
+# --- US-004 Tests ---
+
+
+class TestJoinCollect:
+    """US-004: Join Node — collect Strategy."""
+
+    async def test_branch_outputs_collected_as_list(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Branch outputs collected as list under configured key."""
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_collect_process("echo", "echo", collect_key="results"),
+            {"input": "hello"},
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        await runner.tick()  # fork
+        await runner.tick()  # join
+
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        state = run.work_item_state
+        assert "results" in state
+        assert isinstance(state["results"], list)
+        assert len(state["results"]) == 2
+
+    async def test_each_entry_includes_branch_metadata(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Each list entry includes branch_id, entry_node, and state."""
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_collect_process("echo", "echo", collect_key="results"),
+            {"input": "hello"},
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        await runner.tick()  # fork
+        await runner.tick()  # join
+
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        results = run.work_item_state["results"]
+
+        for entry in results:
+            assert "branch_id" in entry
+            assert "entry_node" in entry
+            assert "state" in entry
+            assert isinstance(entry["state"], dict)
+
+        # Check specific metadata
+        assert results[0]["branch_id"] == "branch-0"
+        assert results[0]["entry_node"] == "branch_a"
+        assert results[1]["branch_id"] == "branch-1"
+        assert results[1]["entry_node"] == "branch_b"
+
+    async def test_collect_key_from_config(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """collect_key is used from join node config."""
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_collect_process("echo", "echo", collect_key="my_custom_key"),
+            {"input": "hello"},
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        await runner.tick()  # fork
+        await runner.tick()  # join
+
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        assert "my_custom_key" in run.work_item_state
+        assert isinstance(run.work_item_state["my_custom_key"], list)
+        assert len(run.work_item_state["my_custom_key"]) == 2
+
+    async def test_order_matches_branch_order(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Order matches branch order (deterministic)."""
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_collect_process("echo", "echo", collect_key="results"),
+            {"input": "hello"},
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        await runner.tick()  # fork
+        await runner.tick()  # join
+
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        results = run.work_item_state["results"]
+
+        # Order must match branch order: branch-0 first, branch-1 second
+        assert results[0]["branch_id"] == "branch-0"
+        assert results[1]["branch_id"] == "branch-1"
+        # branch_a writes to a_out, branch_b writes to b_out
+        assert "a_out" in results[0]["state"]
+        assert "b_out" in results[1]["state"]
+
+    async def test_collect_with_heterogeneous_outputs(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Collect works with heterogeneous branch outputs."""
+        invoker._registry.register_local("hetero_a", agent_hetero_a)
+        invoker._registry.register_local("hetero_b", agent_hetero_b)
+        invoker._registry.register_local("hetero_c", agent_hetero_c)
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_collect_3_branch_process(collect_key="gathered"),
+            {"input": "test"},
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        await runner.tick()  # fork
+        await runner.tick()  # join
+
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        gathered = run.work_item_state["gathered"]
+        assert len(gathered) == 3
+
+        # Verify heterogeneous outputs are preserved
+        assert gathered[0]["state"]["a_out"]["kind"] == "text"
+        assert gathered[0]["state"]["a_out"]["value"] == "hello"
+        assert gathered[1]["state"]["b_out"]["kind"] == "number"
+        assert gathered[1]["state"]["b_out"]["value"] == 42
+        assert gathered[2]["state"]["c_out"]["kind"] == "list"
+        assert gathered[2]["state"]["c_out"]["value"] == [1, 2, 3]
+
+        # Branch metadata in order
+        assert gathered[0]["branch_id"] == "branch-0"
+        assert gathered[1]["branch_id"] == "branch-1"
+        assert gathered[2]["branch_id"] == "branch-2"
+
+    async def test_collect_allow_partial_includes_failed_branches(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Failed branches included with error when allow_partial is True."""
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_collect_process(
+                "echo", "failing",
+                collect_key="results",
+                allow_partial=True,
+            ),
+            {"input": "partial"},
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        await runner.tick()  # fork
+        await runner.tick()  # join
+
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        results = run.work_item_state["results"]
+        assert len(results) == 2
+
+        # First branch succeeded
+        assert results[0]["branch_id"] == "branch-0"
+        assert isinstance(results[0]["state"], dict)
+        assert "error" not in results[0]
+
+        # Second branch failed
+        assert results[1]["branch_id"] == "branch-1"
+        assert results[1]["state"] is None
+        assert "error" in results[1]
+        assert "branch failure" in results[1]["error"]
+
+    async def test_collect_without_allow_partial_skips_failed(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Failed branches are skipped when allow_partial is False."""
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_collect_process(
+                "echo", "failing",
+                collect_key="results",
+                allow_partial=False,
+            ),
+            {"input": "strict"},
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        await runner.tick()  # fork
+        await runner.tick()  # join
+
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        results = run.work_item_state["results"]
+        # Only the successful branch is included
+        assert len(results) == 1
+        assert results[0]["branch_id"] == "branch-0"
+
+    async def test_collect_continues_to_end(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+        sink: CollectorSink,
+    ) -> None:
+        """Execution continues from join to end after collect."""
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_collect_process("echo", "echo", collect_key="results"),
+            {"input": "continue"},
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        await runner.tick()  # fork
+        await runner.tick()  # join
+        await runner.tick()  # end
+
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        assert run.status == RunStatus.COMPLETED
