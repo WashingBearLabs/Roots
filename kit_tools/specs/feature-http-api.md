@@ -156,10 +156,10 @@ The HTTP API is a FastAPI server exposing the full Roots framework via REST endp
 - `POST /webhooks/{id}/test`: send a test event `roots.webhook.test` with `{test: true}` metadata to the webhook URL. Return `{status: "delivered"|"failed", response_code, error}`.
 
 **Acceptance Criteria:**
-- [ ] Webhook CRUD works
-- [ ] Test ping delivers event and reports result
-- [ ] 404 on non-existent webhook
-- [ ] Tests cover CRUD and test ping
+- [x] Webhook CRUD works
+- [x] Test ping delivers event and reports result
+- [x] 404 on non-existent webhook
+- [x] Tests cover CRUD and test ping
 
 ### US-008: Graph Data Read Endpoints
 
