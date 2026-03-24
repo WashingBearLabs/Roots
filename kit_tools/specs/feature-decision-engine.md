@@ -121,10 +121,10 @@ The decision engine evaluates decision nodes across all four modes: deterministi
 - LiteLLM model strings use provider prefixes where needed: `"claude-sonnet-4-20250514"` (Anthropic), `"gpt-4o"` (OpenAI), `"ollama/llama3"` (Ollama), `"gemini/gemini-pro"` (Google). See LiteLLM docs for full list.
 
 **Acceptance Criteria:**
-- [ ] `AIDecisionResponse` model validates confidence range [0.0, 1.0]
-- [ ] Prompt template includes context_prompt, state, and edge descriptions
-- [ ] Model selection follows the fallback chain: node → default → constant
-- [ ] Tests validate the response model independently (no API call needed)
+- [x] `AIDecisionResponse` model validates confidence range [0.0, 1.0]
+- [x] Prompt template includes context_prompt, state, and edge descriptions
+- [x] Model selection follows the fallback chain: node → default → constant
+- [x] Tests validate the response model independently (no API call needed)
 
 ### US-004: AI Bounded and AI Autonomous Modes
 
