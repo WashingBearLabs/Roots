@@ -7,7 +7,7 @@
 -->
 # PRODUCT_VISION.md
 
-> Last updated: 2026-03-23
+> Last updated: 2026-03-24
 > Updated by: Claude
 
 ---
@@ -144,9 +144,22 @@ Roots is an AI-native process orchestration framework that provides the connecti
 - **Status:** Deferred
 
 #### T3.6 -- Visual Process Editor
-- **Description:** React Flow-based visual editor consuming the headless graph API. The reference UI for process authoring and run monitoring. Renders node/edge JSON, translates user gestures into mutation API calls.
+- **Description:** Consumer-built visual editor consuming the headless graph API. Roots is UI-agnostic — any framework works. The reference implementation (built by consumers like Acorn) renders node/edge JSON and translates user gestures into mutation API calls.
 - **Feature Spec(s):** --
 - **Status:** Deferred
+
+#### T3.7 -- Root Packaging & Distribution
+- **Description:** Portable, versionable, shareable process packages. A "Root" (capital R) is a `.root` archive containing a process definition, agent contracts (input/output schemas without implementations), optional default agent implementations, configuration overrides/templates, and metadata. Enables process-as-a-package: open-source security playbooks, compliance workflows, and operational procedures as installable, executable artifacts. `roots pack` exports, `roots inspect` previews, `roots install` loads with contract validation. Agent contracts decouple process definitions from implementations — the same Root works on any system that satisfies the contracts.
+- **Feature Spec(s):** [epic-root-packaging.md](specs/epic-root-packaging.md) — 3 feature specs, 16 stories:
+  - [feature-root-manifest.md](specs/feature-root-manifest.md) (6 stories) — Manifest schema, contract extraction, archive format, pack/inspect CLI
+  - [feature-root-install.md](specs/feature-root-install.md) (5 stories) — Install, contract validation, config overrides, package tracking
+  - [feature-root-defaults.md](specs/feature-root-defaults.md) (5 stories) — Default agents, scaffolding, config templates, e2e test
+- **Status:** Planned
+
+#### T3.8 -- Root Registry & Marketplace
+- **Description:** A registry service for discovering, publishing, and installing Root packages. `roots publish` uploads to the registry. `roots search` finds packages by tag/keyword. `roots install <name>` pulls from the registry instead of a local file. Versioned package resolution, dependency tracking, and community ratings. Think npm for process orchestration.
+- **Feature Spec(s):** --
+- **Status:** Deferred (depends on T3.7)
 
 ---
 
