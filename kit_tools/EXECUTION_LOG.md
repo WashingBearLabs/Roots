@@ -298,3 +298,33 @@
 - Learnings: When a confidence escalation creates both a checkpoint (with ai_recommendation) and an escalation record, resolve_pending must detect the escalation-type checkpoint and route to the escalation resolution path to resolve both records; CheckpointRecord has a checkpoint_type field ('planned' vs 'escalation') that distinguishes planned checkpoints from escalation-related checkpoints; Storage already has resolve_checkpoint and resolve_escalation methods that set status='resolved' and record resolution JSON; Verifier note: Implementation is clean and well-structured. The resolve_pending function correctly checks for pending checkpoint first, then escalation, matching the spec. The escalation-type checkpoint bridging logic (line 49-53) correctly handles the case where a checkpoint was created as part of an escalation flow. All 7 acceptance criteria are fully met with comprehensive test coverage.
 - Committed: feat(retry-escalation): US-005 - Checkpoint and Escalation Resolution
 
+### US-001: Fork Node — Branch Creation (Attempt 1) — PASS
+- Completed: 2026-03-24T07:19:47Z
+- Verified by: independent verifier session
+- Learnings: ProcessDefinition.fork_join_map is populated by recompute_fork_join_map() during validation — in tests, set it directly on the ProcessDefinition constructor; EdgeDefinition uses populate_by_name=True so from_node/to_node work as constructor args despite the alias fields being 'from'/'to'; Fork branches are stored as ephemeral state on ProcessRunner (_fork_branches, _fork_join_node_id) — not in work item state per spec; Verifier note: Clean implementation. Fork handler correctly uses process.get_outbound_edges(), deep-copies state, tracks metadata, and raises on zero edges. The node.completed event is emitted by the tick() loop (standard pattern for all node types), not within _handle_fork itself — this is correct. All 6 fork/join tests pass, and all 13 existing orchestrator tests pass with no regressions.
+- Committed: feat(fork-join): US-001 - Fork Node — Branch Creation
+
+### US-002: Parallel Branch Execution (Attempt 1) — PASS
+- Completed: 2026-03-24T07:23:51Z
+- Verified by: independent verifier session
+- Learnings: _execute_branch runs a mini execution loop reusing _dispatch_node handlers — no branch-specific logic needed in individual handlers; Branch events get branch_id threaded via metadata dict in create_event calls within _execute_branch, not by modifying the emitter; asyncio.gather with return_exceptions=True captures branch failures as BaseException instances in the results list rather than raising; Branch timing is recorded on the branch context dict (duration_ms) after the mini loop completes; Verifier note: Clean implementation. All 13 fork/join tests pass (0.40s), all 13 orchestrator tests pass (0.17s) with no regressions. Code follows project conventions and the feature spec's implementation hints closely.
+- Committed: feat(fork-join): US-002 - Parallel Branch Execution
+
+### US-003: Join Node — merge_all Strategy (Attempt 1) — PASS
+- Completed: 2026-03-24T07:30:36Z
+- Verified by: independent verifier session
+- Learnings: deep_merge is a module-level utility in orchestrator.py — exported for direct testing; Fork handler must set _decision_next_node to join_node_id so tick() routes to the join node instead of following the fork's first outbound edge; _handle_join reads branch results from _fork_branch_results set by _handle_fork, then deep-merges successful dict results into the work item state via state.update(merged); The fork→join flow requires two ticks: tick 1 processes fork (executes branches, routes to join), tick 2 processes join (merges results); TestForkJoinStubs tests were updated: fork test now checks OrchestrationError for no outbound edges, join test checks OrchestrationError for missing branch results; Verifier note: Implementation is clean and correct. deep_merge utility follows spec exactly (recursive dict merge, last-writer-wins for scalars, list replacement). Join handler properly validates branch results exist, checks merge strategy, and updates state. Test coverage is thorough at both unit and integration levels. Previous NotImplementedError stubs in test_handlers.py were correctly updated to test the new error conditions.
+- Committed: feat(fork-join): US-003 - Join Node — merge_all Strategy
+
+### US-004: Join Node — collect Strategy (Attempt 1) — PASS
+- Completed: 2026-03-24T07:33:52Z
+- Verified by: independent verifier session
+- Learnings: Collect strategy builds a list from _fork_branch_results paired with _fork_branches metadata — both are set by _handle_fork in branch order; Failed branches in collect: when allow_partial=True, include with state=null and error string; when False, skip entirely; collect_key is guaranteed non-None by JoinNodeConfig's model_validator when merge_strategy is COLLECT; Verifier note: Implementation is clean and focused. All 35 fork/join tests pass, plus 13 orchestrator tests pass with no regressions. Error handling for failed branches (allow_partial true/false) is also tested. The schema includes a model validator ensuring collect_key is provided when using COLLECT strategy.
+- Committed: feat(fork-join): US-004 - Join Node — collect Strategy
+
+### US-005: Partial Failure Handling (Attempt 1) — PASS
+- Completed: 2026-03-24T07:41:04Z
+- Verified by: independent verifier session
+- Learnings: Partial failure handling is centralized in _handle_join before the merge strategy logic — classify results into successes/failures first, then apply strategy-specific merging; When _join_metadata is None, it must not be passed as metadata= to create_event because EventEnvelope.metadata does not accept None — conditionally include the kwarg instead; The existing US-004 test test_collect_without_allow_partial_skips_failed needed updating to match US-005 semantics: allow_partial=False now raises OrchestrationError instead of silently skipping failed branches; Failed branch info uses { branch_id, entry_node, error_message } format and is stored in state['_failed_branches']; Verifier note: Implementation is clean and well-structured. The failure classification logic in _handle_join correctly handles all four scenarios (all success, partial with allow, partial without allow, all fail). The all-fail check precedes the allow_partial check, ensuring correct behavior. Both merge strategies (merge_all and collect) handle partial failures correctly. All 44 fork/join tests and 13 orchestrator tests pass.
+- Committed: feat(fork-join): US-005 - Partial Failure Handling
+

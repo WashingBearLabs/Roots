@@ -10,7 +10,7 @@
 > **TEMPLATE_INTENT:** Persistent record of code quality, security, and intent alignment findings from automated validation. Tracks findings across sessions with status tracking and archival.
 
 > Last updated: 2026-03-24
-> Updated by: Claude (validate-feature — retry-escalation)
+> Updated by: Claude (validate-feature — fork-join)
 
 ---
 
@@ -36,6 +36,85 @@
 
 <!-- Newest findings at top. Each entry has a unique ID: YYYY-MM-DD-NNN -->
 <!-- Findings are added by /kit-tools:validate-feature -->
+
+### 2026-03-24 — Fork/Join Validation
+
+| ID | Category | Severity | File | Status |
+|----|----------|----------|------|--------|
+| 2026-03-24-020 | quality | warning | `roots/core/orchestrator.py` | open |
+| 2026-03-24-021 | quality | warning | `roots/core/orchestrator.py` | open |
+| 2026-03-24-022 | quality | warning | `roots/core/orchestrator.py` | open |
+| 2026-03-24-023 | quality | warning | `roots/core/orchestrator.py` | open |
+| 2026-03-24-024 | quality | warning | `roots/core/orchestrator.py` | open |
+| 2026-03-24-025 | security | warning | `roots/events/webhooks.py` | open |
+| 2026-03-24-026 | security | warning | `roots/events/sinks.py` | open |
+| 2026-03-24-027 | security | warning | `roots/storage/postgres.py` | open |
+| 2026-03-24-028 | security | warning | `roots/agents/invoker.py` | open |
+| 2026-03-24-029 | security | warning | `roots/core/decision.py` | open |
+| 2026-03-24-030 | security | warning | `roots/events/sinks.py` | open |
+| 2026-03-24-031 | quality | info | `roots/core/orchestrator.py` | open |
+| 2026-03-24-032 | quality | info | `roots/core/schema.py` | open |
+| 2026-03-24-033 | quality | info | `roots/core/validator.py` | open |
+| 2026-03-24-034 | quality | info | `tests/test_fork_join.py` | open |
+| 2026-03-24-035 | security | info | `roots/core/decision.py` | open |
+| 2026-03-24-036 | compliance | info | `roots/core/orchestrator.py` | open |
+| 2026-03-24-037 | testing | info | `test suite` | open |
+
+**2026-03-24-020** — Instance attributes `_fork_branches`, `_fork_join_node_id`, and `_fork_branch_results` are set dynamically in `_handle_fork` and read via `getattr` with fallback in `_handle_join`, but never declared in `__init__`. Implicit coupling between fork and join handlers.
+> Recommendation: Declare these attributes in `__init__` with `None` defaults (like `_join_metadata` already is).
+
+**2026-03-24-021** — `_execute_branch` calls `self._dispatch_node` which can route to `_handle_fork`/`_handle_join`. If a branch contains a nested fork/join, shared mutable state on `self` would be overwritten, corrupting the outer fork/join context.
+> Recommendation: Add a guard in `_handle_fork` that raises `OrchestrationError` if `_fork_branch_results` is already set, since nested fork/join is out of scope for v1.
+
+**2026-03-24-022** — In `_execute_branch`, if `join_node_id` is `None` (fork has no paired join in `fork_join_map`), the `while current_node_id != join_node_id` loop becomes `while current_node_id != None`, running indefinitely until an error or end node.
+> Recommendation: Add explicit guard at start of `_handle_fork`: `if join_node_id is None: raise OrchestrationError(...)`.
+
+**2026-03-24-023** — `_execute_branch` has no protection against infinite loops. A cycle in the branch graph that doesn't pass through the join node would loop forever.
+> Recommendation: Add a maximum iteration counter (e.g., 1000 nodes) and raise `OrchestrationError` if exceeded.
+
+**2026-03-24-024** — In `_handle_join` COLLECT strategy, the comment "Skip failed branches when allow_partial is False" (line ~928) is dead code — when `allow_partial=False` and there are failures, the earlier guard at lines 890-898 already raises.
+> Recommendation: Remove the dead code branch or add a clarifying comment.
+
+**2026-03-24-025** — SSRF risk in WebhookDispatcher. HTTP POST sent to user-supplied webhook URLs with no URL validation or allowlist/denylist filtering. Could target internal network services or cloud metadata endpoints.
+> Recommendation: Validate webhook URLs at registration. Implement denylist blocking private/internal IP ranges.
+
+**2026-03-24-026** — SSRF risk in HttpSink. Accepts arbitrary URL at construction with no validation. If URLs are configurable by untrusted input, enables SSRF.
+> Recommendation: Validate URL at construction. Enforce HTTPS-only in production or document trust assumption.
+
+**2026-03-24-027** — Webhook secrets stored in plaintext in PostgreSQL `webhooks` table. `list_webhooks` returns raw secret to callers. Database breach would expose all webhook secrets.
+> Recommendation: Encrypt webhook secrets at rest. Redact secret field in list responses.
+
+**2026-03-24-028** — `_invoke_remote` posts work item state to arbitrary `callback_url` with no URL validation. SSRF risk if agent registration accessible to untrusted users.
+> Recommendation: Validate `callback_url` at registration time, rejecting private/internal IPs.
+
+**2026-03-24-029** — Full work item state sent to external LLM in `build_decision_messages`. No filtering or redaction mechanism for sensitive/PII data.
+> Recommendation: Add configurable field allowlist in DecisionNodeConfig to control state sent to LLM.
+
+**2026-03-24-030** — Path traversal risk in FileSink. Accepts arbitrary path and creates parent directories with `mkdir(parents=True)`. If path from untrusted input, could write to arbitrary filesystem locations.
+> Recommendation: Validate path against allowed base directory, or document trust assumption.
+
+**2026-03-24-031** — `deep_merge` does not deep-copy values from override dict. Docstring says "Returns a new dict" implying independence, but only top-level dict is new. Safe in current fork/join usage (branch states already deep-copied) but could surprise reuse.
+> Recommendation: Document in docstring that returned dict shares references with inputs for non-dict leaf values.
+
+**2026-03-24-032** — `ForkNodeConfig` is an empty Pydantic model with just `pass`. Fine since fork behavior is structural, but could look incomplete to future contributors.
+> Recommendation: Add docstring explaining fork behavior derives from outbound edges, no config needed.
+
+**2026-03-24-033** — Fork validator requires >= 2 branches but orchestrator only checks for 0 outbound edges. A fork with exactly 1 branch passes orchestrator validation but fails structural validation.
+> Recommendation: Align checks — both should require >= 2 branches.
+
+**2026-03-24-034** — Tests access private/internal attributes directly (`runner._fork_branches`, `runner._fork_branch_results`, etc.) throughout test file. Creates tight coupling to implementation details.
+> Recommendation: Minor concern for internal project. Consider noting white-box testing intent in test file header.
+
+**2026-03-24-035** — `simpleeval` evaluator uses `EvalWithCompoundTypes` with no operator restrictions. Could allow denial-of-service via expensive expressions if process definitions come from untrusted sources.
+> Recommendation: Consider adding expression complexity limits if untrusted process definitions are possible.
+
+**2026-03-24-036** — US-003 merge_all strategy merges into empty dict then calls `state.update(merged)`. Pre-existing keys in work item state not present in branch output are preserved. Correct behavior but not explicitly specified in feature spec.
+> Recommendation: No action required. Document if questions arise.
+
+**2026-03-24-037** — Fork/join test suite: 44 passed, 0 failures in 0.75s. All 5 user stories (US-001 through US-005) fully covered with comprehensive test scenarios.
+> Recommendation: No action required.
+
+---
 
 ### 2026-03-24 — Retry & Escalation Validation
 
