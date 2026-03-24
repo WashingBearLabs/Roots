@@ -82,12 +82,12 @@ Five self-contained demo applications that showcase the Roots framework's capabi
   - This is a REFERENCE template — each demo copies and customizes it, it's not served directly
 
 **Acceptance Criteria:**
-- [ ] `styles.css` exists with dark theme, all node status classes, card/button components
-- [ ] `base.html` exists as a reference template linking all shared assets
-- [ ] CSS uses custom properties for all colors (themeable)
-- [ ] Pulse animation defined for running nodes
-- [ ] No external CDN dependencies — fully self-contained
-- [ ] Looks clean and readable in a browser (manual visual check)
+- [x] `styles.css` exists with dark theme, all node status classes, card/button components
+- [x] `base.html` exists as a reference template linking all shared assets
+- [x] CSS uses custom properties for all colors (themeable)
+- [x] Pulse animation defined for running nodes
+- [x] No external CDN dependencies — fully self-contained
+- [x] Looks clean and readable in a browser (manual visual check)
 
 ### US-003: Shared JS Components
 
