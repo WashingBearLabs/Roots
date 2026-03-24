@@ -163,11 +163,11 @@ The decision engine evaluates decision nodes across all four modes: deterministi
 - Add `checkpoint_prompt` (optional str) to `DecisionResult`
 
 **Acceptance Criteria:**
-- [ ] ai_checkpoint always returns `escalated=True`
-- [ ] AI recommendation is included in the result
-- [ ] checkpoint_prompt from node config is passed through
-- [ ] Confidence threshold still applies (but result is escalated regardless)
-- [ ] Tests verify escalation behavior
+- [x] ai_checkpoint always returns `escalated=True`
+- [x] AI recommendation is included in the result
+- [x] checkpoint_prompt from node config is passed through
+- [x] Confidence threshold still applies (but result is escalated regardless)
+- [x] Tests verify escalation behavior
 
 ### US-006: Decision History Recording
 
