@@ -43,11 +43,11 @@ Fork/join enables parallel branch execution within a process graph. A fork node 
 - Emit `roots.node.completed` for the fork node after branches are set up
 
 **Acceptance Criteria:**
-- [ ] Fork node identifies all outbound edges as branches
-- [ ] Each branch gets a deep copy of work item state
-- [ ] Branch metadata is tracked (branch_id, entry node)
-- [ ] Fork node with 0 outbound edges raises OrchestrationError
-- [ ] Tests verify branch creation for 2 and 3+ branches
+- [x] Fork node identifies all outbound edges as branches
+- [x] Each branch gets a deep copy of work item state
+- [x] Branch metadata is tracked (branch_id, entry node)
+- [x] Fork node with 0 outbound edges raises OrchestrationError
+- [x] Tests verify branch creation for 2 and 3+ branches
 
 ### US-002: Parallel Branch Execution
 
