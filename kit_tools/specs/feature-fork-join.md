@@ -132,12 +132,12 @@ Fork/join enables parallel branch execution within a process graph. A fork node 
 - The `return_exceptions=True` in asyncio.gather makes this possible — check each result for exceptions
 
 **Acceptance Criteria:**
-- [ ] `allow_partial: false` fails run on any branch failure
-- [ ] `allow_partial: true` continues with successful branches
-- [ ] Failed branch info recorded in work item state
-- [ ] All branches failing fails the run even with allow_partial
-- [ ] Join metadata indicates partial completion
-- [ ] Tests cover: all success, partial failure (allowed), partial failure (not allowed), all failure
+- [x] `allow_partial: false` fails run on any branch failure
+- [x] `allow_partial: true` continues with successful branches
+- [x] Failed branch info recorded in work item state
+- [x] All branches failing fails the run even with allow_partial
+- [x] Join metadata indicates partial completion
+- [x] Tests cover: all success, partial failure (allowed), partial failure (not allowed), all failure
 
 ## Known Limitations (v1)
 
