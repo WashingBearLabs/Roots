@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+from typing import Any
 
 import httpx
+import jsonschema
 
 from roots.agents.registry import AgentRegistry
-from roots.agents.types import AgentInput, AgentOutput, AgentType
+from roots.agents.types import AgentInput, AgentOutput, AgentRegistration, AgentType
 
 
 class AgentNotFoundError(Exception):
@@ -33,6 +35,27 @@ class AgentInvocationError(Exception):
         super().__init__(f"Agent '{agent_name}' invocation failed: {message}")
 
 
+class AgentSchemaValidationError(AgentInvocationError):
+    """Raised when agent input or output fails schema validation."""
+
+    def __init__(
+        self,
+        agent_name: str,
+        direction: str,
+        validation_errors: list[dict[str, Any]],
+    ) -> None:
+        self.direction = direction
+        self.validation_errors = validation_errors
+        error_summary = "; ".join(
+            e.get("message", str(e)) for e in validation_errors
+        )
+        super().__init__(
+            agent_name=agent_name,
+            message=f"{direction} schema validation failed: {error_summary}",
+            original=ValueError(error_summary),
+        )
+
+
 class AgentInvoker:
     """Invokes local and remote agents registered in the registry."""
 
@@ -48,16 +71,53 @@ class AgentInvoker:
         """Invoke a registered agent by name.
 
         Raises AgentNotFoundError if the agent is not registered.
+        Raises AgentSchemaValidationError if input/output fails schema validation.
         Raises AgentInvocationError if invocation fails.
         """
         registration = self._registry.get(agent_name)
         if registration is None:
             raise AgentNotFoundError(agent_name)
 
-        if registration.agent_type == AgentType.REMOTE:
-            return await self._invoke_remote(agent_name, input)
+        if registration.input_schema is not None:
+            self._validate_schema(
+                agent_name, "input", input.work_item_state, registration.input_schema
+            )
 
-        return await self._invoke_local(agent_name, input)
+        if registration.agent_type == AgentType.REMOTE:
+            result = await self._invoke_remote(agent_name, input)
+        else:
+            result = await self._invoke_local(agent_name, input)
+
+        if registration.output_schema is not None:
+            self._validate_schema(
+                agent_name, "output", result.output, registration.output_schema
+            )
+
+        return result
+
+    @staticmethod
+    def _validate_schema(
+        agent_name: str,
+        direction: str,
+        instance: dict[str, Any],
+        schema: dict[str, Any],
+    ) -> None:
+        validator = jsonschema.Draft7Validator(schema)
+        errors = list(validator.iter_errors(instance))
+        if errors:
+            validation_errors = [
+                {
+                    "path": list(e.absolute_path),
+                    "message": e.message,
+                    "validator": e.validator,
+                }
+                for e in errors
+            ]
+            raise AgentSchemaValidationError(
+                agent_name=agent_name,
+                direction=direction,
+                validation_errors=validation_errors,
+            )
 
     async def _invoke_local(
         self, agent_name: str, input: AgentInput
