@@ -73,3 +73,22 @@ class HistoryEventResponse(BaseModel):
     node_id: str | None = None
     data: dict[str, Any]
     created_at: datetime
+
+
+# --- Checkpoint models ---
+
+
+class CheckpointResponse(BaseModel):
+    id: str
+    run_id: str
+    node_id: str
+    type: str
+    prompt: str
+    ai_recommendation: dict[str, Any] | None = None
+    status: str
+
+
+class CheckpointResolveRequest(BaseModel):
+    decision: str
+    notes: str | None = None
+    redirect_to: str | None = None
