@@ -280,11 +280,11 @@ Five self-contained demo applications that showcase the Roots framework's capabi
   - Emit node: custom event visible in event log with incident summary
 
 **Acceptance Criteria:**
-- [ ] Incident input panel with form fields and scenario buttons
-- [ ] AI decision panel shows confidence bar and reasoning
-- [ ] "Port Scan" scenario triggers escalation display
-- [ ] Emit node fires visible custom event in event log
-- [ ] Pre-built scenarios produce different routing decisions
+- [x] Incident input panel with form fields and scenario buttons
+- [x] AI decision panel shows confidence bar and reasoning
+- [x] "Port Scan" scenario triggers escalation display
+- [x] Emit node fires visible custom event in event log
+- [x] Pre-built scenarios produce different routing decisions
 
 ### US-009: API Explorer — Backend
 
