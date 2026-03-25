@@ -200,11 +200,11 @@ Five self-contained demo applications that showcase the Roots framework's capabi
 - `run_demo.py`: load process, register 4 agents, call `run_demo()` from demo_server.py. Use same pattern as content-pipeline.
 
 **Acceptance Criteria:**
-- [ ] `demo/research-assistant/process.yaml` parses and validates (including fork/join pairing)
-- [ ] All 4 agents registered and callable
-- [ ] `run_demo.py` starts server successfully
-- [ ] Process can be created and executed via API (test with curl or httpx)
-- [ ] Fork/join executes correctly with collected results
+- [x] `demo/research-assistant/process.yaml` parses and validates (including fork/join pairing)
+- [x] All 4 agents registered and callable
+- [x] `run_demo.py` starts server successfully
+- [x] Process can be created and executed via API (test with curl or httpx)
+- [x] Fork/join executes correctly with collected results
 
 ### US-006: Research Assistant — Frontend
 
