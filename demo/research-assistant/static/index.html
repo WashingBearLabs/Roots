@@ -1,37 +1,415 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Research Assistant — Roots Demo</title>
-    <link rel="stylesheet" href="/common/styles.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Research Assistant — Roots Demo</title>
+  <link rel="stylesheet" href="/common/styles.css">
+  <style>
+    main {
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 50% 50%;
+    }
+    .input-bar {
+      grid-column: 1 / -1;
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+    }
+    .input-bar input {
+      flex: 1;
+      padding: 0.5rem;
+      font-family: inherit;
+      font-size: 0.875rem;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .input-controls {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    .sample-buttons {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .sample-buttons button {
+      font-size: 0.75rem;
+      padding: 0.3rem 0.6rem;
+    }
+    #graph-panel {
+      grid-column: 1 / -1;
+      overflow: auto;
+    }
+    #results-panel, #summary-panel {
+      overflow-y: auto;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 0.75rem;
+    }
+    .tab-btn {
+      background: transparent;
+      color: var(--gray);
+      border: none;
+      border-bottom: 2px solid transparent;
+      padding: 0.4rem 0.75rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      border-radius: 0;
+    }
+    .tab-btn.active {
+      color: var(--blue);
+      border-bottom-color: var(--blue);
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    .result-data {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.75rem;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 0.8rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .summary-text {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.75rem;
+      font-size: 0.875rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+
+    /* Checkpoint actions */
+    .checkpoint-actions {
+      display: flex;
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+
+    /* Final status */
+    .final-badge {
+      display: inline-block;
+      padding: 0.5rem 1.25rem;
+      border-radius: var(--radius);
+      font-size: 1.1rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-top: 0.75rem;
+    }
+    .final-badge.completed { background: var(--green); color: #1a1a2e; }
+    .final-badge.failed    { background: var(--red); color: #fff; }
+
+    /* Hide sections until ready */
+    .hidden { display: none !important; }
+  </style>
 </head>
 <body>
+  <div class="app">
     <header>
-        <h1>Research Assistant</h1>
-        <span class="status-badge status-pending">Waiting for topic</span>
+      <h1>Research Assistant</h1>
+      <span class="status-badge pending" id="process-status">ready</span>
     </header>
+
     <main>
-        <p>Frontend will be implemented in US-006. The backend is ready — try the API directly:</p>
-        <pre>
-# Create a run
-curl -X POST http://localhost:8202/api/runs \
-  -H "Content-Type: application/json" \
-  -d '{"process_id": "research-assistant", "work_item": {"topic": "AI Safety"}}'
+      <div class="input-bar" id="input-bar">
+        <input type="text" id="topic-input" placeholder="Enter a research topic...">
+        <div class="input-controls">
+          <button class="btn-primary" id="start-btn">Start Research</button>
+          <div class="sample-buttons">
+            <button class="btn-outline" data-topic="AI Safety">AI Safety</button>
+            <button class="btn-outline" data-topic="Climate Change">Climate Change</button>
+            <button class="btn-outline" data-topic="Quantum Computing">Quantum Computing</button>
+          </div>
+        </div>
+      </div>
 
-# Check run status
-curl http://localhost:8202/api/runs
+      <div class="card" id="graph-panel">
+        <h2>Process Graph</h2>
+        <div id="graph-container"></div>
+      </div>
 
-# Resolve checkpoint (after run creation)
-curl -X POST http://localhost:8202/api/runs/{run_id}/checkpoint \
-  -H "Content-Type: application/json" \
-  -d '{"decision": "approve"}'
-        </pre>
+      <div class="card panel-scroll" id="results-panel">
+        <h2>Research Results</h2>
+        <div id="results-container">
+          <p class="text-gray">Start a research run to see results...</p>
+        </div>
+      </div>
+
+      <div class="card panel-scroll" id="summary-panel">
+        <h2>Summary</h2>
+        <div id="summary-container">
+          <p class="text-gray">Summary will appear after research completes...</p>
+        </div>
+      </div>
     </main>
-    <footer>Powered by Roots</footer>
-    <script src="/common/graph-renderer.js"></script>
-    <script src="/common/state-viewer.js"></script>
-    <script src="/common/event-log.js"></script>
-    <script src="/common/roots-client.js"></script>
+
+    <footer>
+      Powered by <a href="#">Roots</a>
+    </footer>
+  </div>
+
+  <script src="/common/graph-renderer.js"></script>
+  <script src="/common/state-viewer.js"></script>
+  <script src="/common/event-log.js"></script>
+  <script src="/common/roots-client.js"></script>
+  <script>
+    const client = new RootsClient();
+    const graphRenderer = new GraphRenderer(document.getElementById('graph-container'));
+    const statusBadge = document.getElementById('process-status');
+    const startBtn = document.getElementById('start-btn');
+    const topicInput = document.getElementById('topic-input');
+    const inputBar = document.getElementById('input-bar');
+    const resultsContainer = document.getElementById('results-container');
+    const summaryContainer = document.getElementById('summary-container');
+
+    let currentRunId = null;
+    let firstCheckpointResolved = false;
+    let secondCheckpointResolved = false;
+
+    // Load initial process graph
+    client.getProcessGraph('research-assistant').then(data => {
+      graphRenderer.render(data);
+    }).catch(() => {});
+
+    // Quick-select topic buttons
+    document.querySelectorAll('[data-topic]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        topicInput.value = btn.dataset.topic;
+      });
+    });
+
+    // Start research
+    startBtn.addEventListener('click', async () => {
+      const topic = topicInput.value.trim();
+      if (!topic) return;
+
+      startBtn.disabled = true;
+      firstCheckpointResolved = false;
+      secondCheckpointResolved = false;
+      resultsContainer.innerHTML = '<p class="text-blue">Starting research...</p>';
+      summaryContainer.innerHTML = '<p class="text-gray">Waiting for research to complete...</p>';
+      updateStatus('running');
+
+      try {
+        const run = await client.createRun('research-assistant', { topic });
+        currentRunId = run.id;
+
+        // Auto-resolve the first checkpoint (topic_input)
+        await client.resolveCheckpoint(run.id, 'approve');
+        firstCheckpointResolved = true;
+
+        client.startPolling(run.id, onGraphUpdate);
+      } catch (err) {
+        resultsContainer.innerHTML = `<p class="text-red">Error: ${escapeHtml(err.message)}</p>`;
+        updateStatus('failed');
+        startBtn.disabled = false;
+      }
+    });
+
+    function onGraphUpdate(graphData) {
+      graphRenderer.update(graphData);
+
+      const runStatus = graphData.run_status;
+      updateStatus(runStatus);
+
+      if (currentRunId) {
+        client.getRun(currentRunId).then(run => {
+          renderResults(run.work_item_state, graphData);
+          renderSummary(run.work_item_state, graphData);
+        }).catch(() => {});
+      }
+
+      // Detect second checkpoint (approve_publish) — run is paused
+      if (runStatus === 'paused' && firstCheckpointResolved && !secondCheckpointResolved) {
+        showCheckpointActions();
+      }
+
+      if (runStatus === 'completed' || runStatus === 'failed') {
+        startBtn.disabled = false;
+        showFinalStatus(runStatus, graphData);
+      }
+    }
+
+    function updateStatus(status) {
+      statusBadge.textContent = status;
+      statusBadge.className = 'status-badge ' + status;
+    }
+
+    function renderResults(state, graphData) {
+      if (!state) return;
+
+      // Check if research_results available (populated after join)
+      const results = state.research_results;
+      if (!results) return;
+
+      // Parse results from the three sources
+      const academic = results.academic_results || state.academic_results;
+      const news = results.news_results || state.news_results;
+      const web = results.web_results || state.web_results;
+
+      if (!academic && !news && !web) return;
+
+      let html = '<div class="tabs">';
+      html += '<button class="tab-btn active" data-tab="academic">Academic</button>';
+      html += '<button class="tab-btn" data-tab="news">News</button>';
+      html += '<button class="tab-btn" data-tab="web">Web</button>';
+      html += '</div>';
+
+      html += '<div class="tab-content active" id="tab-academic">';
+      html += '<div class="result-data">' + escapeHtml(formatResult(academic)) + '</div>';
+      html += '</div>';
+
+      html += '<div class="tab-content" id="tab-news">';
+      html += '<div class="result-data">' + escapeHtml(formatResult(news)) + '</div>';
+      html += '</div>';
+
+      html += '<div class="tab-content" id="tab-web">';
+      html += '<div class="result-data">' + escapeHtml(formatResult(web)) + '</div>';
+      html += '</div>';
+
+      resultsContainer.innerHTML = html;
+
+      // Wire up tab buttons
+      resultsContainer.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          resultsContainer.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+          resultsContainer.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+          btn.classList.add('active');
+          document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+        });
+      });
+    }
+
+    function renderSummary(state, graphData) {
+      if (!state || !state.summary) return;
+
+      const summary = state.summary;
+      let html = '';
+
+      if (typeof summary === 'string') {
+        html = '<div class="summary-text">' + escapeHtml(summary) + '</div>';
+      } else {
+        // summary is an object with text and/or source_count
+        if (summary.text) {
+          html += '<div class="summary-text">' + escapeHtml(summary.text) + '</div>';
+        }
+        if (summary.source_count !== undefined) {
+          html += '<p style="margin-top: 0.5rem; color: var(--gray); font-size: 0.8rem;">Sources: ' + escapeHtml(String(summary.source_count)) + '</p>';
+        }
+        if (!summary.text && !html) {
+          html = '<div class="result-data">' + escapeHtml(JSON.stringify(summary, null, 2)) + '</div>';
+        }
+      }
+
+      summaryContainer.innerHTML = html;
+    }
+
+    function showCheckpointActions() {
+      // Don't add buttons if they already exist
+      if (summaryContainer.querySelector('.checkpoint-actions')) return;
+
+      const actions = document.createElement('div');
+      actions.className = 'checkpoint-actions';
+      actions.innerHTML =
+        '<button class="btn-success" id="approve-btn">Approve</button>' +
+        '<button class="btn-danger" id="reject-btn">Reject</button>';
+
+      summaryContainer.appendChild(actions);
+
+      document.getElementById('approve-btn').addEventListener('click', () => resolveSecondCheckpoint('approve'));
+      document.getElementById('reject-btn').addEventListener('click', () => resolveSecondCheckpoint('reject'));
+    }
+
+    async function resolveSecondCheckpoint(decision) {
+      if (!currentRunId || secondCheckpointResolved) return;
+
+      const approveBtn = document.getElementById('approve-btn');
+      const rejectBtn = document.getElementById('reject-btn');
+      if (approveBtn) approveBtn.disabled = true;
+      if (rejectBtn) rejectBtn.disabled = true;
+
+      try {
+        await client.resolveCheckpoint(currentRunId, decision);
+        secondCheckpointResolved = true;
+
+        // Remove checkpoint action buttons
+        const actions = summaryContainer.querySelector('.checkpoint-actions');
+        if (actions) actions.remove();
+
+        updateStatus('running');
+      } catch (err) {
+        console.error('Failed to resolve checkpoint:', err);
+        if (approveBtn) approveBtn.disabled = false;
+        if (rejectBtn) rejectBtn.disabled = false;
+      }
+    }
+
+    function showFinalStatus(runStatus, graphData) {
+      const nodes = graphData.nodes || [];
+      const publishNode = nodes.find(n => n.id === 'publish');
+      const insufficientNode = nodes.find(n => n.id === 'insufficient');
+
+      let label = '';
+      let cls = '';
+
+      if (publishNode && publishNode.status === 'completed') {
+        label = 'Published';
+        cls = 'completed';
+      } else if (insufficientNode && (insufficientNode.status === 'completed' || insufficientNode.status === 'failed')) {
+        label = 'Insufficient';
+        cls = 'failed';
+      } else if (runStatus === 'completed') {
+        label = 'Published';
+        cls = 'completed';
+      } else if (runStatus === 'failed') {
+        label = 'Insufficient';
+        cls = 'failed';
+      }
+
+      if (label) {
+        // Remove any existing checkpoint actions
+        const actions = summaryContainer.querySelector('.checkpoint-actions');
+        if (actions) actions.remove();
+
+        // Remove existing final badge if present
+        const existing = summaryContainer.querySelector('.final-badge');
+        if (existing) existing.remove();
+
+        const badge = document.createElement('div');
+        badge.className = 'final-badge ' + cls;
+        badge.textContent = label;
+        summaryContainer.appendChild(badge);
+      }
+    }
+
+    function formatResult(data) {
+      if (data == null) return 'No data';
+      if (typeof data === 'string') return data;
+      return JSON.stringify(data, null, 2);
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+  </script>
 </body>
 </html>
