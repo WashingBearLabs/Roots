@@ -231,14 +231,14 @@ Defines the `.root` package format and the tooling to create packages from exist
   - Verify checksum and report pass/fail
 
 **Acceptance Criteria:**
-- [ ] `roots inspect package.root` shows formatted package summary
-- [ ] Agent contracts listed with required/optional status
-- [ ] Input/output schemas displayed in readable format
-- [ ] Config overrides listed with types, constraints, and defaults
-- [ ] Default implementations and README presence noted
-- [ ] Checksum verification reported
-- [ ] `--json` flag outputs raw manifest JSON
-- [ ] Tests verify inspect output for a test package
+- [x] `roots inspect package.root` shows formatted package summary
+- [x] Agent contracts listed with required/optional status
+- [x] Input/output schemas displayed in readable format
+- [x] Config overrides listed with types, constraints, and defaults
+- [x] Default implementations and README presence noted
+- [x] Checksum verification reported
+- [x] `--json` flag outputs raw manifest JSON
+- [x] Tests verify inspect output for a test package
 
 ### US-006: ProcessDefinition Metadata Extension
 
