@@ -9,8 +9,8 @@
 
 > **TEMPLATE_INTENT:** Persistent record of code quality, security, and intent alignment findings from automated validation. Tracks findings across sessions with status tracking and archival.
 
-> Last updated: 2026-03-24
-> Updated by: Claude (validate-feature — mcp-invocation)
+> Last updated: 2026-03-25
+> Updated by: Claude (validate-feature — feature-demo-apps)
 
 ---
 
@@ -36,6 +36,93 @@
 
 <!-- Newest findings at top. Each entry has a unique ID: YYYY-MM-DD-NNN -->
 <!-- Findings are added by /kit-tools:validate-feature -->
+
+### 2026-03-25 — feature-demo-apps Validation
+
+| ID | Category | Severity | File | Status |
+|----|----------|----------|------|--------|
+| 2026-03-25-001 | quality | warning | `demo/node-explorer/server_extensions.py` | open |
+| 2026-03-25-002 | quality | warning | `demo/node-explorer/agents.py` | open |
+| 2026-03-25-003 | quality | warning | `demo/run_all.py` | open |
+| 2026-03-25-004 | quality | warning | `demo/*/run_demo.py` | open |
+| 2026-03-25-005 | quality | warning | `demo/incident-response/agents.py` | open |
+| 2026-03-25-006 | quality | warning | `demo/research-assistant/agents.py` | open |
+| 2026-03-25-007 | quality | info | `demo/research-assistant/agents.py` | open |
+| 2026-03-25-008 | quality | info | `demo/_common/graph-renderer.js` | open |
+| 2026-03-25-009 | quality | info | `demo/api-explorer/run_demo.py` | open |
+| 2026-03-25-010 | security | warning | `demo/api-explorer/run_demo.py` | open |
+| 2026-03-25-011 | security | warning | `demo/node-explorer/server_extensions.py` | open |
+| 2026-03-25-012 | security | warning | `demo/node-explorer/server_extensions.py` | open |
+| 2026-03-25-013 | security | info | `demo/_common/demo_server.py` | open |
+| 2026-03-25-014 | security | info | `demo/run_all.py` | open |
+| 2026-03-25-015 | security | info | `demo/node-explorer/static/index.html` | open |
+| 2026-03-25-016 | security | info | `demo/_common/demo_server.py` | open |
+| 2026-03-25-017 | compliance | info | `demo/_common/base.html` | open |
+| 2026-03-25-018 | compliance | info | `demo/research-assistant/agents.py` | open |
+| 2026-03-25-019 | compliance | info | `demo/node-explorer/static/index.html` | open |
+| 2026-03-25-020 | testing | info | `test suite` | open |
+
+**2026-03-25-001** — Private attribute access on Roots internals (`roots._orchestrator`, `orch._storage`, etc.) tightly couples the step endpoint to internal implementation details.
+> Recommendation: Add a public `tick()` method to Roots or document the fragility with a comment.
+
+**2026-03-25-002** — Module-level `_content_deep_call_counts` dict grows unboundedly as new runs are created, never cleaned up.
+> Recommendation: Clear the run_id entry after a successful second call, or use a bounded LRU cache.
+
+**2026-03-25-003** — `start_landing_page` constructs Python code as an inline string and executes via `subprocess.Popen([sys.executable, "-c", code])`. Brittle and hard to debug.
+> Recommendation: Extract to a small standalone file (e.g., `demo/index/run_landing.py`).
+
+**2026-03-25-004** — All five `run_demo.py` files call `await app.__aenter__()` without a corresponding `__aexit__()`, skipping Roots cleanup on shutdown.
+> Recommendation: Use `async with` or register `__aexit__` on FastAPI shutdown. Low practical impact for in-memory demos.
+
+**2026-03-25-005** — `input` parameter name shadows Python builtin in incident-response agents.py without `# noqa: A002` (other agent files have it).
+> Recommendation: Add `# noqa: A002` for consistency.
+
+**2026-03-25-006** — `hashlib.md5` used for topic hashing; may trigger Bandit B303 in CI.
+> Recommendation: Use `hashlib.md5(..., usedforsecurity=False)` or switch to `hashlib.sha256`.
+
+**2026-03-25-007** — Long string literals in canned data exceed 88-char line length convention.
+> Recommendation: Break across lines or move to a JSON fixture file.
+
+**2026-03-25-008** — Magic number `600` as assumed canvas width in `_applyLayout`.
+> Recommendation: Make configurable via constructor option or add explanatory comment.
+
+**2026-03-25-009** — Webhook receiver `received_events` list grows without bound.
+> Recommendation: Use `collections.deque(maxlen=N)` to cap memory.
+
+**2026-03-25-010** — Webhook receiver endpoint accepts arbitrary JSON with no size limit, auth, or rate limiting. Memory DoS risk.
+> Recommendation: Add `deque(maxlen=...)` and optionally a simple token check.
+
+**2026-03-25-011** — `/api/reset` accepts any `process_id` without allowlist validation.
+> Recommendation: Validate `process_id == PROCESS_ID` and reject others with 400.
+
+**2026-03-25-012** — `/api/step` bypasses public Roots API by accessing private orchestrator internals.
+> Recommendation: Use a public method if available, or document as demo-specific deviation.
+
+**2026-03-25-013** — Demo API endpoints have no authentication (full Roots API surface exposed).
+> Recommendation: Acceptable for localhost-only demos. Add README warning about network exposure.
+
+**2026-03-25-014** — Inline Python code construction in `run_all.py` could become injection vector if inputs change.
+> Recommendation: Extract to standalone file (overlaps with 2026-03-25-003).
+
+**2026-03-25-015** — `showTutorialPlaceholder` accepts raw HTML, creating a pattern where future callers could introduce XSS.
+> Recommendation: Use `textContent` or document that function expects pre-sanitized HTML.
+
+**2026-03-25-016** — No path traversal protection on `static_dir` parameter in index endpoint.
+> Recommendation: No action needed since `static_dir` comes from trusted constants. Note for future.
+
+**2026-03-25-017** — `base.html` omits `<script src="/common/roots-client.js">` tag mentioned in US-002 spec.
+> Recommendation: Add the script tag for completeness as a reference template.
+
+**2026-03-25-018** — Research assistant agents return extra keys (`source`, `query`) beyond spec, but expected keys are present.
+> Recommendation: No action needed. Extra keys are useful for display.
+
+**2026-03-25-019** — Step counter uses total node count as denominator (~11) rather than exact steps needed.
+> Recommendation: No action needed. Approximation is appropriate for demo.
+
+**2026-03-25-020** — Test suite: 17 tests passed in 3.64s (tests/test_demo_server.py, tests/test_node_explorer.py).
+> Recommendation: All tests passing. No action needed.
+
+---
 
 ### 2026-03-24 — MCP Invocation Validation
 
