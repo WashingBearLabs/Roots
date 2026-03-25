@@ -49,14 +49,14 @@ The consumption side of Root packages. `roots install` loads a `.root` package, 
 - Validation errors should be specific: "manifest.json: field 'package_version' is not valid semver", "process.yaml: Node 'triage' references unregistered agent 'threat_intel' (agent contract exists — will need to be wired)", etc.
 
 **Acceptance Criteria:**
-- [ ] Valid packages pass validation with zero errors
-- [ ] Corrupted zip files produce clear error
-- [ ] Missing manifest.json produces clear error
-- [ ] Invalid manifest schema produces field-level errors
-- [ ] Missing process.yaml produces clear error
-- [ ] Invalid process YAML produces standard validation errors
-- [ ] Failed checksum produces clear error
-- [ ] Tests cover valid package, corrupted package, missing files, bad checksum
+- [x] Valid packages pass validation with zero errors
+- [x] Corrupted zip files produce clear error
+- [x] Missing manifest.json produces clear error
+- [x] Invalid manifest schema produces field-level errors
+- [x] Missing process.yaml produces clear error
+- [x] Invalid process YAML produces standard validation errors
+- [x] Failed checksum produces clear error
+- [x] Tests cover valid package, corrupted package, missing files, bad checksum
 
 ### US-002: Agent Contract Validation
 
