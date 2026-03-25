@@ -440,14 +440,14 @@ Five self-contained demo applications that showcase the Roots framework's capabi
   - **Initial state:** Process created but not started. Graph shows all nodes as pending. Tutorial panel shows "Welcome" intro. Click Step to resolve the first checkpoint and begin.
 
 **Acceptance Criteria:**
-- [ ] Graph shows all nodes from the start with correct layout
-- [ ] Step button advances one node and updates all panels
-- [ ] Auto-play mode steps automatically at configurable speed
-- [ ] Reset clears everything and restarts
-- [ ] State panel shows accumulated state with change highlights
-- [ ] Event log captures all events during execution
-- [ ] Step counter tracks progress
-- [ ] Process starts paused at welcome checkpoint
+- [x] Graph shows all nodes from the start with correct layout
+- [x] Step button advances one node and updates all panels
+- [x] Auto-play mode steps automatically at configurable speed
+- [x] Reset clears everything and restarts
+- [x] State panel shows accumulated state with change highlights
+- [x] Event log captures all events during execution
+- [x] Step counter tracks progress
+- [x] Process starts paused at welcome checkpoint
 
 ### US-014: Demo Landing Page
 
