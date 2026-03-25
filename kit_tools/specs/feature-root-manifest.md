@@ -179,14 +179,14 @@ Defines the `.root` package format and the tooling to create packages from exist
 - Also add a programmatic API: `Roots.pack_process(process_id, output_path, **kwargs) -> Path`
 
 **Acceptance Criteria:**
-- [ ] `roots pack examples/processes/simple-linear.yaml` creates a .root file
-- [ ] Output file is a valid zip with correct structure
-- [ ] Agent contracts extracted automatically from the process
-- [ ] --version, --author, --description flags populate manifest
-- [ ] --include-defaults bundles a directory into the package
-- [ ] Summary printed with package info
-- [ ] Programmatic API available on Roots class
-- [ ] Tests verify pack creates valid archive
+- [x] `roots pack examples/processes/simple-linear.yaml` creates a .root file
+- [x] Output file is a valid zip with correct structure
+- [x] Agent contracts extracted automatically from the process
+- [x] --version, --author, --description flags populate manifest
+- [x] --include-defaults bundles a directory into the package
+- [x] Summary printed with package info
+- [x] Programmatic API available on Roots class
+- [x] Tests verify pack creates valid archive
 
 ### US-005: `roots inspect` CLI Command
 
