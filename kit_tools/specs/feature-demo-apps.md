@@ -261,11 +261,11 @@ Five self-contained demo applications that showcase the Roots framework's capabi
   - `static/index.html`: Placeholder page (same pattern as research-assistant placeholder) that shows demo name and "Frontend coming in US-008"
 
 **Acceptance Criteria:**
-- [ ] `demo/incident-response/process.yaml` parses and validates
-- [ ] All 4 agents registered and callable
-- [ ] mock_decision.py implements LLMCompletionFunc with keyword-based routing
-- [ ] `run_demo.py` starts server in mock mode by default
-- [ ] `--model` flag switches to live LLM mode
+- [x] `demo/incident-response/process.yaml` parses and validates
+- [x] All 4 agents registered and callable
+- [x] mock_decision.py implements LLMCompletionFunc with keyword-based routing
+- [x] `run_demo.py` starts server in mock mode by default
+- [x] `--model` flag switches to live LLM mode
 
 ### US-008: Incident Response — Frontend
 
