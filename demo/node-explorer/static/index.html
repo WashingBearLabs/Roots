@@ -12,8 +12,8 @@
     .explorer-layout {
       flex: 1;
       display: grid;
-      grid-template-columns: 30% 35% 35%;
-      grid-template-rows: 1fr auto;
+      grid-template-columns: 65% 35%;
+      grid-template-rows: 50% 50% auto;
       gap: 0;
       overflow: hidden;
     }
@@ -23,9 +23,9 @@
       display: flex;
       flex-direction: column;
       border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
       overflow: hidden;
     }
-    .panel:last-of-type { border-right: none; }
     .panel-header {
       padding: 0.6rem 1rem;
       font-weight: 600;
@@ -64,6 +64,19 @@
     .bottom-bar button {
       font-size: 0.75rem;
       padding: 0.3rem 0.7rem;
+    }
+
+    /* Speed slider */
+    .speed-control {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.7rem;
+      color: var(--gray);
+    }
+    .speed-control input[type="range"] {
+      width: 80px;
+      accent-color: var(--blue);
     }
 
     /* Node list */
@@ -254,25 +267,17 @@
   </header>
 
   <div class="explorer-layout">
-    <!-- Left: Process Graph -->
+    <!-- Top-left: Process Graph (65% width, 50% height) -->
     <div class="panel">
-      <div class="panel-header">Process Graph</div>
+      <div class="panel-header">
+        <span>Process Graph</span>
+        <span id="step-counter" class="text-gray" style="font-size:0.75rem;"></span>
+      </div>
       <div id="graph-container" class="panel-body"></div>
     </div>
 
-    <!-- Center: Node List + Controls -->
-    <div class="panel" style="border-left: 1px solid var(--border);">
-      <div class="panel-header">
-        <span>Execution</span>
-        <span id="step-counter" class="text-gray" style="font-size:0.75rem;"></span>
-      </div>
-      <div class="panel-body" style="padding: 0.75rem;">
-        <div id="node-list"></div>
-      </div>
-    </div>
-
-    <!-- Right: Tutorial Panel -->
-    <div class="panel">
+    <!-- Top-right: Tutorial Panel (35% width, 50% height) -->
+    <div class="panel" style="border-right: none;">
       <div class="panel-header">Tutorial</div>
       <div class="panel-body" style="padding: 0.75rem;">
         <div id="tutorial-panel">
@@ -283,19 +288,46 @@
       </div>
     </div>
 
+    <!-- Bottom-left: State Panel -->
+    <div class="panel">
+      <div class="panel-header">State</div>
+      <div class="panel-body" style="padding: 0.75rem;">
+        <div id="state-container">
+          <div class="tutorial-placeholder">No state yet. Click Reset to begin.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom-right: Event Log -->
+    <div class="panel" style="border-right: none;">
+      <div class="panel-header">
+        <span>Event Log</span>
+        <span id="event-count" class="text-gray" style="font-size:0.7rem;"></span>
+      </div>
+      <div class="panel-body" style="padding: 0.5rem;">
+        <div id="event-log-container"></div>
+      </div>
+    </div>
+
     <!-- Bottom bar: Controls -->
     <div class="bottom-bar">
-      <button class="btn-success" id="reset-btn" onclick="doReset()">Reset</button>
       <button class="btn-primary" id="step-btn" onclick="doStep()" disabled>Step</button>
       <button class="btn-outline" id="auto-btn" onclick="toggleAuto()">Auto-play</button>
+      <div class="speed-control" id="speed-control" style="display:none;">
+        <span>Speed:</span>
+        <input type="range" id="speed-slider" min="1" max="5" step="0.5" value="2">
+        <span id="speed-label">2.0s</span>
+      </div>
       <span id="auto-status" class="waiting-indicator"></span>
       <span style="flex:1"></span>
+      <button class="btn-outline" id="reset-btn" onclick="doReset()">Reset</button>
       <span class="label" id="current-node-label"></span>
     </div>
   </div>
 
   <script src="/common/graph-renderer.js"></script>
   <script src="/common/state-viewer.js"></script>
+  <script src="/common/event-log.js"></script>
   <script>
     /* ── State ── */
     let runId = null;
@@ -306,6 +338,7 @@
     let autoPlayInterval = null;
     let stepCount = 0;
     let previousWorkItemState = null;
+    let lastEventCount = 0;
 
     const NODE_ICONS = {
       checkpoint: '\u2713',
@@ -319,9 +352,25 @@
     };
 
     const graphRenderer = new GraphRenderer(document.getElementById('graph-container'));
+    const stateViewer = new StateViewer(document.getElementById('state-container'));
+    const eventLog = new EventLog(document.getElementById('event-log-container'));
+
+    /* ── Speed slider ── */
+    const speedSlider = document.getElementById('speed-slider');
+    const speedLabel = document.getElementById('speed-label');
+    speedSlider.addEventListener('input', () => {
+      const val = parseFloat(speedSlider.value);
+      speedLabel.textContent = val.toFixed(1) + 's';
+      if (autoPlayInterval) {
+        stopAutoPlay();
+        startAutoPlay();
+      }
+    });
 
     /* ── Reset ── */
     async function doReset() {
+      stopAutoPlay();
+
       const resp = await fetch('/api/reset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -334,18 +383,33 @@
       stepCount = 0;
       previousWorkItemState = null;
       tutorialCache = {};
+      lastEventCount = 0;
 
       document.getElementById('step-btn').disabled = false;
-      updateStatusBadge('running');
-      document.getElementById('step-counter').textContent = '';
+      document.getElementById('step-btn').textContent = 'Step';
+      updateStatusBadge('paused');
+      updateStepCounter();
       document.getElementById('current-node-label').textContent = '';
 
-      // Load initial graph
+      // Clear event log
+      document.getElementById('event-log-container').innerHTML = '';
+      document.getElementById('event-count').textContent = '';
+
+      // Clear state panel
+      stateViewer.render(null);
+
+      // Load initial graph — process starts paused at welcome checkpoint
       const graphResp = await fetch('/api/runs/' + encodeURIComponent(runId) + '/graph');
       graphData = await graphResp.json();
       graphRenderer.render(graphData);
-      renderNodeList(graphData);
-      showTutorialPlaceholder('Click <strong>Step</strong> to begin the tour.');
+
+      // Load initial state
+      await updateStatePanel();
+
+      // Load initial events
+      await updateEventLog();
+
+      showTutorialPlaceholder('Process paused at <strong>Welcome</strong> checkpoint. Click <strong>Step</strong> to begin.');
     }
 
     /* ── Step ── */
@@ -377,12 +441,17 @@
 
         // Update graph
         graphRenderer.update(graphData);
-        renderNodeList(graphData);
 
         // Update status
         const runStatus = graphData.run_status;
         updateStatusBadge(runStatus);
-        document.getElementById('step-counter').textContent = 'Step ' + stepCount;
+        updateStepCounter();
+
+        // Update state panel
+        await updateStatePanel();
+
+        // Update event log
+        await updateEventLog();
 
         // Find current node
         const prevNodeId = currentNodeId;
@@ -394,7 +463,6 @@
           document.getElementById('current-node-label').textContent = currentNode.label + ' (' + currentNode.type + ')';
           await loadTutorial(currentNode);
         } else if (currentNode) {
-          // Same node, but may have new output — update "What happened"
           await updateWhatHappened(currentNode);
         }
 
@@ -404,7 +472,6 @@
           btn.textContent = 'Done';
           stopAutoPlay();
 
-          // Final update of tutorial with output
           if (currentNode) {
             await updateWhatHappened(currentNode);
           }
@@ -418,14 +485,59 @@
       btn.textContent = 'Step';
     }
 
+    /* ── Update state panel ── */
+    async function updateStatePanel() {
+      if (!runId) return;
+      try {
+        const resp = await fetch('/api/runs/' + encodeURIComponent(runId));
+        if (!resp.ok) return;
+        const runData = await resp.json();
+        const state = runData.work_item_state || {};
+        stateViewer.render(state, previousWorkItemState);
+        previousWorkItemState = state;
+      } catch { /* ignore */ }
+    }
+
+    /* ── Update event log ── */
+    async function updateEventLog() {
+      if (!runId) return;
+      try {
+        const resp = await fetch('/api/runs/' + encodeURIComponent(runId) + '/history');
+        if (!resp.ok) return;
+        const events = await resp.json();
+
+        // Only add new events since last check
+        const newEvents = events.slice(lastEventCount);
+        for (const ev of newEvents) {
+          eventLog.addEvent({
+            timestamp: ev.timestamp,
+            type: ev.event_type || ev.type || 'unknown',
+            node_id: ev.node_id || '',
+            description: ev.description || ev.detail || '',
+          });
+        }
+        lastEventCount = events.length;
+        document.getElementById('event-count').textContent = events.length + ' events';
+      } catch { /* ignore */ }
+    }
+
+    /* ── Step counter ── */
+    function updateStepCounter() {
+      const totalNodes = graphData ? (graphData.nodes || []).length : 0;
+      const el = document.getElementById('step-counter');
+      if (stepCount === 0) {
+        el.textContent = '';
+      } else {
+        el.textContent = 'Step ' + stepCount + ' of ~' + totalNodes;
+      }
+    }
+
     /* ── Find current node ── */
     function findCurrentNode(graph) {
       const nodes = graph.nodes || [];
-      // Prefer running or paused
       let node = nodes.find(n => n.status === 'running' || n.status === 'paused');
       if (node) return node;
 
-      // Otherwise find the most recently completed node that wasn't previously current
       const completed = nodes.filter(n => n.status === 'completed');
       if (completed.length > 0) return completed[completed.length - 1];
       return null;
@@ -436,12 +548,10 @@
       const nodeType = node.type;
       const panel = document.getElementById('tutorial-panel');
 
-      // Also check if this node has retry config — load retry tutorial too
       const hasRetry = nodeHasRetry(node.id);
       const typesToLoad = [nodeType];
       if (hasRetry) typesToLoad.push('retry');
 
-      // Fetch tutorial content
       for (const t of typesToLoad) {
         if (!tutorialCache[t]) {
           try {
@@ -459,10 +569,8 @@
 
       const retryContent = hasRetry ? tutorialCache['retry'] : null;
 
-      // Build tutorial HTML
       let html = '<div class="tutorial-content">';
 
-      // Header
       const icon = NODE_ICONS[nodeType] || '\u25CB';
       html += '<div class="tutorial-header">';
       html += '<span class="icon">' + icon + '</span>';
@@ -471,25 +579,21 @@
       html += '<div style="font-size:0.75rem;color:var(--gray)">Node: ' + escapeHtml(node.label) + ' (' + escapeHtml(node.id) + ')</div>';
       html += '</div></div>';
 
-      // What this does
       html += '<div class="tutorial-section">';
       html += '<h3>What this does</h3>';
       html += '<p>' + escapeHtml(content.what) + '</p>';
       html += '</div>';
 
-      // When to use it
       html += '<div class="tutorial-section">';
       html += '<h3>When to use it</h3>';
       html += '<p>' + escapeHtml(content.when) + '</p>';
       html += '</div>';
 
-      // Configuration
       html += '<div class="tutorial-section">';
       html += '<h3>Configuration</h3>';
       html += '<div class="yaml-block">' + highlightYaml(content.config) + '</div>';
       html += '</div>';
 
-      // What happened (placeholder — filled after execution)
       html += '<div class="tutorial-section" id="what-happened-section">';
       html += '<h3>What happened</h3>';
       html += '<div class="json-block" id="what-happened-output">';
@@ -497,7 +601,6 @@
       html += '</div>';
       html += '</div>';
 
-      // Retry section (if applicable)
       if (retryContent && hasRetry) {
         html += '<div class="tutorial-section" id="retry-section">';
         html += '<h3>Retry</h3>';
@@ -508,7 +611,6 @@
         html += '</div>';
       }
 
-      // Try it yourself
       html += '<div class="tutorial-section">';
       html += '<h3>Try it yourself</h3>';
       html += '<div class="snippet-wrapper">';
@@ -520,7 +622,6 @@
       html += '</div>';
       panel.innerHTML = html;
 
-      // Immediately check if output is already available
       await updateWhatHappened(node);
     }
 
@@ -535,7 +636,6 @@
         const runData = await resp.json();
         const state = runData.work_item_state || {};
 
-        // Find what output this node produced
         const outputData = extractNodeOutput(node, state);
 
         if (outputData !== null && outputData !== undefined) {
@@ -546,7 +646,6 @@
         previousWorkItemState = state;
       } catch { /* ignore */ }
 
-      // Update retry timeline if applicable
       if (nodeHasRetry(node.id)) {
         await updateRetryTimeline(node);
       }
@@ -554,7 +653,6 @@
 
     /* ── Extract node output from state ── */
     function extractNodeOutput(node, state) {
-      // Map node IDs to their output keys based on process config
       const OUTPUT_MAP = {
         'classify': 'classify_output',
         'validate': 'validation_output',
@@ -566,7 +664,6 @@
       const key = OUTPUT_MAP[node.id];
       if (key && state[key] !== undefined) return state[key];
 
-      // For decision nodes, show which edge was taken
       if (node.type === 'decision' && graphData) {
         const takenEdges = (graphData.edges || []).filter(
           e => e.from === node.id && e.status === 'traversed'
@@ -576,7 +673,6 @@
         }
       }
 
-      // For emit nodes, show what event was fired
       if (node.type === 'emit') {
         const payload = {};
         const payloadKeys = ['content_analysis', 'metadata_analysis'];
@@ -588,7 +684,6 @@
         }
       }
 
-      // For fork/join/checkpoint/end, show node status
       if (node.status === 'completed' || node.status === 'failed') {
         return { status: node.status, node_id: node.id, type: node.type };
       }
@@ -609,7 +704,6 @@
         if (!resp.ok) return;
         const events = await resp.json();
 
-        // Filter events for this node
         const nodeEvents = events.filter(e => e.node_id === node.id);
         if (nodeEvents.length === 0) return;
 
@@ -642,40 +736,7 @@
 
     /* ── Check if node has retry config ── */
     function nodeHasRetry(nodeId) {
-      // In our process, analyze_content has retry config
       return nodeId === 'analyze_content';
-    }
-
-    /* ── Render node list ── */
-    function renderNodeList(graph) {
-      const container = document.getElementById('node-list');
-      const nodes = graph.nodes || [];
-      let html = '';
-
-      for (const node of nodes) {
-        const isCurrent = node.status === 'running' || node.status === 'paused';
-        const isDone = node.status === 'completed' || node.status === 'failed';
-        const classes = ['node-list-item'];
-        if (isCurrent) classes.push('current');
-        if (isDone) classes.push('node-done');
-
-        const dotColor = {
-          pending: 'var(--gray)',
-          running: 'var(--blue)',
-          completed: 'var(--green)',
-          failed: 'var(--red)',
-          paused: 'var(--yellow)',
-        }[node.status] || 'var(--gray)';
-
-        html += '<div class="' + classes.join(' ') + '">';
-        html += '<div class="node-status-dot" style="background:' + dotColor + '"></div>';
-        html += '<span class="node-type-badge">' + escapeHtml(node.type) + '</span>';
-        html += '<span class="node-label">' + escapeHtml(node.label) + '</span>';
-        if (isCurrent) html += '<span class="text-blue" style="font-size:0.7rem;font-weight:600">\u25C0</span>';
-        html += '</div>';
-      }
-
-      container.innerHTML = html;
     }
 
     /* ── Build "Try it yourself" snippet ── */
@@ -696,12 +757,10 @@
     /* ── YAML syntax highlighting ── */
     function highlightYaml(text) {
       return text.split('\n').map(line => {
-        // Comments
         if (line.trim().startsWith('#')) {
           return '<span class="yaml-comment">' + escapeHtml(line) + '</span>';
         }
 
-        // Key-value lines
         return line.replace(/^(\s*)([a-zA-Z_][\w-]*)(:)(.*)$/, (match, indent, key, colon, rest) => {
           const highlighted = escapeHtml(indent) +
             '<span class="yaml-key">' + escapeHtml(key) + '</span>' +
@@ -716,19 +775,15 @@
       if (!val || val.trim() === '') return escapeHtml(val);
       const trimmed = val.trim();
 
-      // Quoted strings
       if (/^".*"$/.test(trimmed) || /^'.*'$/.test(trimmed)) {
         return val.replace(trimmed, '<span class="yaml-string">' + escapeHtml(trimmed) + '</span>');
       }
-      // Numbers
       if (/^\s*\d+(\.\d+)?\s*$/.test(val)) {
         return val.replace(trimmed, '<span class="yaml-number">' + escapeHtml(trimmed) + '</span>');
       }
-      // Booleans
       if (/^\s*(true|false)\s*$/i.test(val)) {
         return val.replace(trimmed, '<span class="yaml-bool">' + escapeHtml(trimmed) + '</span>');
       }
-      // List items (- value)
       if (trimmed.startsWith('- ')) {
         const listVal = trimmed.slice(2);
         return escapeHtml(val.slice(0, val.indexOf('-'))) + '- ' + highlightYamlValue(' ' + listVal);
@@ -760,6 +815,8 @@
       if (!runId) return;
       document.getElementById('auto-btn').textContent = 'Stop';
       document.getElementById('auto-status').textContent = 'Auto-stepping...';
+      document.getElementById('speed-control').style.display = 'flex';
+      const intervalMs = parseFloat(speedSlider.value) * 1000;
       autoPlayInterval = setInterval(async () => {
         const btn = document.getElementById('step-btn');
         if (btn.disabled && btn.textContent === 'Done') {
@@ -769,7 +826,7 @@
         if (!btn.disabled) {
           await doStep();
         }
-      }, 1500);
+      }, intervalMs);
     }
 
     function stopAutoPlay() {
@@ -779,6 +836,7 @@
       }
       document.getElementById('auto-btn').textContent = 'Auto-play';
       document.getElementById('auto-status').textContent = '';
+      document.getElementById('speed-control').style.display = 'none';
     }
 
     /* ── Status badge ── */
