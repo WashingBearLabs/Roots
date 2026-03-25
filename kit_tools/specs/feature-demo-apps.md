@@ -376,14 +376,14 @@ Five self-contained demo applications that showcase the Roots framework's capabi
     ```
 
 **Acceptance Criteria:**
-- [ ] `process.yaml` uses all 8 node types plus retry
-- [ ] Agents produce deterministic, educational outputs
-- [ ] Retry agent fails first call, succeeds second
-- [ ] `POST /api/step` advances one tick and returns graph
-- [ ] `POST /api/reset` creates fresh run
-- [ ] `GET /api/tutorial/{node_type}` returns tutorial content
-- [ ] `tutorial_content.json` has entries for all 8 types + retry
-- [ ] Tests verify step/reset endpoints work
+- [x] `process.yaml` uses all 8 node types plus retry
+- [x] Agents produce deterministic, educational outputs
+- [x] Retry agent fails first call, succeeds second
+- [x] `POST /api/step` advances one tick and returns graph
+- [x] `POST /api/reset` creates fresh run
+- [x] `GET /api/tutorial/{node_type}` returns tutorial content
+- [x] `tutorial_content.json` has entries for all 8 types + retry
+- [x] Tests verify step/reset endpoints work
 
 ### US-012: Node Explorer — Tutorial Panel UI
 
