@@ -327,6 +327,26 @@ class Roots:
         except ResolutionError as exc:
             raise OrchestrationError(str(exc)) from exc
 
+    def pack_process(
+        self,
+        process_path: str,
+        output_path: str | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        """Pack a process YAML into a distributable .root package.
+
+        Delegates to ``packaging.pack.pack_process``. If this Roots instance
+        has registered agents, their schemas are used to enrich contracts.
+        """
+        from roots.packaging.pack import pack_process as _pack
+
+        result = _pack(
+            process_path=process_path,
+            output_path=output_path,
+            **kwargs,
+        )
+        return result
+
     async def close(self) -> None:
         """Drain pending events, close MCP connections, and close storage."""
         await self._event_emitter.close()

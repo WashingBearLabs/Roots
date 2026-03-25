@@ -9,6 +9,7 @@ from roots.packaging.archive import (
 )
 from roots.packaging.extractor import extract_agent_contracts, extract_config_overrides
 from roots.packaging.manifest import AgentContract, ConfigOverride, RootManifest
+from roots.packaging.pack import pack_process
 
 __all__ = [
     "AgentContract",
@@ -18,5 +19,6 @@ __all__ = [
     "extract_agent_contracts",
     "extract_config_overrides",
     "list_archive_contents",
+    "pack_process",
     "read_archive",
 ]

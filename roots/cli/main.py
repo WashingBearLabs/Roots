@@ -412,6 +412,73 @@ async def _check_agent_health(agents: list[dict[str, Any]]) -> list[dict[str, An
     return results
 
 
+@app.command()
+def pack(
+    ctx: typer.Context,
+    process_path: str = typer.Argument(
+        ...,
+        help="Path to a YAML process definition file.",
+    ),
+    output: Optional[str] = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Output path for the .root file.",
+    ),
+    version: Optional[str] = typer.Option(
+        None,
+        "--version",
+        help="Package version (semver). Defaults to process version.",
+    ),
+    author: Optional[str] = typer.Option(
+        None,
+        "--author",
+        help="Author name for the manifest.",
+    ),
+    description: Optional[str] = typer.Option(
+        None,
+        "--description",
+        help="Package description. Defaults to process description.",
+    ),
+    include_defaults: Optional[str] = typer.Option(
+        None,
+        "--include-defaults",
+        help="Path to a defaults directory to bundle into the package.",
+    ),
+) -> None:
+    """Pack a process into a distributable .root package."""
+    from roots.packaging.pack import pack_process
+
+    try:
+        result = pack_process(
+            process_path=process_path,
+            output_path=output,
+            version=version,
+            author=author,
+            description=description,
+            include_defaults=include_defaults,
+        )
+    except Exception as exc:
+        typer.echo(typer.style(f"Error: {exc}", fg=typer.colors.RED))
+        raise typer.Exit(code=1)
+
+    # Read the manifest back for summary
+    from roots.packaging.archive import read_archive
+
+    manifest, _contents = read_archive(result)
+    size_kb = result.stat().st_size / 1024
+
+    console = Console()
+    console.print(f"\n[bold green]Package created:[/bold green] {result}")
+    console.print(f"  Name:             {manifest.name}")
+    console.print(f"  Version:          {manifest.package_version}")
+    if manifest.author:
+        console.print(f"  Author:           {manifest.author}")
+    console.print(f"  Agent contracts:  {len(manifest.agent_contracts)}")
+    console.print(f"  Config overrides: {len(manifest.config_overrides)}")
+    console.print(f"  Archive size:     {size_kb:.1f} KB")
+
+
 @agents_app.callback(invoke_without_command=True)
 def agents_list(
     ctx: typer.Context,
