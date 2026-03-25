@@ -403,12 +403,12 @@ Five self-contained demo applications that showcase the Roots framework's capabi
     - For the retry demonstration: show a special "Retry" section when the node has retry config, explaining what happened (attempt 1 failed, attempt 2 succeeded) pulled from the event log
 
 **Acceptance Criteria:**
-- [ ] Tutorial panel shows content for the current node
-- [ ] All sections populated: what, when, config, what happened, try it yourself
-- [ ] YAML config has basic syntax highlighting
-- [ ] "What happened" updates after node executes with actual output
-- [ ] Retry node shows attempt history
-- [ ] Panel transitions smoothly when node changes
+- [x] Tutorial panel shows content for the current node
+- [x] All sections populated: what, when, config, what happened, try it yourself
+- [x] YAML config has basic syntax highlighting
+- [x] "What happened" updates after node executes with actual output
+- [x] Retry node shows attempt history
+- [x] Panel transitions smoothly when node changes
 
 ### US-013: Node Explorer — Interactive Controls and Graph
 
