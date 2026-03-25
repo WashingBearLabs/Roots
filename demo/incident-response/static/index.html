@@ -7,34 +7,177 @@
   <link rel="stylesheet" href="/common/styles.css">
   <style>
     main {
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: auto 1fr 1fr;
+    }
+
+    /* Incident input panel (top, full width) */
+    .input-bar {
+      grid-column: 1 / -1;
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .input-bar input, .input-bar select {
+      padding: 0.5rem;
+      font-family: inherit;
+      font-size: 0.875rem;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .input-bar input { flex: 1; min-width: 180px; }
+    .input-bar select { min-width: 140px; }
+    .input-controls {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    .scenario-buttons {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .scenario-buttons button {
+      font-size: 0.75rem;
+      padding: 0.3rem 0.6rem;
+    }
+
+    /* Graph panel (middle-left) */
+    #graph-panel { overflow: auto; }
+
+    /* AI decision panel (middle-right) */
+    #decision-panel { overflow-y: auto; }
+
+    .confidence-bar-container {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      height: 24px;
+      overflow: hidden;
+      margin: 0.5rem 0;
+    }
+    .confidence-bar {
+      height: 100%;
+      border-radius: var(--radius);
+      transition: width 0.4s ease, background 0.3s ease;
       display: flex;
       align-items: center;
       justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #1a1a2e;
     }
-    .placeholder {
-      text-align: center;
-      color: var(--gray);
+    .confidence-high { background: var(--green); }
+    .confidence-mid  { background: var(--yellow); }
+    .confidence-low  { background: var(--red); }
+
+    .reasoning-text {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.75rem;
+      font-size: 0.875rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
     }
-    .placeholder h2 {
+
+    .decision-label {
+      display: inline-block;
+      padding: 0.3rem 0.8rem;
+      border-radius: var(--radius);
+      font-weight: 600;
+      font-size: 0.85rem;
+      background: var(--accent);
       color: var(--text);
+      margin-top: 0.5rem;
+    }
+
+    /* Escalation view */
+    .escalation-box {
+      background: rgba(231, 76, 60, 0.12);
+      border: 1px solid var(--red);
+      border-radius: var(--radius);
+      padding: 1rem;
+      margin-top: 0.75rem;
+    }
+    .escalation-box h3 {
+      color: var(--red);
+      font-size: 0.95rem;
       margin-bottom: 0.5rem;
     }
+    .escalation-box p {
+      font-size: 0.85rem;
+      margin-bottom: 0.5rem;
+    }
+    .resolution-actions {
+      display: flex;
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+    }
+
+    /* Event log (bottom, full width) */
+    #event-log-panel {
+      grid-column: 1 / -1;
+    }
+
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
   <div class="app">
     <header>
       <h1>Incident Response</h1>
-      <span class="status-badge pending">placeholder</span>
+      <span class="status-badge pending" id="process-status">ready</span>
     </header>
 
     <main>
-      <div class="placeholder">
-        <h2>Incident Response Demo</h2>
-        <p>Frontend coming in US-008</p>
-        <p style="margin-top: 1rem; font-size: 0.8rem;">
-          Backend API is live — try <code>GET /api/processes</code>
-        </p>
+      <!-- Incident input (top) -->
+      <div class="input-bar" id="input-bar">
+        <input type="text" id="source-ip" placeholder="Source IP (e.g. 203.0.113.42)" value="203.0.113.42">
+        <select id="event-type">
+          <option value="brute_force_attempt">Brute Force Attempt</option>
+          <option value="malware_detected">Malware Detected</option>
+          <option value="data_exfiltration">Data Exfiltration</option>
+          <option value="port_scan">Port Scan</option>
+        </select>
+        <select id="severity">
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+          <option value="critical">Critical</option>
+        </select>
+        <div class="input-controls">
+          <button class="btn-primary" id="start-btn">Start Analysis</button>
+          <div class="scenario-buttons">
+            <button class="btn-outline" data-scenario="brute_force">Brute Force Login</button>
+            <button class="btn-outline" data-scenario="malware">Malware Callback</button>
+            <button class="btn-outline" data-scenario="exfiltration">Data Exfiltration</button>
+            <button class="btn-outline" data-scenario="port_scan">Port Scan (Low Confidence)</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Graph (middle-left) -->
+      <div class="card" id="graph-panel">
+        <h2>Process Graph</h2>
+        <div id="graph-container"></div>
+      </div>
+
+      <!-- AI Decision (middle-right) -->
+      <div class="card panel-scroll" id="decision-panel">
+        <h2>AI Decision</h2>
+        <div id="decision-container">
+          <p class="text-gray">Start an incident analysis to see AI triage decisions...</p>
+        </div>
+      </div>
+
+      <!-- Event Log (bottom) -->
+      <div class="card panel-scroll" id="event-log-panel">
+        <h2>Event Log</h2>
+        <div id="event-log-container"></div>
       </div>
     </main>
 
@@ -42,5 +185,303 @@
       Powered by <a href="#">Roots</a>
     </footer>
   </div>
+
+  <script src="/common/graph-renderer.js"></script>
+  <script src="/common/state-viewer.js"></script>
+  <script src="/common/event-log.js"></script>
+  <script src="/common/roots-client.js"></script>
+  <script>
+    const client = new RootsClient();
+    const graphRenderer = new GraphRenderer(document.getElementById('graph-container'));
+    const eventLog = new EventLog(document.getElementById('event-log-container'));
+    const statusBadge = document.getElementById('process-status');
+    const startBtn = document.getElementById('start-btn');
+    const sourceIpInput = document.getElementById('source-ip');
+    const eventTypeSelect = document.getElementById('event-type');
+    const severitySelect = document.getElementById('severity');
+    const decisionContainer = document.getElementById('decision-container');
+
+    let currentRunId = null;
+    let lastSeenEvents = 0;
+    let escalationShown = false;
+
+    // Scenario presets
+    const SCENARIOS = {
+      brute_force: { source_ip: '198.51.100.23', event_type: 'brute_force_attempt', severity: 'high' },
+      malware:     { source_ip: '203.0.113.66',  event_type: 'malware_detected',    severity: 'critical' },
+      exfiltration:{ source_ip: '192.0.2.100',   event_type: 'data_exfiltration',   severity: 'critical' },
+      port_scan:   { source_ip: '198.51.100.5',  event_type: 'port_scan',           severity: 'low' },
+    };
+
+    // Load initial graph
+    client.getProcessGraph('incident-response').then(data => {
+      graphRenderer.render(data);
+    }).catch(() => {});
+
+    // Scenario buttons
+    document.querySelectorAll('[data-scenario]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const s = SCENARIOS[btn.dataset.scenario];
+        if (!s) return;
+        sourceIpInput.value = s.source_ip;
+        eventTypeSelect.value = s.event_type;
+        severitySelect.value = s.severity;
+      });
+    });
+
+    // Start analysis
+    startBtn.addEventListener('click', async () => {
+      const workItem = {
+        raw_alert: {
+          source_ip: sourceIpInput.value.trim() || '203.0.113.42',
+          event_type: eventTypeSelect.value,
+          severity: severitySelect.value,
+          timestamp: new Date().toISOString(),
+        },
+      };
+
+      startBtn.disabled = true;
+      escalationShown = false;
+      lastSeenEvents = 0;
+      decisionContainer.innerHTML = '<p class="text-blue">Running triage pipeline...</p>';
+      updateStatus('running');
+
+      eventLog.addEvent({
+        type: 'run',
+        description: `Incident submitted: ${workItem.raw_alert.event_type} from ${workItem.raw_alert.source_ip}`,
+      });
+
+      try {
+        const run = await client.createRun('incident-response', workItem);
+        currentRunId = run.id;
+        client.startPolling(run.id, onGraphUpdate);
+      } catch (err) {
+        decisionContainer.innerHTML = `<p class="text-red">Error: ${escapeHtml(err.message)}</p>`;
+        updateStatus('failed');
+        startBtn.disabled = false;
+      }
+    });
+
+    function onGraphUpdate(graphData) {
+      graphRenderer.update(graphData);
+
+      const runStatus = graphData.run_status;
+      updateStatus(runStatus);
+
+      const nodes = graphData.nodes || [];
+      const edges = graphData.edges || [];
+
+      // Log node transitions
+      logNodeEvents(nodes, edges);
+
+      // Show AI decision from triage node
+      if (currentRunId) {
+        client.getRun(currentRunId).then(run => {
+          renderDecisionPanel(run.work_item_state, nodes, edges, graphData);
+        }).catch(() => {});
+      }
+
+      // Handle escalation checkpoint — run is paused at escalation_review
+      if (runStatus === 'paused' && !escalationShown) {
+        const escalationNode = nodes.find(n => n.id === 'escalation_review');
+        if (escalationNode && (escalationNode.status === 'running' || escalationNode.status === 'paused')) {
+          showEscalation();
+        }
+      }
+
+      if (runStatus === 'completed' || runStatus === 'failed') {
+        startBtn.disabled = false;
+      }
+    }
+
+    function renderDecisionPanel(state, nodes, edges, graphData) {
+      if (!state) return;
+
+      // Find the triage decision node — check traversed edges from triage
+      const triageNode = nodes.find(n => n.id === 'triage');
+      if (!triageNode || triageNode.status === 'pending') return;
+
+      // Extract decision info from the mock: look at which edge was taken
+      const triageEdges = edges.filter(e => e.from_node === 'triage');
+      const traversedEdge = triageEdges.find(e => e.status === 'traversed');
+
+      // Try to figure out confidence from enriched data and the event type
+      const incident = state.normalized_incident || {};
+      const eventType = incident.event_type || '';
+
+      // Confidence comes from the mock_decision rules
+      const confidenceMap = {
+        brute_force_attempt: { confidence: 0.92, reasoning: 'Brute force detected — reset credentials', target: 'respond', action: 'Reset Credentials' },
+        malware_detected:    { confidence: 0.88, reasoning: 'Malware detected — isolate endpoint',      target: 'respond', action: 'Isolate Endpoint' },
+        data_exfiltration:   { confidence: 0.85, reasoning: 'Data exfiltration — block source IP',      target: 'respond', action: 'Block IP' },
+        port_scan:           { confidence: 0.45, reasoning: 'Port scan is low severity — close as benign', target: 'close', action: 'Close Benign' },
+      };
+
+      const decision = confidenceMap[eventType] || {
+        confidence: 0.6, reasoning: 'Unrecognized pattern — escalate to analyst', target: 'escalation_review', action: 'Escalate'
+      };
+
+      // Determine if escalation happened (confidence below threshold 0.75)
+      const isEscalated = decision.confidence < 0.75;
+
+      // Confidence bar color
+      let barClass = 'confidence-high';
+      if (decision.confidence < 0.5) barClass = 'confidence-low';
+      else if (decision.confidence < 0.75) barClass = 'confidence-mid';
+
+      let html = '';
+
+      // Selected edge / action
+      html += '<p style="margin-bottom: 0.5rem; font-size: 0.85rem; color: var(--gray);">Selected Action</p>';
+      html += `<span class="decision-label">${escapeHtml(decision.action)}</span>`;
+
+      // Confidence bar
+      html += '<p style="margin-top: 1rem; margin-bottom: 0.25rem; font-size: 0.85rem; color: var(--gray);">Confidence</p>';
+      html += '<div class="confidence-bar-container">';
+      html += `<div class="confidence-bar ${barClass}" style="width: ${(decision.confidence * 100).toFixed(0)}%;">${(decision.confidence * 100).toFixed(0)}%</div>`;
+      html += '</div>';
+
+      // Reasoning
+      html += '<p style="margin-top: 1rem; margin-bottom: 0.25rem; font-size: 0.85rem; color: var(--gray);">Reasoning</p>';
+      html += `<div class="reasoning-text">${escapeHtml(decision.reasoning)}</div>`;
+
+      // Enriched data summary
+      const enriched = state.enriched_data;
+      if (enriched) {
+        html += '<p style="margin-top: 1rem; margin-bottom: 0.25rem; font-size: 0.85rem; color: var(--gray);">Enrichment</p>';
+        const threatScore = enriched.threat_score != null ? enriched.threat_score : '—';
+        const country = enriched.country || '—';
+        const isVpn = enriched.is_vpn ? 'Yes' : 'No';
+        const isTor = enriched.is_tor ? 'Yes' : 'No';
+        html += `<div class="reasoning-text" style="font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.8rem;">`;
+        html += `Threat Score: ${escapeHtml(String(threatScore))}\n`;
+        html += `Country: ${escapeHtml(country)}\n`;
+        html += `VPN: ${escapeHtml(isVpn)}  |  Tor: ${escapeHtml(isTor)}`;
+        html += '</div>';
+      }
+
+      // Escalation box (if applicable)
+      if (isEscalated && !escalationShown) {
+        html += '<div class="escalation-box">';
+        html += '<h3>Escalation Triggered</h3>';
+        html += `<p>Escalation triggered — confidence ${(decision.confidence * 100).toFixed(0)}% below threshold 75%</p>`;
+        html += '<p style="color: var(--gray); font-size: 0.8rem;">Awaiting human analyst review at checkpoint.</p>';
+        html += '<div class="resolution-actions">';
+        html += '<button class="btn-success" id="resolve-approve-btn">Approve &amp; Continue</button>';
+        html += '<button class="btn-danger" id="resolve-reject-btn">Reject</button>';
+        html += '</div>';
+        html += '</div>';
+        escalationShown = true;
+      } else if (isEscalated && escalationShown) {
+        // Keep the escalation box visible if already shown
+        const existing = decisionContainer.querySelector('.escalation-box');
+        if (existing) {
+          // Preserve existing escalation box — don't overwrite
+          const tempDiv = document.createElement('div');
+          tempDiv.innerHTML = html;
+          decisionContainer.innerHTML = '';
+          while (tempDiv.firstChild) decisionContainer.appendChild(tempDiv.firstChild);
+          decisionContainer.appendChild(existing);
+          wireResolutionButtons();
+          return;
+        }
+      }
+
+      // Response result
+      const responseResult = state.response_result;
+      if (responseResult) {
+        html += '<p style="margin-top: 1rem; margin-bottom: 0.25rem; font-size: 0.85rem; color: var(--gray);">Response Executed</p>';
+        html += `<div class="reasoning-text" style="font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.8rem;">`;
+        html += `Action: ${escapeHtml(responseResult.action_taken || '—')}\n`;
+        html += `Success: ${responseResult.success ? 'Yes' : 'No'}\n`;
+        html += `Details: ${escapeHtml(responseResult.details || '—')}`;
+        html += '</div>';
+      }
+
+      decisionContainer.innerHTML = html;
+      wireResolutionButtons();
+    }
+
+    function wireResolutionButtons() {
+      const approveBtn = document.getElementById('resolve-approve-btn');
+      const rejectBtn = document.getElementById('resolve-reject-btn');
+      if (approveBtn) {
+        approveBtn.addEventListener('click', () => resolveEscalation('approve'));
+      }
+      if (rejectBtn) {
+        rejectBtn.addEventListener('click', () => resolveEscalation('reject'));
+      }
+    }
+
+    function showEscalation() {
+      eventLog.addEvent({
+        type: 'escalation',
+        node_id: 'escalation_review',
+        description: 'Confidence below threshold — escalated to human analyst',
+      });
+    }
+
+    async function resolveEscalation(decision) {
+      if (!currentRunId) return;
+
+      const approveBtn = document.getElementById('resolve-approve-btn');
+      const rejectBtn = document.getElementById('resolve-reject-btn');
+      if (approveBtn) approveBtn.disabled = true;
+      if (rejectBtn) rejectBtn.disabled = true;
+
+      try {
+        await client.resolveCheckpoint(currentRunId, decision);
+
+        eventLog.addEvent({
+          type: 'checkpoint',
+          node_id: 'escalation_review',
+          description: `Escalation ${decision === 'approve' ? 'approved' : 'rejected'} by analyst`,
+        });
+
+        // Replace escalation box with resolution status
+        const box = decisionContainer.querySelector('.escalation-box');
+        if (box) {
+          box.innerHTML = `<h3 style="color: var(--green);">Escalation Resolved</h3><p>Analyst ${decision === 'approve' ? 'approved' : 'rejected'} the incident.</p>`;
+        }
+
+        updateStatus('running');
+      } catch (err) {
+        console.error('Failed to resolve escalation:', err);
+        if (approveBtn) approveBtn.disabled = false;
+        if (rejectBtn) rejectBtn.disabled = false;
+      }
+    }
+
+    function logNodeEvents(nodes, edges) {
+      for (const node of nodes) {
+        if (node.status === 'running') {
+          eventLog.addEvent({
+            type: 'node',
+            node_id: node.id,
+            description: `${node.label || node.id} started (${node.type})`,
+          });
+        }
+        if (node.status === 'completed' && node.type === 'emit') {
+          // Emit node fired — custom event
+          eventLog.addEvent({
+            type: 'node',
+            node_id: node.id,
+            description: `Emit: incident.response_complete — incident summary recorded`,
+          });
+        }
+      }
+    }
+
+    function updateStatus(status) {
+      statusBadge.textContent = status;
+      statusBadge.className = 'status-badge ' + status;
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+  </script>
 </body>
 </html>
