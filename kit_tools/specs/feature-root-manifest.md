@@ -255,11 +255,11 @@ Defines the `.root` package format and the tooling to create packages from exist
 - Existing processes without metadata continue to work (default empty dict)
 
 **Acceptance Criteria:**
-- [ ] `ProcessDefinition` has `metadata: dict[str, Any]` field
-- [ ] Existing YAML files without metadata parse correctly (backward compatible)
-- [ ] Metadata round-trips through storage (save → load → compare)
-- [ ] Metadata preserved through YAML parse → serialize → reparse
-- [ ] Tests verify backward compatibility and round-trip
+- [x] `ProcessDefinition` has `metadata: dict[str, Any]` field
+- [x] Existing YAML files without metadata parse correctly (backward compatible)
+- [x] Metadata round-trips through storage (save → load → compare)
+- [x] Metadata preserved through YAML parse → serialize → reparse
+- [x] Tests verify backward compatibility and round-trip
 
 ## Out of Scope
 
