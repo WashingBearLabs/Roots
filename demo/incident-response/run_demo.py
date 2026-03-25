@@ -8,6 +8,7 @@ Pass --model / --api-key / --base-url for live LLM mode.
 from __future__ import annotations
 
 import argparse
+from typing import Any
 import asyncio
 import sys
 from pathlib import Path
@@ -55,7 +56,7 @@ async def setup(args: argparse.Namespace) -> Roots:
             api_key=args.api_key,
         )
 
-        async def live_llm(model, messages, tools=None, tool_choice=None):
+        async def live_llm(model: str, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None, tool_choice: dict[str, Any] | str | None = None) -> Any:
             return await openai_chat_completion(
                 model=model, messages=messages,
                 tools=tools, tool_choice=tool_choice,
