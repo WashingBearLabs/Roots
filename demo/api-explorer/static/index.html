@@ -6,26 +6,664 @@
   <title>API Explorer — Roots Demo</title>
   <link rel="stylesheet" href="/common/styles.css">
   <style>
-    main {
+    body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+    header { flex-shrink: 0; }
+
+    .explorer-layout {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 25% 50% 25%;
+      grid-template-rows: 1fr auto;
+      gap: 0;
+      overflow: hidden;
+    }
+
+    /* Panels */
+    .panel {
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border);
+      overflow: hidden;
+    }
+    .panel:last-of-type { border-right: none; }
+    .panel-header {
+      padding: 0.6rem 1rem;
+      font-weight: 600;
+      font-size: 0.85rem;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .panel-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0.5rem;
+    }
+    .panel-body::-webkit-scrollbar { width: 5px; }
+    .panel-body::-webkit-scrollbar-thumb { background: var(--gray); border-radius: 3px; }
+
+    /* Bottom bar spans all columns */
+    .bottom-bar {
+      grid-column: 1 / -1;
       display: flex;
       align-items: center;
-      justify-content: center;
-      min-height: 60vh;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      flex-wrap: wrap;
     }
-    .placeholder {
+    .bottom-bar .label {
+      font-size: 0.75rem;
+      color: var(--gray);
+      font-weight: 600;
+      text-transform: uppercase;
+      margin-right: 0.25rem;
+    }
+    .bottom-bar button {
+      font-size: 0.75rem;
+      padding: 0.3rem 0.7rem;
+      background: var(--accent);
+      color: var(--text);
+    }
+
+    /* Endpoint catalog */
+    .group-header {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--gray);
+      padding: 0.5rem 0.5rem 0.25rem;
+      cursor: pointer;
+      user-select: none;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .group-header .chevron {
+      font-size: 0.6rem;
+      transition: transform 0.15s;
+    }
+    .group-header.collapsed .chevron { transform: rotate(-90deg); }
+    .group-items { padding: 0 0 0.25rem; }
+    .group-header.collapsed + .group-items { display: none; }
+
+    .endpoint-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.3rem 0.5rem;
+      cursor: pointer;
+      border-radius: var(--radius);
+      font-size: 0.8rem;
+      transition: background 0.1s;
+    }
+    .endpoint-item:hover { background: rgba(255,255,255,0.04); }
+    .endpoint-item.selected { background: rgba(79,159,245,0.12); }
+
+    .method-badge {
+      display: inline-block;
+      padding: 0.1rem 0.35rem;
+      border-radius: 3px;
+      font-size: 0.65rem;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+      flex-shrink: 0;
+      min-width: 42px;
       text-align: center;
-      color: var(--text-secondary);
     }
-    .placeholder h2 { margin-bottom: 0.5rem; }
+    .method-GET    { background: var(--green); color: #1a1a2e; }
+    .method-POST   { background: var(--blue); color: #fff; }
+    .method-PUT    { background: var(--yellow); color: #1a1a2e; }
+    .method-DELETE { background: var(--red); color: #fff; }
+
+    .endpoint-path {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Request builder */
+    .request-controls {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+      align-items: center;
+    }
+    .request-controls select {
+      padding: 0.4rem;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-family: inherit;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    .request-controls .path-display {
+      flex: 1;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      padding: 0.4rem 0.6rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+    }
+    #send-btn {
+      background: var(--green);
+      color: #1a1a2e;
+      font-weight: 600;
+      padding: 0.4rem 1.2rem;
+    }
+    #send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .param-fields {
+      margin-bottom: 0.75rem;
+    }
+    .param-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.4rem;
+    }
+    .param-row label {
+      font-size: 0.8rem;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--gray);
+      min-width: 100px;
+    }
+    .param-row input {
+      flex: 1;
+      padding: 0.35rem 0.5rem;
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+    }
+
+    .body-editor-label {
+      font-size: 0.8rem;
+      color: var(--gray);
+      margin-bottom: 0.3rem;
+    }
+    #body-editor {
+      width: 100%;
+      min-height: 180px;
+      background: var(--bg);
+      color: var(--green);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      line-height: 1.5;
+      resize: vertical;
+      tab-size: 2;
+    }
+
+    .endpoint-desc {
+      font-size: 0.8rem;
+      color: var(--gray);
+      margin-bottom: 0.75rem;
+      font-style: italic;
+    }
+
+    /* Response viewer */
+    .response-meta {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      margin-bottom: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .status-code {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 1rem;
+      padding: 0.2rem 0.6rem;
+      border-radius: var(--radius);
+    }
+    .status-2xx { background: var(--green); color: #1a1a2e; }
+    .status-4xx { background: var(--yellow); color: #1a1a2e; }
+    .status-5xx { background: var(--red); color: #fff; }
+    .response-time {
+      font-size: 0.8rem;
+      color: var(--gray);
+      font-family: 'JetBrains Mono', monospace;
+    }
+    #response-body {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.75rem;
+      overflow-y: auto;
+      max-height: calc(100vh - 220px);
+    }
+    .response-placeholder {
+      color: var(--gray);
+      font-size: 0.85rem;
+      text-align: center;
+      padding: 2rem 1rem;
+    }
+
+    /* Event log section inside response panel */
+    .event-log-section {
+      margin-top: 0.75rem;
+      border-top: 1px solid var(--border);
+      padding-top: 0.75rem;
+    }
+    .event-log-section h3 {
+      font-size: 0.8rem;
+      color: var(--gray);
+      margin-bottom: 0.5rem;
+      font-weight: 600;
+    }
+    #event-log-container {
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    #event-log-container::-webkit-scrollbar { width: 5px; }
+    #event-log-container::-webkit-scrollbar-thumb { background: var(--gray); border-radius: 3px; }
   </style>
 </head>
 <body>
-  <header><h1>API Explorer</h1></header>
-  <main>
-    <div class="placeholder">
-      <h2>API Explorer</h2>
-      <p>Frontend coming in US-010</p>
+  <header>
+    <h1>API Explorer</h1>
+    <span class="text-gray" style="font-size:0.8rem">Roots HTTP API</span>
+  </header>
+
+  <div class="explorer-layout">
+    <!-- Left: Endpoint Catalog -->
+    <div class="panel">
+      <div class="panel-header">Endpoints</div>
+      <div class="panel-body" id="catalog"></div>
     </div>
-  </main>
+
+    <!-- Center: Request Builder -->
+    <div class="panel" style="border-left: 1px solid var(--border);">
+      <div class="panel-header">Request Builder</div>
+      <div class="panel-body" style="padding: 0.75rem;">
+        <div id="endpoint-desc" class="endpoint-desc">Select an endpoint from the catalog</div>
+        <div class="request-controls">
+          <select id="method-select">
+            <option>GET</option>
+            <option>POST</option>
+            <option>PUT</option>
+            <option>DELETE</option>
+          </select>
+          <input type="text" id="path-input" class="path-display" placeholder="/api/..." />
+          <button id="send-btn">Send</button>
+        </div>
+        <div id="param-fields" class="param-fields"></div>
+        <div id="body-section" style="display:none;">
+          <div class="body-editor-label">Request Body (JSON)</div>
+          <textarea id="body-editor" spellcheck="false"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Response Viewer -->
+    <div class="panel">
+      <div class="panel-header">Response</div>
+      <div class="panel-body">
+        <div id="response-meta" class="response-meta" style="display:none;"></div>
+        <div id="response-body">
+          <div class="response-placeholder">Send a request to see the response</div>
+        </div>
+        <div class="event-log-section">
+          <h3>Webhook Event Log</h3>
+          <div id="event-log-container"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom bar: Recipes -->
+    <div class="bottom-bar">
+      <span class="label">Recipes:</span>
+      <button onclick="loadRecipe('createRun')">Create Run</button>
+      <button onclick="loadRecipe('getRunGraph')">Get Run Graph</button>
+      <button onclick="loadRecipe('listAgents')">List Agents</button>
+      <button onclick="loadRecipe('registerWebhook')">Register Webhook</button>
+    </div>
+  </div>
+
+  <script src="/common/state-viewer.js"></script>
+  <script src="/common/event-log.js"></script>
+  <script>
+    /* ── Endpoint Catalog ── */
+    const ENDPOINTS = [
+      // Processes
+      { group: 'Processes', method: 'POST',   path: '/api/processes',                          desc: 'Create a new process definition', body: '{\n  "id": "my-process",\n  "name": "My Process",\n  "nodes": [],\n  "edges": [],\n  "entry_point": "start"\n}' },
+      { group: 'Processes', method: 'GET',    path: '/api/processes',                          desc: 'List all process definitions' },
+      { group: 'Processes', method: 'GET',    path: '/api/processes/{process_id}',              desc: 'Get a process by ID' },
+      { group: 'Processes', method: 'PUT',    path: '/api/processes/{process_id}',              desc: 'Update a process definition', body: '{\n  "id": "my-process",\n  "name": "Updated Process",\n  "nodes": [],\n  "edges": [],\n  "entry_point": "start"\n}' },
+      { group: 'Processes', method: 'DELETE', path: '/api/processes/{process_id}',              desc: 'Delete a process definition' },
+      { group: 'Processes', method: 'GET',    path: '/api/processes/{process_id}/validate',     desc: 'Validate a process definition' },
+
+      // Runs
+      { group: 'Runs', method: 'POST',   path: '/api/runs',                                   desc: 'Create and start a new run', body: '{\n  "process_id": "api-explorer",\n  "work_item": {\n    "message": "Hello from API Explorer"\n  }\n}' },
+      { group: 'Runs', method: 'GET',    path: '/api/runs',                                   desc: 'List all runs' },
+      { group: 'Runs', method: 'GET',    path: '/api/runs/{run_id}',                           desc: 'Get run details by ID' },
+      { group: 'Runs', method: 'DELETE', path: '/api/runs/{run_id}',                           desc: 'Cancel a running run' },
+      { group: 'Runs', method: 'POST',   path: '/api/runs/{run_id}/pause',                    desc: 'Pause a running run' },
+      { group: 'Runs', method: 'POST',   path: '/api/runs/{run_id}/resume',                   desc: 'Resume a paused run' },
+      { group: 'Runs', method: 'GET',    path: '/api/runs/{run_id}/history',                   desc: 'Get execution history for a run' },
+
+      // Checkpoints
+      { group: 'Checkpoints', method: 'GET',  path: '/api/runs/{run_id}/checkpoint',           desc: 'Get current checkpoint for a run' },
+      { group: 'Checkpoints', method: 'POST', path: '/api/runs/{run_id}/checkpoint',           desc: 'Resolve a checkpoint', body: '{\n  "decision": "approve",\n  "notes": "Looks good"\n}' },
+
+      // Agents
+      { group: 'Agents', method: 'GET',    path: '/api/agents',                                desc: 'List registered agents' },
+      { group: 'Agents', method: 'POST',   path: '/api/agents',                                desc: 'Register a new agent', body: '{\n  "name": "my_agent",\n  "url": "http://localhost:9000/agent"\n}' },
+      { group: 'Agents', method: 'DELETE', path: '/api/agents/{name}',                         desc: 'Deregister an agent' },
+      { group: 'Agents', method: 'GET',    path: '/api/agents/{name}/health',                  desc: 'Check agent health status' },
+
+      // Webhooks
+      { group: 'Webhooks', method: 'GET',    path: '/api/webhooks',                            desc: 'List registered webhooks' },
+      { group: 'Webhooks', method: 'POST',   path: '/api/webhooks',                            desc: 'Register a new webhook', body: '{\n  "url": "http://localhost:8204/api/webhook-receiver",\n  "events": ["*"]\n}' },
+      { group: 'Webhooks', method: 'DELETE', path: '/api/webhooks/{webhook_id}',               desc: 'Delete a webhook' },
+      { group: 'Webhooks', method: 'POST',   path: '/api/webhooks/{webhook_id}/test',          desc: 'Send a test event to a webhook' },
+
+      // Graph
+      { group: 'Graph', method: 'GET',    path: '/api/processes/{process_id}/graph',            desc: 'Get process graph visualization data' },
+      { group: 'Graph', method: 'GET',    path: '/api/runs/{run_id}/graph',                     desc: 'Get run graph with execution state' },
+      { group: 'Graph', method: 'POST',   path: '/api/processes/{process_id}/nodes',            desc: 'Add a node to a process', body: '{\n  "id": "new_node",\n  "type": "agent",\n  "label": "New Node",\n  "config": {"agent": "echo_agent"}\n}' },
+      { group: 'Graph', method: 'PUT',    path: '/api/processes/{process_id}/nodes/{node_id}',  desc: 'Update a node in a process', body: '{\n  "label": "Updated Label"\n}' },
+      { group: 'Graph', method: 'DELETE', path: '/api/processes/{process_id}/nodes/{node_id}',  desc: 'Delete a node from a process' },
+      { group: 'Graph', method: 'POST',   path: '/api/processes/{process_id}/edges',            desc: 'Add an edge to a process', body: '{\n  "from": "node_a",\n  "to": "node_b"\n}' },
+      { group: 'Graph', method: 'DELETE', path: '/api/processes/{process_id}/edges/{edge_id}',  desc: 'Delete an edge from a process' },
+      { group: 'Graph', method: 'PUT',    path: '/api/processes/{process_id}/nodes/{node_id}/position', desc: 'Update node position', body: '{\n  "x": 100,\n  "y": 200\n}' },
+    ];
+
+    /* ── Recipes ── */
+    const RECIPES = {
+      createRun: {
+        method: 'POST',
+        path: '/api/runs',
+        body: '{\n  "process_id": "api-explorer",\n  "work_item": {\n    "message": "Hello from API Explorer"\n  }\n}',
+        desc: 'Create and start a new run',
+      },
+      getRunGraph: {
+        method: 'GET',
+        path: '/api/runs/{run_id}/graph',
+        body: '',
+        desc: 'Get run graph with execution state',
+      },
+      listAgents: {
+        method: 'GET',
+        path: '/api/agents',
+        body: '',
+        desc: 'List registered agents',
+      },
+      registerWebhook: {
+        method: 'POST',
+        path: '/api/webhooks',
+        body: '{\n  "url": "http://localhost:8204/api/webhook-receiver",\n  "events": ["*"]\n}',
+        desc: 'Register a new webhook',
+      },
+    };
+
+    /* ── State ── */
+    let selectedEndpoint = null;
+    const stateViewer = new StateViewer(document.getElementById('response-body'));
+    const eventLog = new EventLog(document.getElementById('event-log-container'));
+
+    /* ── Build catalog ── */
+    function buildCatalog() {
+      const catalog = document.getElementById('catalog');
+      const groups = {};
+      for (const ep of ENDPOINTS) {
+        if (!groups[ep.group]) groups[ep.group] = [];
+        groups[ep.group].push(ep);
+      }
+
+      for (const [groupName, endpoints] of Object.entries(groups)) {
+        const header = document.createElement('div');
+        header.className = 'group-header';
+        header.innerHTML = '<span class="chevron">&#9660;</span>' + escapeHtml(groupName);
+        header.addEventListener('click', () => {
+          header.classList.toggle('collapsed');
+        });
+
+        const items = document.createElement('div');
+        items.className = 'group-items';
+
+        for (const ep of endpoints) {
+          const item = document.createElement('div');
+          item.className = 'endpoint-item';
+          item.innerHTML =
+            '<span class="method-badge method-' + ep.method + '">' + ep.method + '</span>' +
+            '<span class="endpoint-path" title="' + escapeHtml(ep.desc) + '">' + escapeHtml(ep.path.replace('/api/', '/')) + '</span>';
+          item.addEventListener('click', () => selectEndpoint(ep, item));
+          items.appendChild(item);
+        }
+
+        catalog.appendChild(header);
+        catalog.appendChild(items);
+      }
+    }
+
+    /* ── Select endpoint ── */
+    function selectEndpoint(ep, itemEl) {
+      selectedEndpoint = ep;
+
+      // Highlight in catalog
+      document.querySelectorAll('.endpoint-item').forEach(el => el.classList.remove('selected'));
+      if (itemEl) itemEl.classList.add('selected');
+
+      // Update request builder
+      document.getElementById('method-select').value = ep.method;
+      document.getElementById('endpoint-desc').textContent = ep.desc;
+
+      // Parse path params
+      const paramNames = (ep.path.match(/\{(\w+)\}/g) || []).map(p => p.slice(1, -1));
+      const paramFields = document.getElementById('param-fields');
+      paramFields.innerHTML = '';
+
+      if (paramNames.length > 0) {
+        // Show path with placeholders
+        document.getElementById('path-input').value = ep.path;
+        for (const name of paramNames) {
+          const row = document.createElement('div');
+          row.className = 'param-row';
+          row.innerHTML =
+            '<label>{' + escapeHtml(name) + '}</label>' +
+            '<input type="text" data-param="' + escapeHtml(name) + '" placeholder="Enter ' + escapeHtml(name) + '" />';
+          paramFields.appendChild(row);
+        }
+        // Update path input when param values change
+        paramFields.querySelectorAll('input').forEach(input => {
+          input.addEventListener('input', () => updatePath(ep));
+        });
+      } else {
+        document.getElementById('path-input').value = ep.path;
+      }
+
+      // Show/hide body editor
+      const bodySection = document.getElementById('body-section');
+      if (ep.method === 'POST' || ep.method === 'PUT') {
+        bodySection.style.display = 'block';
+        document.getElementById('body-editor').value = ep.body || '';
+      } else {
+        bodySection.style.display = 'none';
+        document.getElementById('body-editor').value = '';
+      }
+    }
+
+    function updatePath(ep) {
+      let path = ep.path;
+      document.querySelectorAll('#param-fields input').forEach(input => {
+        const param = input.dataset.param;
+        const val = input.value.trim();
+        if (val) {
+          path = path.replace('{' + param + '}', encodeURIComponent(val));
+        }
+      });
+      document.getElementById('path-input').value = path;
+    }
+
+    /* ── Send request ── */
+    async function sendRequest() {
+      const method = document.getElementById('method-select').value;
+      const path = document.getElementById('path-input').value;
+
+      if (!path || path.includes('{')) {
+        alert('Please fill in all path parameters');
+        return;
+      }
+
+      const sendBtn = document.getElementById('send-btn');
+      sendBtn.disabled = true;
+      sendBtn.textContent = '...';
+
+      const opts = { method };
+      if ((method === 'POST' || method === 'PUT') && document.getElementById('body-editor').value.trim()) {
+        opts.headers = { 'Content-Type': 'application/json' };
+        opts.body = document.getElementById('body-editor').value.trim();
+      }
+
+      const start = performance.now();
+      let status, responseData, responseText;
+
+      try {
+        const res = await fetch(path, opts);
+        const elapsed = Math.round(performance.now() - start);
+        status = res.status;
+        responseText = await res.text();
+        try {
+          responseData = JSON.parse(responseText);
+        } catch {
+          responseData = null;
+        }
+
+        showResponse(status, elapsed, responseData, responseText);
+      } catch (err) {
+        showResponse(0, 0, null, 'Network error: ' + err.message);
+      }
+
+      sendBtn.disabled = false;
+      sendBtn.textContent = 'Send';
+    }
+
+    /* ── Show response ── */
+    function showResponse(status, elapsed, jsonData, rawText) {
+      const meta = document.getElementById('response-meta');
+      meta.style.display = 'flex';
+      meta.innerHTML = '';
+
+      // Status code badge
+      const statusEl = document.createElement('span');
+      statusEl.className = 'status-code';
+      if (status >= 200 && status < 300) statusEl.classList.add('status-2xx');
+      else if (status >= 400 && status < 500) statusEl.classList.add('status-4xx');
+      else if (status >= 500) statusEl.classList.add('status-5xx');
+      else statusEl.style.color = '#555';
+      statusEl.textContent = status || 'ERR';
+      meta.appendChild(statusEl);
+
+      // Response time
+      const timeEl = document.createElement('span');
+      timeEl.className = 'response-time';
+      timeEl.textContent = elapsed + 'ms';
+      meta.appendChild(timeEl);
+
+      // Response body
+      const bodyEl = document.getElementById('response-body');
+      if (jsonData !== null) {
+        stateViewer.render(jsonData);
+      } else {
+        bodyEl.innerHTML = '';
+        const pre = document.createElement('pre');
+        pre.style.fontFamily = "'JetBrains Mono', monospace";
+        pre.style.fontSize = '0.8rem';
+        pre.style.color = '#e0e0e0';
+        pre.style.whiteSpace = 'pre-wrap';
+        pre.style.wordBreak = 'break-word';
+        pre.textContent = rawText;
+        bodyEl.appendChild(pre);
+      }
+    }
+
+    /* ── Recipes ── */
+    function loadRecipe(name) {
+      const recipe = RECIPES[name];
+      if (!recipe) return;
+
+      // Find matching endpoint
+      const ep = ENDPOINTS.find(e => e.method === recipe.method && e.path === recipe.path);
+      if (ep) {
+        const items = document.querySelectorAll('.endpoint-item');
+        const idx = ENDPOINTS.indexOf(ep);
+        selectEndpoint(ep, items[idx] || null);
+      } else {
+        // Manual load for recipes without exact endpoint match
+        document.getElementById('method-select').value = recipe.method;
+        document.getElementById('path-input').value = recipe.path;
+        document.getElementById('endpoint-desc').textContent = recipe.desc;
+        document.getElementById('param-fields').innerHTML = '';
+
+        if (recipe.method === 'POST' || recipe.method === 'PUT') {
+          document.getElementById('body-section').style.display = 'block';
+          document.getElementById('body-editor').value = recipe.body;
+        } else {
+          document.getElementById('body-section').style.display = 'none';
+        }
+      }
+    }
+
+    /* ── Webhook event polling ── */
+    let lastEventCount = 0;
+    async function pollEvents() {
+      try {
+        const res = await fetch('/api/received-events');
+        const events = await res.json();
+        if (events.length > lastEventCount) {
+          for (let i = lastEventCount; i < events.length; i++) {
+            const ev = events[i];
+            eventLog.addEvent({
+              type: ev.event_type || ev.type || 'webhook',
+              timestamp: ev.timestamp,
+              node_id: ev.node_id || '',
+              description: ev.event_type || JSON.stringify(ev).slice(0, 80),
+            });
+          }
+          lastEventCount = events.length;
+        }
+      } catch { /* ignore polling errors */ }
+    }
+    setInterval(pollEvents, 2000);
+
+    /* ── Util ── */
+    function escapeHtml(str) {
+      const d = document.createElement('div');
+      d.textContent = str;
+      return d.innerHTML;
+    }
+
+    /* ── Init ── */
+    buildCatalog();
+    document.getElementById('send-btn').addEventListener('click', sendRequest);
+
+    // Allow Ctrl+Enter to send from body editor
+    document.getElementById('body-editor').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        sendRequest();
+      }
+    });
+
+    // Also allow method/path changes to sync
+    document.getElementById('method-select').addEventListener('change', () => {
+      const method = document.getElementById('method-select').value;
+      const bodySection = document.getElementById('body-section');
+      bodySection.style.display = (method === 'POST' || method === 'PUT') ? 'block' : 'none';
+    });
+  </script>
 </body>
 </html>
