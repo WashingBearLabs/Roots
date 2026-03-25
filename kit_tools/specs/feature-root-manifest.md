@@ -67,13 +67,13 @@ Defines the `.root` package format and the tooling to create packages from exist
 - Create `roots/packaging/__init__.py` with exports
 
 **Acceptance Criteria:**
-- [ ] `AgentContract` model with all fields and validation
-- [ ] `ConfigOverride` model with all fields
-- [ ] `RootManifest` model with all fields and validation
-- [ ] Manifest serializes to/from JSON cleanly (round-trip test)
-- [ ] `package_id` validated for format (e.g., "org/name" or simple "name")
-- [ ] `package_version` validated as semver
-- [ ] Tests cover model creation, validation, serialization
+- [x] `AgentContract` model with all fields and validation
+- [x] `ConfigOverride` model with all fields
+- [x] `RootManifest` model with all fields and validation
+- [x] Manifest serializes to/from JSON cleanly (round-trip test)
+- [x] `package_id` validated for format (e.g., "org/name" or simple "name")
+- [x] `package_version` validated as semver
+- [x] Tests cover model creation, validation, serialization
 
 ### US-002: Agent Contract Extraction
 
