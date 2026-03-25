@@ -304,11 +304,11 @@ Five self-contained demo applications that showcase the Roots framework's capabi
   - `static/index.html`: Placeholder page that shows demo name and "Frontend coming in US-010"
 
 **Acceptance Criteria:**
-- [ ] `demo/api-explorer/process.yaml` parses and validates
-- [ ] Echo agent registered
-- [ ] Webhook receiver endpoint stores events
-- [ ] `GET /api/received-events` returns stored events
-- [ ] `run_demo.py` starts server with pre-loaded process
+- [x] `demo/api-explorer/process.yaml` parses and validates
+- [x] Echo agent registered
+- [x] Webhook receiver endpoint stores events
+- [x] `GET /api/received-events` returns stored events
+- [x] `run_demo.py` starts server with pre-loaded process
 
 ### US-010: API Explorer — Frontend
 
