@@ -483,12 +483,12 @@ Five self-contained demo applications that showcase the Roots framework's capabi
   - Screenshot descriptions (no actual screenshots needed)
 
 **Acceptance Criteria:**
-- [ ] `python demo/run_all.py` starts all demos and opens landing page
-- [ ] Landing page shows all 5 demos with descriptions and feature tags
-- [ ] Each card links to correct port
-- [ ] Individual demos still work standalone via their own `run_demo.py`
-- [ ] Ctrl+C stops all demo servers cleanly
-- [ ] `demo/README.md` documents everything
+- [x] `python demo/run_all.py` starts all demos and opens landing page
+- [x] Landing page shows all 5 demos with descriptions and feature tags
+- [x] Each card links to correct port
+- [x] Individual demos still work standalone via their own `run_demo.py`
+- [x] Ctrl+C stops all demo servers cleanly
+- [x] `demo/README.md` documents everything
 
 ## Out of Scope
 
