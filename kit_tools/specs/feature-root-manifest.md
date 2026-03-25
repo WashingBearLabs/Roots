@@ -101,14 +101,14 @@ Defines the `.root` package format and the tooling to create packages from exist
     - Path format: `"nodes.{node_id}.config.{field}"` — maps directly to YAML structure
 
 **Acceptance Criteria:**
-- [ ] Extracts all agent names from agent and agent_pool nodes
-- [ ] Deduplicates agents referenced multiple times
-- [ ] Pulls schemas from registry when available
-- [ ] Creates placeholder contracts for unregistered agents
-- [ ] first_pass pool agents (except first) marked as optional
-- [ ] Config overrides extracted for decision thresholds, retry settings, prompts
-- [ ] Override paths use consistent dot-notation format
-- [ ] Tests cover extraction from a multi-node process with pools
+- [x] Extracts all agent names from agent and agent_pool nodes
+- [x] Deduplicates agents referenced multiple times
+- [x] Pulls schemas from registry when available
+- [x] Creates placeholder contracts for unregistered agents
+- [x] first_pass pool agents (except first) marked as optional
+- [x] Config overrides extracted for decision thresholds, retry settings, prompts
+- [x] Override paths use consistent dot-notation format
+- [x] Tests cover extraction from a multi-node process with pools
 
 ### US-003: Package Archive Format
 
