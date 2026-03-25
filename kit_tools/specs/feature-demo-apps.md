@@ -224,13 +224,13 @@ Five self-contained demo applications that showcase the Roots framework's capabi
   - Quick-select topic buttons: "AI Safety", "Climate Change", "Quantum Computing"
 
 **Acceptance Criteria:**
-- [ ] `python demo/research-assistant/run_demo.py` starts server and opens browser
-- [ ] Topic input creates run and resolves first checkpoint
-- [ ] Fork/join branches visible executing in parallel
-- [ ] Collected results show all three sources in tabs
-- [ ] Summary displayed after summarize agent
-- [ ] Second checkpoint shows approve/reject buttons
-- [ ] Approve → completed, Reject → failed
+- [x] `python demo/research-assistant/run_demo.py` starts server and opens browser
+- [x] Topic input creates run and resolves first checkpoint
+- [x] Fork/join branches visible executing in parallel
+- [x] Collected results show all three sources in tabs
+- [x] Summary displayed after summarize agent
+- [x] Second checkpoint shows approve/reject buttons
+- [x] Approve → completed, Reject → failed
 
 ### US-007: Incident Response Demo
 
