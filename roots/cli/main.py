@@ -479,6 +479,32 @@ def pack(
     console.print(f"  Archive size:     {size_kb:.1f} KB")
 
 
+@app.command()
+def inspect(
+    ctx: typer.Context,
+    package_path: str = typer.Argument(
+        ...,
+        help="Path to a .root package file.",
+    ),
+    output_json: bool = typer.Option(
+        False,
+        "--json",
+        help="Output raw manifest as JSON (for scripting).",
+    ),
+) -> None:
+    """Inspect a .root package and display its contents."""
+    from roots.packaging.inspect import inspect_package
+
+    try:
+        inspect_package(package_path, output_json=output_json)
+    except FileNotFoundError as exc:
+        typer.echo(typer.style(str(exc), fg=typer.colors.RED))
+        raise typer.Exit(code=1)
+    except Exception as exc:
+        typer.echo(typer.style(f"Error: {exc}", fg=typer.colors.RED))
+        raise typer.Exit(code=1)
+
+
 @agents_app.callback(invoke_without_command=True)
 def agents_list(
     ctx: typer.Context,
