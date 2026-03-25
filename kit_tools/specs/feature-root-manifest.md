@@ -146,13 +146,13 @@ Defines the `.root` package format and the tooling to create packages from exist
 - Use `zipfile.ZipFile` from stdlib — no extra dependencies
 
 **Acceptance Criteria:**
-- [ ] `.root` files are valid zip archives
-- [ ] Archive contains manifest.json + process.yaml at minimum
-- [ ] `create_archive` writes a valid package
-- [ ] `read_archive` reads and validates a package
-- [ ] SHA-256 checksum verified on read
-- [ ] Extra files (README, defaults) included when present
-- [ ] Tests verify round-trip: create → read → compare
+- [x] `.root` files are valid zip archives
+- [x] Archive contains manifest.json + process.yaml at minimum
+- [x] `create_archive` writes a valid package
+- [x] `read_archive` reads and validates a package
+- [x] SHA-256 checksum verified on read
+- [x] Extra files (README, defaults) included when present
+- [x] Tests verify round-trip: create → read → compare
 
 ### US-004: `roots pack` CLI Command
 
