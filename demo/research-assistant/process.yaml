@@ -1,0 +1,128 @@
+id: research-assistant
+name: Research Assistant
+version: "1.0.0"
+description: Multi-source research aggregation with fork/join and checkpoint approval
+
+nodes:
+  - id: topic_input
+    type: checkpoint
+    label: Enter Research Topic
+    config:
+      prompt: "Enter a research topic to investigate."
+    metadata:
+      position: {x: 250, y: 0}
+
+  - id: split
+    type: fork
+    label: Split Research
+    config: {}
+    metadata:
+      position: {x: 250, y: 120}
+
+  - id: search_academic
+    type: agent
+    label: Academic Search
+    config:
+      agent: search_academic
+      output_key: academic_results
+    metadata:
+      position: {x: 50, y: 260}
+
+  - id: search_news
+    type: agent
+    label: News Search
+    config:
+      agent: search_news
+      output_key: news_results
+    metadata:
+      position: {x: 250, y: 260}
+
+  - id: search_web
+    type: agent
+    label: Web Search
+    config:
+      agent: search_web
+      output_key: web_results
+    metadata:
+      position: {x: 450, y: 260}
+
+  - id: merge
+    type: join
+    label: Merge Results
+    config:
+      merge_strategy: collect
+      collect_key: research_results
+    metadata:
+      position: {x: 250, y: 400}
+
+  - id: summarize
+    type: agent
+    label: Summarize
+    config:
+      agent: summarize_results
+      output_key: summary
+    metadata:
+      position: {x: 250, y: 520}
+
+  - id: quality_check
+    type: decision
+    label: Quality Check
+    config:
+      mode: deterministic
+      edges:
+        - target: approve_publish
+          condition: "summary.source_count >= 3"
+          label: Enough sources
+        - target: insufficient
+          condition: "summary.source_count < 3"
+          label: Too few sources
+    metadata:
+      position: {x: 250, y: 640}
+
+  - id: approve_publish
+    type: checkpoint
+    label: Approve for Publishing
+    config:
+      prompt: "Review the research summary and approve for publishing."
+    metadata:
+      position: {x: 150, y: 760}
+
+  - id: publish
+    type: end
+    label: Published
+    config:
+      status: completed
+    metadata:
+      position: {x: 150, y: 880}
+
+  - id: insufficient
+    type: end
+    label: Insufficient Sources
+    config:
+      status: failed
+    metadata:
+      position: {x: 400, y: 760}
+
+edges:
+  - from: topic_input
+    to: split
+  - from: split
+    to: search_academic
+  - from: split
+    to: search_news
+  - from: split
+    to: search_web
+  - from: search_academic
+    to: merge
+  - from: search_news
+    to: merge
+  - from: search_web
+    to: merge
+  - from: merge
+    to: summarize
+  - from: summarize
+    to: quality_check
+  - from: approve_publish
+    to: publish
+
+entry_point: topic_input

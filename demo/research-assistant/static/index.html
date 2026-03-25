@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Research Assistant — Roots Demo</title>
+    <link rel="stylesheet" href="/common/styles.css">
+</head>
+<body>
+    <header>
+        <h1>Research Assistant</h1>
+        <span class="status-badge status-pending">Waiting for topic</span>
+    </header>
+    <main>
+        <p>Frontend will be implemented in US-006. The backend is ready — try the API directly:</p>
+        <pre>
+# Create a run
+curl -X POST http://localhost:8202/api/runs \
+  -H "Content-Type: application/json" \
+  -d '{"process_id": "research-assistant", "work_item": {"topic": "AI Safety"}}'
+
+# Check run status
+curl http://localhost:8202/api/runs
+
+# Resolve checkpoint (after run creation)
+curl -X POST http://localhost:8202/api/runs/{run_id}/checkpoint \
+  -H "Content-Type: application/json" \
+  -d '{"decision": "approve"}'
+        </pre>
+    </main>
+    <footer>Powered by Roots</footer>
+    <script src="/common/graph-renderer.js"></script>
+    <script src="/common/state-viewer.js"></script>
+    <script src="/common/event-log.js"></script>
+    <script src="/common/roots-client.js"></script>
+</body>
+</html>
