@@ -1,7 +1,7 @@
 <!-- Template Version: 2.0.0 -->
 ---
 feature: demo-apps
-status: active
+status: completed
 session_ready: true
 depends_on: []
 vision_ref: "Demo applications showcasing the Roots framework"
@@ -10,7 +10,8 @@ epic:
 epic_seq:
 epic_final:
 created: 2026-03-24
-updated: 2026-03-24
+updated: 2026-03-25
+completed: 2026-03-25
 ---
 
 # Feature Spec: Demo Applications
