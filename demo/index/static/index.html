@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Roots — Demo Hub</title>
+  <style>
+    :root {
+      --bg: #1a1a2e;
+      --surface: #16213e;
+      --text: #e0e0e0;
+      --accent: #0f3460;
+      --green: #4ecca3;
+      --blue: #4a9ff5;
+      --red: #e74c3c;
+      --yellow: #f1c40f;
+      --purple: #a855f7;
+      --gray: #555;
+      --border: rgba(255, 255, 255, 0.08);
+      --radius: 8px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    .app {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    /* Hero */
+    .hero {
+      text-align: center;
+      padding: 3rem 1.5rem 2rem;
+    }
+    .hero h1 {
+      font-size: 3rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.5rem;
+    }
+    .hero .subtitle {
+      font-size: 1.1rem;
+      color: var(--gray);
+      font-weight: 400;
+    }
+
+    /* Card grid */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.25rem;
+      padding: 0 2rem 2rem;
+      max-width: 1100px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    @media (max-width: 800px) {
+      .card-grid { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      transition: border-color 0.2s;
+    }
+    .card:hover {
+      border-color: rgba(255, 255, 255, 0.18);
+    }
+
+    .card-accent {
+      height: 4px;
+      width: 100%;
+    }
+
+    .card-body {
+      padding: 1.25rem;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .card-body h2 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+
+    .card-body p {
+      font-size: 0.875rem;
+      color: #aaa;
+      margin-bottom: 1rem;
+      flex: 1;
+    }
+
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-bottom: 1rem;
+    }
+    .tag {
+      display: inline-block;
+      padding: 0.15rem 0.5rem;
+      border-radius: 1rem;
+      font-size: 0.7rem;
+      font-weight: 600;
+      background: var(--accent);
+      color: var(--text);
+    }
+
+    .launch-btn {
+      display: inline-block;
+      text-decoration: none;
+      text-align: center;
+      cursor: pointer;
+      border: none;
+      border-radius: var(--radius);
+      padding: 0.5rem 1rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      font-family: inherit;
+      background: var(--accent);
+      color: var(--text);
+      transition: opacity 0.15s;
+    }
+    .launch-btn:hover { opacity: 0.85; }
+
+    /* Footer */
+    footer {
+      margin-top: auto;
+      padding: 1rem 1.5rem;
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--gray);
+      border-top: 1px solid var(--border);
+    }
+    footer a {
+      color: var(--blue);
+      text-decoration: none;
+    }
+    footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="hero">
+      <h1>Roots</h1>
+      <p class="subtitle">AI-native process orchestration framework</p>
+    </div>
+
+    <div class="card-grid">
+
+      <div class="card">
+        <div class="card-accent" style="background: var(--green);"></div>
+        <div class="card-body">
+          <h2>Content Pipeline</h2>
+          <p>See agent pools and deterministic decisions in action</p>
+          <div class="tags">
+            <span class="tag">agent</span>
+            <span class="tag">agent_pool</span>
+            <span class="tag">decision</span>
+            <span class="tag">end</span>
+          </div>
+          <a class="launch-btn" href="http://localhost:8201">Launch</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-accent" style="background: var(--blue);"></div>
+        <div class="card-body">
+          <h2>Research Assistant</h2>
+          <p>Explore fork/join parallelism and human checkpoints</p>
+          <div class="tags">
+            <span class="tag">fork</span>
+            <span class="tag">join</span>
+            <span class="tag">checkpoint</span>
+            <span class="tag">decision</span>
+          </div>
+          <a class="launch-btn" href="http://localhost:8202">Launch</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-accent" style="background: var(--red);"></div>
+        <div class="card-body">
+          <h2>Incident Response</h2>
+          <p>Watch AI-powered decisions with confidence thresholds</p>
+          <div class="tags">
+            <span class="tag">ai_decision</span>
+            <span class="tag">escalation</span>
+            <span class="tag">retry</span>
+            <span class="tag">emit</span>
+          </div>
+          <a class="launch-btn" href="http://localhost:8203">Launch</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-accent" style="background: var(--yellow);"></div>
+        <div class="card-body">
+          <h2>API Explorer</h2>
+          <p>Interact with every Roots API endpoint</p>
+          <div class="tags">
+            <span class="tag">full HTTP API</span>
+            <span class="tag">webhooks</span>
+          </div>
+          <a class="launch-btn" href="http://localhost:8204">Launch</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-accent" style="background: var(--purple);"></div>
+        <div class="card-body">
+          <h2>Node Explorer</h2>
+          <p>Interactive tutorial — learn every node type step by step</p>
+          <div class="tags">
+            <span class="tag">all 8 node types</span>
+            <span class="tag">step-through</span>
+          </div>
+          <a class="launch-btn" href="http://localhost:8205">Launch</a>
+        </div>
+      </div>
+
+    </div>
+
+    <footer>
+      Built with Roots v0.1.0 &mdash;
+      <a href="https://github.com/anthropics/roots" target="_blank" rel="noopener">GitHub</a>
+    </footer>
+  </div>
+</body>
+</html>
