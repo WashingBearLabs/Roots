@@ -1,0 +1,103 @@
+id: incident-response
+name: Incident Response
+version: "1.0.0"
+description: Automated incident response with AI triage, escalation, and response execution
+
+nodes:
+  - id: ingest
+    type: agent
+    label: Ingest Incident
+    config:
+      agent: ingest_incident
+      output_key: normalized_incident
+    metadata:
+      position: {x: 250, y: 0}
+
+  - id: enrich
+    type: agent_pool
+    label: Enrich Data
+    config:
+      agents:
+        - threat_intel_lookup
+        - geo_lookup
+      execution_mode: sequential
+      aggregation: merge_all
+      output_key: enriched_data
+    metadata:
+      position: {x: 250, y: 140}
+
+  - id: triage
+    type: decision
+    label: Triage
+    config:
+      mode: ai_bounded
+      confidence_threshold: 0.75
+      edges:
+        - target: respond
+          label: Isolate endpoint
+          description: "isolate_endpoint — quarantine the affected host"
+        - target: respond
+          label: Reset credentials
+          description: "reset_credentials — force password reset on compromised accounts"
+        - target: respond
+          label: Block IP
+          description: "block_ip — add source IP to blocklist"
+        - target: escalation_review
+          label: Escalate to analyst
+          description: "escalate_to_analyst — hand off to a human analyst"
+        - target: close
+          label: Close benign
+          description: "close_benign — no action needed, close the incident"
+    metadata:
+      position: {x: 250, y: 280}
+
+  - id: escalation_review
+    type: checkpoint
+    label: Escalation Review
+    config:
+      prompt: "AI triage confidence was below threshold. Review the enriched incident data and decide how to proceed."
+    metadata:
+      position: {x: 500, y: 420}
+
+  - id: respond
+    type: agent
+    label: Execute Response
+    config:
+      agent: execute_response
+      output_key: response_result
+    metadata:
+      position: {x: 250, y: 420}
+
+  - id: document
+    type: emit
+    label: Document Response
+    config:
+      event_type: "incident.response_complete"
+      payload_keys:
+        - normalized_incident
+        - enriched_data
+        - response_result
+    metadata:
+      position: {x: 250, y: 560}
+
+  - id: close
+    type: end
+    label: Closed
+    config:
+      status: completed
+    metadata:
+      position: {x: 250, y: 700}
+
+edges:
+  - from: ingest
+    to: enrich
+  - from: enrich
+    to: triage
+  - from: escalation_review
+    to: respond
+  - from: respond
+    to: document
+  - from: document
+    to: close
+
+entry_point: ingest
