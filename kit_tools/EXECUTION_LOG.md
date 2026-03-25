@@ -634,3 +634,56 @@
 - Total attempts: 9
 - Total sessions: 18
 
+
+## Run: Epic root-packaging — 2026-03-25
+
+**Mode:** Guarded (max 3 retries)
+**Branch:** `epic/root-packaging`
+**Specs:** 3 feature specs, 16 stories
+**Completion:** Merge to main
+
+---
+
+
+## Run: epic/root-packaging — 2026-03-25
+- **Epic:** root-packaging
+- **Branch:** epic/root-packaging
+- **Mode:** guarded (max 3 retries)
+- **Feature Specs:** 3 total
+
+### US-001: Root Manifest Schema (Attempt 1) — PASS
+- Completed: 2026-03-25T23:34:50Z
+- Verified by: independent verifier session
+- Learnings: Project uses Pydantic v2 with from __future__ import annotations and field_validator/model_validator patterns; Python binary is python3, not python; Verifier note: Clean implementation. All three Pydantic models match the spec exactly. Validators are correct and well-tested. The __init__.py properly exports all three models. 31 tests all pass in 0.04s.
+- Committed: feat(root-manifest): US-001 - Root Manifest Schema
+
+### US-002: Agent Contract Extraction (Attempt 1) — PASS
+- Completed: 2026-03-25T23:37:43Z
+- Verified by: independent verifier session
+- Learnings: ProcessDefinition nodes have validated config objects (AgentNodeConfig, etc.) after model_validator runs, so isinstance checks work reliably for type narrowing; AgentRegistration.metadata is an optional dict — must check both existence and key presence before accessing description; Verifier note: Clean implementation. Both functions are well-structured, handle edge cases (dedup, missing registry, empty metadata), and are properly exported from the package __init__.py. 17 tests all pass in 0.03s.
+- Committed: feat(root-manifest): US-002 - Agent Contract Extraction
+
+### US-003: Package Archive Format (Attempt 1) — PASS
+- Completed: 2026-03-25T23:40:21Z
+- Verified by: independent verifier session
+- Learnings: RootManifest.model_copy(update={...}) is the clean way to set checksum without mutating the original; zipfile.ZipFile with ZIP_DEFLATED works well for the .root archive format; Verifier note: Clean implementation using stdlib zipfile. All 15 tests pass in 0.05s. Code follows project conventions (from __future__ annotations, Pydantic models). No extra dependencies added. Functions properly exported via __init__.py __all__.
+- Committed: feat(root-manifest): US-003 - Package Archive Format
+
+### US-004: `roots pack` CLI Command (Attempt 1) — PASS
+- Completed: 2026-03-25T23:43:50Z
+- Verified by: independent verifier session
+- Learnings: pack_process delegates to existing extract_agent_contracts, extract_config_overrides, and create_archive — no new dependencies needed; CLI --version flag conflicts with typer's version callback on the main app, but works fine as a command-level option since typer scopes options per command; Roots.pack_process is synchronous (no async needed) since all packaging operations are pure file I/O with no storage backend calls; Verifier note: Clean implementation. All 13 tests pass. End-to-end test with actual example process file succeeds. Code follows existing patterns (imports from packaging submodules, CLI uses typer/rich). The pack_process function correctly orchestrates load -> extract -> manifest -> archive pipeline.
+- Committed: feat(root-manifest): US-004 - `roots pack` CLI Command
+
+### US-005: `roots inspect` CLI Command (Attempt 1) — PASS
+- Completed: 2026-03-25T23:48:31Z
+- Verified by: independent verifier session
+- Learnings: Rich table rendering truncates long paths with ellipsis — test assertions should use substrings that fit within typical column widths; Decision nodes in process YAML require mode (ai_bounded/deterministic/etc) and config-level edges, not top-level edges; inspect_package uses yaml.safe_load to parse process.yaml from archive contents for node/edge statistics; Verifier note: Clean implementation. Uses rich.Panel and rich.Table as specified in hints. All 17 tests pass. Code properly handles edge cases (missing author, missing readme, missing defaults). The _format_schema helper truncates long schemas gracefully. CLI error handling covers FileNotFoundError and generic exceptions.
+- Committed: feat(root-manifest): US-005 - `roots inspect` CLI Command
+
+### US-006: ProcessDefinition Metadata Extension (Attempt 1) — PASS
+- Completed: 2026-03-25T23:52:06Z
+- Verified by: independent verifier session
+- Learnings: ProcessDefinition.model_dump(mode='json') serializes BaseModel configs to empty dicts that lose their fields — must manually re-dump node configs for proper round-trip testing; Adding a Pydantic field with Field(default_factory=dict) requires no changes to storage backends or parsing functions since model_dump/model_validate handle it automatically; Verifier note: Clean implementation. Single line added to schema using Field(default_factory=dict) which is the correct Pydantic pattern. Tests are thorough covering backward compat, round-trips through JSON/YAML/model_dump, and empty metadata edge case.
+- Committed: feat(root-manifest): US-006 - ProcessDefinition Metadata Extension
+
