@@ -1,0 +1,40 @@
+id: api-explorer
+name: API Explorer
+version: "1.0.0"
+description: Simple echo process for API experimentation
+
+nodes:
+  - id: echo_input
+    type: agent
+    label: Echo Input
+    config:
+      agent: echo_agent
+      output_key: echo_result
+    metadata:
+      position: {x: 250, y: 0}
+
+  - id: check
+    type: decision
+    label: Check
+    config:
+      mode: deterministic
+      edges:
+        - target: done
+          condition: "true"
+          label: Always pass
+    metadata:
+      position: {x: 250, y: 140}
+
+  - id: done
+    type: end
+    label: Done
+    config:
+      status: completed
+    metadata:
+      position: {x: 250, y: 280}
+
+edges:
+  - from: echo_input
+    to: check
+
+entry_point: echo_input
