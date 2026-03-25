@@ -324,11 +324,11 @@ Five self-contained demo applications that showcase the Roots framework's capabi
   - Endpoint data: hardcode the full endpoint list in a JS const (method, path, description, sample body). ~30 endpoints.
 
 **Acceptance Criteria:**
-- [ ] All endpoint categories visible with method badges
-- [ ] Clicking endpoint loads into request builder
-- [ ] Request builder sends requests and shows responses
-- [ ] Pre-built recipes populate correct data
-- [ ] Webhook events visible in event log
+- [x] All endpoint categories visible with method badges
+- [x] Clicking endpoint loads into request builder
+- [x] Request builder sends requests and shows responses
+- [x] Pre-built recipes populate correct data
+- [x] Webhook events visible in event log
 
 ### US-011: Node Explorer — Process and Custom Endpoints
 
