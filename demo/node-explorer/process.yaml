@@ -1,0 +1,140 @@
+id: node-explorer
+name: Node Explorer
+version: "1.0.0"
+description: Greatest hits tour of every Roots node type
+
+nodes:
+  - id: welcome
+    type: checkpoint
+    label: Welcome
+    config:
+      prompt: "Welcome to the Roots Node Explorer! Click Continue to start the tour."
+    metadata:
+      position: {x: 250, y: 0}
+
+  - id: classify
+    type: agent
+    label: Classify Item
+    config:
+      agent: classify_item
+      output_key: classify_output
+    metadata:
+      position: {x: 250, y: 140}
+
+  - id: validate
+    type: agent_pool
+    label: Validate
+    config:
+      agents:
+        - check_format
+        - validate_schema
+        - analyze_content_quality
+      execution_mode: parallel
+      aggregation: merge_all
+      output_key: validation_output
+    metadata:
+      position: {x: 250, y: 280}
+
+  - id: quality_gate
+    type: decision
+    label: Quality Gate
+    config:
+      mode: deterministic
+      edges:
+        - target: deep_analysis
+          condition: "validation_output.overall_score >= 0.7"
+          label: Pass
+        - target: needs_fix
+          condition: "validation_output.overall_score < 0.7"
+          label: Fail
+    metadata:
+      position: {x: 250, y: 420}
+
+  - id: deep_analysis
+    type: fork
+    label: Deep Analysis
+    config: {}
+    metadata:
+      position: {x: 250, y: 560}
+
+  - id: analyze_content
+    type: agent
+    label: Analyze Content
+    config:
+      agent: analyze_content_deep
+      output_key: content_analysis
+    retry:
+      max_attempts: 2
+      backoff: fixed
+      backoff_seconds: 0.1
+    metadata:
+      position: {x: 100, y: 700}
+
+  - id: analyze_metadata
+    type: agent
+    label: Analyze Metadata
+    config:
+      agent: analyze_metadata_deep
+      output_key: metadata_analysis
+    metadata:
+      position: {x: 400, y: 700}
+
+  - id: combine
+    type: join
+    label: Combine Results
+    config:
+      merge_strategy: merge_all
+    metadata:
+      position: {x: 250, y: 840}
+
+  - id: notify
+    type: emit
+    label: Notify Complete
+    config:
+      event_type: "tour.analysis_complete"
+      payload_keys:
+        - content_analysis
+        - metadata_analysis
+    metadata:
+      position: {x: 250, y: 980}
+
+  - id: complete
+    type: end
+    label: Tour Complete
+    config:
+      status: completed
+    metadata:
+      position: {x: 250, y: 1120}
+
+  - id: needs_fix
+    type: end
+    label: Needs Fix
+    config:
+      status: failed
+    metadata:
+      position: {x: 500, y: 560}
+
+edges:
+  - from: welcome
+    to: classify
+  - from: classify
+    to: validate
+  - from: validate
+    to: quality_gate
+  - from: deep_analysis
+    to: analyze_content
+  - from: deep_analysis
+    to: analyze_metadata
+  - from: analyze_content
+    to: combine
+  - from: analyze_metadata
+    to: combine
+  - from: combine
+    to: notify
+  - from: notify
+    to: complete
+
+fork_join_map:
+  deep_analysis: combine
+
+entry_point: welcome

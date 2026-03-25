@@ -1,0 +1,101 @@
+{
+  "checkpoint": {
+    "title": "Checkpoint",
+    "what": "Pauses execution for human review. The run enters a 'paused' state until a human approves, rejects, or redirects.",
+    "when": "Quality gates, approval workflows, human-in-the-loop decisions, compliance reviews.",
+    "config": "type: checkpoint\nconfig:\n  prompt: \"Review the results and approve to continue.\"",
+    "tips": [
+      "Creates a checkpoint record in storage with status 'planned'",
+      "Resolve via POST /api/runs/{run_id}/checkpoint with decision: approve|reject|redirect",
+      "The prompt text is displayed to the reviewer"
+    ]
+  },
+  "agent": {
+    "title": "Agent",
+    "what": "Executes a single registered agent function. The agent receives the current work item state and returns output that is merged into state under output_key.",
+    "when": "Any step that needs computation: classification, analysis, transformation, API calls.",
+    "config": "type: agent\nconfig:\n  agent: my_agent_name\n  output_key: result_key",
+    "tips": [
+      "Register agents with roots.register_agent(name, callable)",
+      "Agent receives {'work_item_state': {...}} as input",
+      "Return value is stored at state[output_key]"
+    ]
+  },
+  "agent_pool": {
+    "title": "Agent Pool",
+    "what": "Executes multiple agents in parallel or sequentially, then aggregates their outputs into a single result.",
+    "when": "Validation batteries, multi-source enrichment, ensemble analysis where multiple agents contribute to one result.",
+    "config": "type: agent_pool\nconfig:\n  agents: [agent_a, agent_b, agent_c]\n  execution_mode: parallel\n  aggregation: merge_all\n  output_key: combined_result",
+    "tips": [
+      "execution_mode: parallel | sequential | first_pass",
+      "aggregation: merge_all deep-merges all agent outputs",
+      "All agents receive the same work item state"
+    ]
+  },
+  "decision": {
+    "title": "Decision",
+    "what": "Evaluates conditions and routes execution to the matching edge target. Supports deterministic (expression-based) and AI-powered modes.",
+    "when": "Branching logic, quality gates, routing based on computed values.",
+    "config": "type: decision\nconfig:\n  mode: deterministic\n  edges:\n    - target: pass_node\n      condition: \"score >= 0.7\"\n      label: Pass\n    - target: fail_node\n      condition: \"score < 0.7\"\n      label: Fail",
+    "tips": [
+      "Deterministic mode uses simpleeval for safe expression evaluation",
+      "Conditions reference work item state keys directly",
+      "AI modes (ai_bounded, ai_checkpoint, ai_autonomous) use LLM for routing"
+    ]
+  },
+  "fork": {
+    "title": "Fork",
+    "what": "Splits execution into parallel branches. Each outbound edge becomes an independent execution path that runs concurrently.",
+    "when": "Parallel analysis, concurrent data processing, any time work can be split and recombined.",
+    "config": "type: fork\nconfig: {}\n\n# Edges define the branches:\nedges:\n  - from: my_fork\n    to: branch_a\n  - from: my_fork\n    to: branch_b",
+    "tips": [
+      "Must be paired with a join node via fork_join_map",
+      "Each branch gets a copy of the current state",
+      "Branches run concurrently with asyncio.gather"
+    ]
+  },
+  "join": {
+    "title": "Join",
+    "what": "Waits for all forked branches to complete and merges their results back into a single state.",
+    "when": "After a fork node — collects and combines results from parallel branches.",
+    "config": "type: join\nconfig:\n  merge_strategy: merge_all\n\n# Also requires fork_join_map at process level:\nfork_join_map:\n  my_fork: my_join",
+    "tips": [
+      "merge_all: deep-merges all branch states",
+      "collect: gathers branch results into a list under collect_key",
+      "allow_partial: true continues even if some branches fail"
+    ]
+  },
+  "emit": {
+    "title": "Emit",
+    "what": "Fires a custom event to the event system. Useful for notifications, logging, and integrating with external systems via webhooks.",
+    "when": "Notifications, audit trails, triggering external workflows, progress updates.",
+    "config": "type: emit\nconfig:\n  event_type: \"my.custom_event\"\n  payload_keys:\n    - result_a\n    - result_b",
+    "tips": [
+      "Events are delivered to all registered event sinks",
+      "payload_keys selects which state keys to include in the event payload",
+      "Webhooks receive events as HTTP POST with JSON body"
+    ]
+  },
+  "end": {
+    "title": "End",
+    "what": "Marks the process run as completed or failed. Terminal node — no outbound edges.",
+    "when": "Every process must have at least one end node. Use status: completed for success, status: failed for failure paths.",
+    "config": "type: end\nconfig:\n  status: completed  # or 'failed'",
+    "tips": [
+      "A process can have multiple end nodes for different outcomes",
+      "The run's final status matches the end node's status",
+      "After reaching an end node, the run cannot be resumed"
+    ]
+  },
+  "retry": {
+    "title": "Retry (Node Feature)",
+    "what": "Automatically retries failed agent or agent_pool nodes. Configurable backoff strategy, max attempts, and exhaustion behavior.",
+    "when": "Transient failures, flaky API calls, rate-limited services, any agent that may intermittently fail.",
+    "config": "- id: my_agent\n  type: agent\n  config:\n    agent: flaky_service\n    output_key: result\n  retry:\n    max_attempts: 3\n    backoff: exponential\n    backoff_seconds: 1.0\n    on_exhaustion: fail",
+    "tips": [
+      "Retry is a node-level feature, not a separate node type",
+      "backoff strategies: fixed, linear, exponential",
+      "on_exhaustion: fail (default) stops the run; route sends to fallback_edge"
+    ]
+  }
+}
