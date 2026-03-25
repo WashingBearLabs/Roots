@@ -232,9 +232,9 @@ Five self-contained demo applications that showcase the Roots framework's capabi
 - [x] Second checkpoint shows approve/reject buttons
 - [x] Approve → completed, Reject → failed
 
-### US-007: Incident Response Demo
+### US-007: Incident Response — Backend
 
-**Description:** As a new user, I want a SOC incident triage demo so that I can see AI decisions, confidence thresholds, and escalation in action.
+**Description:** As a demo builder, I want the incident response process definition, mock agents, mock LLM decision, and server setup so that the backend is complete and testable.
 
 **Implementation Hints:**
 - Create `demo/incident-response/`:
@@ -258,37 +258,42 @@ Five self-contained demo applications that showcase the Roots framework's capabi
     - Default: mock mode using `mock_decision.py` as `llm_callable`
     - `--model MODEL --base-url URL --api-key KEY`: live mode using `LLMConfig` + `openai_chat_completion`
     - Print on startup: `"Running in mock mode (no API key needed). Use --model gpt-4o-mini --api-key YOUR_KEY for live AI."`
-  - `static/index.html`:
-    - Layout: incident input (top), graph (middle-left), AI decision panel (middle-right), event log (bottom)
-    - Pre-built scenario buttons: "Brute Force Login" / "Malware Callback" / "Data Exfiltration" / "Port Scan (Low Confidence)"
-    - AI decision panel: shows selected edge, confidence as a progress bar (color: green >0.75, yellow 0.5-0.75, red <0.5), reasoning text
-    - If escalated: panel changes to escalation view with "Escalation triggered — confidence {score} below threshold 0.75" + resolution buttons
-    - Emit node: custom event visible in event log with incident summary
+  - `static/index.html`: Placeholder page (same pattern as research-assistant placeholder) that shows demo name and "Frontend coming in US-008"
 
 **Acceptance Criteria:**
-- [ ] `python demo/incident-response/run_demo.py` works with NO API key (mock mode)
-- [ ] `--model gpt-4o-mini --base-url https://api.openai.com/v1 --api-key KEY` uses real LLM
-- [ ] Pre-built scenarios produce different routing decisions
+- [ ] `demo/incident-response/process.yaml` parses and validates
+- [ ] All 4 agents registered and callable
+- [ ] mock_decision.py implements LLMCompletionFunc with keyword-based routing
+- [ ] `run_demo.py` starts server in mock mode by default
+- [ ] `--model` flag switches to live LLM mode
+
+### US-008: Incident Response — Frontend
+
+**Description:** As a new user, I want the incident response web UI so that I can see AI decisions, confidence thresholds, and escalation in action.
+
+**Implementation Hints:**
+- Replace `demo/incident-response/static/index.html` with full UI:
+  - Layout: incident input (top), graph (middle-left), AI decision panel (middle-right), event log (bottom)
+  - Pre-built scenario buttons: "Brute Force Login" / "Malware Callback" / "Data Exfiltration" / "Port Scan (Low Confidence)"
+  - AI decision panel: shows selected edge, confidence as a progress bar (color: green >0.75, yellow 0.5-0.75, red <0.5), reasoning text
+  - If escalated: panel changes to escalation view with "Escalation triggered — confidence {score} below threshold 0.75" + resolution buttons
+  - Emit node: custom event visible in event log with incident summary
+
+**Acceptance Criteria:**
+- [ ] Incident input panel with form fields and scenario buttons
 - [ ] AI decision panel shows confidence bar and reasoning
-- [ ] "Port Scan" scenario triggers escalation (confidence 0.45 < 0.75)
-- [ ] Emit node fires visible custom event
-- [ ] Mock mode confidence scores are deterministic
+- [ ] "Port Scan" scenario triggers escalation display
+- [ ] Emit node fires visible custom event in event log
+- [ ] Pre-built scenarios produce different routing decisions
 
-### US-008: API Explorer Demo
+### US-009: API Explorer — Backend
 
-**Description:** As a new user, I want an API explorer demo so that I can understand all available HTTP endpoints and interact with them directly.
+**Description:** As a demo builder, I want the API explorer's process definition, echo agent, and server setup with webhook receiver routes so that the backend is complete and testable.
 
 **Implementation Hints:**
 - Create `demo/api-explorer/`:
   - `process.yaml` — Simple 3-node process: `echo_input` (agent) → `check` (decision, deterministic: always passes) → `done` (end). Pre-loaded for experimentation.
   - `agents.py` — `echo_agent(input)`: returns `{"echo": input["work_item_state"], "timestamp": "..."}`
-  - `static/index.html`:
-    - 3-panel layout: endpoint catalog (left 25%), request builder (center 50%), response viewer (right 25%)
-    - **Endpoint catalog:** Collapsible groups: Processes, Runs, Checkpoints, Agents, Webhooks, Graph. Each endpoint: colored method badge (GET=green, POST=blue, PUT=yellow, DELETE=red) + path + 1-line description. Click to load into request builder.
-    - **Request builder:** Method dropdown, path with editable params (e.g., `{run_id}` shows an input field), JSON body editor (textarea with syntax highlighting via wrapping in `<pre>` and coloring), "Send" button
-    - **Response viewer:** Status code (color-coded: 2xx=green, 4xx=yellow, 5xx=red), response time in ms, formatted JSON body (collapsible tree using StateViewer)
-    - **Bottom bar:** Pre-built recipe buttons: "Create Run", "Get Run Graph", "List Agents", "Register Webhook". Each populates the request builder with the correct method/path/body.
-    - Endpoint data: hardcode the full endpoint list in a JS const (method, path, description, sample body). ~30 endpoints.
   - `run_demo.py`:
     - Load process, register echo agent
     - Add custom routes:
@@ -296,17 +301,36 @@ Five self-contained demo applications that showcase the Roots framework's capabi
       - `GET /api/received-events` — returns the list (for the event log panel)
     - On startup: register a webhook via storage pointing to `http://localhost:{port}/api/webhook-receiver` with events `["*"]`
     - run_demo()
+  - `static/index.html`: Placeholder page that shows demo name and "Frontend coming in US-010"
 
 **Acceptance Criteria:**
-- [ ] `python demo/api-explorer/run_demo.py` starts server and opens browser
-- [ ] All endpoint categories visible with method badges
-- [ ] Clicking an endpoint loads it into request builder
-- [ ] Request builder sends requests and shows responses
-- [ ] Pre-built recipes populate correct request data
-- [ ] Webhook events appear in received events log
-- [ ] Process pre-loaded and ready to experiment with
+- [ ] `demo/api-explorer/process.yaml` parses and validates
+- [ ] Echo agent registered
+- [ ] Webhook receiver endpoint stores events
+- [ ] `GET /api/received-events` returns stored events
+- [ ] `run_demo.py` starts server with pre-loaded process
 
-### US-009: Node Explorer — Process and Custom Endpoints
+### US-010: API Explorer — Frontend
+
+**Description:** As a new user, I want the API explorer web UI so that I can understand all available HTTP endpoints and interact with them directly.
+
+**Implementation Hints:**
+- Replace `demo/api-explorer/static/index.html` with full UI:
+  - 3-panel layout: endpoint catalog (left 25%), request builder (center 50%), response viewer (right 25%)
+  - **Endpoint catalog:** Collapsible groups: Processes, Runs, Checkpoints, Agents, Webhooks, Graph. Each endpoint: colored method badge (GET=green, POST=blue, PUT=yellow, DELETE=red) + path + 1-line description. Click to load into request builder.
+  - **Request builder:** Method dropdown, path with editable params (e.g., `{run_id}` shows an input field), JSON body editor (textarea with syntax highlighting via wrapping in `<pre>` and coloring), "Send" button
+  - **Response viewer:** Status code (color-coded: 2xx=green, 4xx=yellow, 5xx=red), response time in ms, formatted JSON body (collapsible tree using StateViewer)
+  - **Bottom bar:** Pre-built recipe buttons: "Create Run", "Get Run Graph", "List Agents", "Register Webhook". Each populates the request builder with the correct method/path/body.
+  - Endpoint data: hardcode the full endpoint list in a JS const (method, path, description, sample body). ~30 endpoints.
+
+**Acceptance Criteria:**
+- [ ] All endpoint categories visible with method badges
+- [ ] Clicking endpoint loads into request builder
+- [ ] Request builder sends requests and shows responses
+- [ ] Pre-built recipes populate correct data
+- [ ] Webhook events visible in event log
+
+### US-011: Node Explorer — Process and Custom Endpoints
 
 **Description:** As a demo builder, I want the node explorer's process definition, agents, and custom API endpoints so that step-through execution works.
 
@@ -361,7 +385,7 @@ Five self-contained demo applications that showcase the Roots framework's capabi
 - [ ] `tutorial_content.json` has entries for all 8 types + retry
 - [ ] Tests verify step/reset endpoints work
 
-### US-010: Node Explorer — Tutorial Panel UI
+### US-012: Node Explorer — Tutorial Panel UI
 
 **Description:** As a new user, I want the tutorial panel to explain each node type as I step through the process.
 
@@ -386,7 +410,7 @@ Five self-contained demo applications that showcase the Roots framework's capabi
 - [ ] Retry node shows attempt history
 - [ ] Panel transitions smoothly when node changes
 
-### US-011: Node Explorer — Interactive Controls and Graph
+### US-013: Node Explorer — Interactive Controls and Graph
 
 **Description:** As a new user, I want step-through controls and a live graph so that I can explore the process at my own pace.
 
@@ -425,7 +449,7 @@ Five self-contained demo applications that showcase the Roots framework's capabi
 - [ ] Step counter tracks progress
 - [ ] Process starts paused at welcome checkpoint
 
-### US-012: Demo Landing Page
+### US-014: Demo Landing Page
 
 **Description:** As a new user, I want a landing page that lists all demos and lets me launch any of them.
 

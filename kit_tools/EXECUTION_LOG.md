@@ -512,3 +512,59 @@
 - Learnings: Session error: SESSION_ERROR: Timed out after 900s
 - Working tree reset, retrying...
 
+
+## Run: demo-apps — 2026-03-24
+- **Feature Spec:** feature-demo-apps.md
+- **Branch:** feature/demo-apps
+- **Mode:** guarded (max 3 retries)
+- **Stories:** 12 total, 4 complete at start
+
+### US-005: Research Assistant — Process, Agents, and Server (Attempt 1) — FAIL
+- Failed: 2026-03-24T23:08:03Z
+- Failure: Timed out after 900s
+- Learnings: Session error: SESSION_ERROR: Timed out after 900s
+- Working tree reset, retrying...
+
+### US-005: Research Assistant — Process, Agents, and Server (Attempt 2) — FAIL
+- Failed: 2026-03-24T23:23:03Z
+- Failure: Timed out after 900s
+- Learnings: Session error: SESSION_ERROR: Timed out after 900s
+- Working tree reset, retrying...
+
+### US-005: Research Assistant — Process, Agents, and Server (Attempt 3) — FAIL
+- Failed: 2026-03-24T23:38:03Z
+- Failure: Timed out after 900s
+- Learnings: Session error: SESSION_ERROR: Timed out after 900s
+- Working tree reset, retrying...
+
+
+## Run: demo-apps — 2026-03-25
+- **Feature Spec:** feature-demo-apps.md
+- **Branch:** feature/demo-apps
+- **Mode:** guarded (max 3 retries)
+- **Stories:** 12 total, 5 complete at start
+
+### US-006: Research Assistant — Frontend (Attempt 1) — PASS
+- Completed: 2026-03-25T05:17:35Z
+- Verified by: independent verifier session
+- Learnings: Content-pipeline demo is the reference pattern: RootsClient for API, GraphRenderer for SVG graph, inline styles for layout customization; Polling via client.startPolling detects paused status for checkpoint interaction; research_results key from join node's collect_key holds merged fork results; individual results keyed by agent output_key; Process has two checkpoints: topic_input (auto-resolved) and approve_publish (user-facing with approve/reject); Verifier note: Implementation is solid. All shared assets included, layout matches spec (graph top 50%, results/summary bottom 50% split). Quick-select topic buttons present for AI Safety, Climate Change, Quantum Computing. XSS protection via escapeHtml. All 925 tests pass, no regressions.
+- Committed: feat(demo-apps): US-006 - Research Assistant — Frontend
+
+### US-007: Incident Response Demo (Attempt 1) — FAIL
+- Failed: 2026-03-25T05:32:35Z
+- Failure: Timed out after 900s
+- Learnings: Session error: SESSION_ERROR: Timed out after 900s
+- Working tree reset, retrying...
+
+### US-007: Incident Response Demo (Attempt 2) — FAIL
+- Failed: 2026-03-25T05:47:35Z
+- Failure: Timed out after 900s
+- Learnings: Session error: SESSION_ERROR: Timed out after 900s
+- Working tree reset, retrying...
+
+### US-007: Incident Response Demo (Attempt 3) — FAIL
+- Failed: 2026-03-25T06:02:36Z
+- Failure: Timed out after 900s
+- Learnings: Session error: SESSION_ERROR: Timed out after 900s
+- Working tree reset, retrying...
+
