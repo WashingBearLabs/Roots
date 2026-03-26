@@ -11,16 +11,14 @@
 
 > **TEMPLATE_INTENT:** One-page project overview for quick orientation. Answer: What is this? What state is it in? How do I run it?
 
-> Last updated: YYYY-MM-DD
-> Updated by: [Human/Claude]
+> Last updated: 2026-03-26
+> Updated by: Claude
 
 ---
 
 ## What Is This?
 
-<!-- FILL: One paragraph describing what this project does and who it's for -->
-
-[PROJECT_NAME] is a [type: web app / CLI tool / library / API / mobile app / etc.] that [primary function]. It's built for [target users] who need to [core user need].
+Roots is an AI-native process orchestration framework that defines processes as YAML directed graphs and executes them via a stateless orchestrator. It is built for developers and AI practitioners who need to compose multi-step, multi-agent workflows with pluggable storage, decision modes, and event-driven extensibility.
 
 ---
 
@@ -28,92 +26,92 @@
 
 | Aspect | Status |
 |--------|--------|
-| **Stage** | [Idea / Prototype / MVP / Beta / Production] |
-| **Version** | [v0.1.0 / N/A] |
-| **Last Deploy** | [YYYY-MM-DD / Not yet deployed / N/A] |
-| **Active Development** | [Yes/No — what's being worked on] |
+| **Stage** | MVP/Beta |
+| **Version** | v0.1.0 |
+| **Last Deploy** | N/A (local-first framework) |
+| **Active Development** | Yes — core framework complete, packaging system finalized |
 
 ### What Works
-- [Feature 1 — brief description]
-- [Feature 2 — brief description]
+- Process definition via YAML directed graphs with 8 node types and 4 decision modes
+- Tick-based crash-safe orchestrator with state accumulation
+- Agent registry supporting local, remote HTTP, and MCP agents
+- Pluggable storage backends (SQLite and PostgreSQL)
+- Event system with webhooks and bounded-buffer emission
+- Root packaging (.root archives for portable process distribution)
+- Full HTTP API via FastAPI (process CRUD, run management, graph mutations)
+- 5 demo applications
+- 1,173+ tests passing with strict pyright
 
 ### What's In Progress
-- [Feature/task currently being built]
+- Production hardening and expanded agent ecosystem
 - See `roadmap/MILESTONES.md` for details
 
 ### What's Broken / Known Issues
-- [Issue 1 — brief description, or "None currently"]
-- See `docs/GOTCHAS.md` for details
+- Fork/join is not crash-safe (documented v1 limitation)
+- See `kit_tools/docs/GOTCHAS.md` for details
 
 ---
 
 ## Tech Stack Summary
 
-<!-- FILL: List the actual technologies used. Delete rows that don't apply -->
-
 | Layer | Technology |
 |-------|------------|
-| **Language(s)** | [Python / TypeScript / Go / etc.] |
-| **Framework** | [React / Flask / Rails / etc. or N/A] |
-| **Database** | [Postgres / MongoDB / SQLite / None] |
-| **Infrastructure** | [AWS / GCP / Vercel / Self-hosted / N/A] |
-| **Auth** | [Auth0 / Supabase / Custom / N/A] |
-
-<!-- Add or remove rows as needed for your project type -->
+| **Language** | Python 3.12+ |
+| **Framework** | FastAPI, Pydantic v2 |
+| **Database** | SQLite (default), PostgreSQL (optional) |
+| **Infrastructure** | Local-first / self-hosted |
+| **Auth** | N/A (no authentication in v1) |
+| **Async** | asyncio throughout |
 
 ---
 
 ## Key Entry Points
 
-<!-- FILL: Where should someone look first to understand this codebase? -->
-
 | What | Where |
 |------|-------|
-| **Main entry point** | `[path to main file or directory]` |
-| **Configuration** | `[path to config files]` |
-| **Documentation** | `/kit_tools/docs/` |
-
-<!-- Add rows relevant to your project: API routes, CLI commands, etc. -->
+| **Main entry point** | `roots/__init__.py` (Roots class) |
+| **CLI entry point** | `roots/cli/main.py` |
+| **Configuration** | `pyproject.toml` |
+| **Documentation** | `kit_tools/docs/` |
+| **Demo applications** | `demo/run_all.py` |
 
 ---
 
 ## How to Run Locally
 
-<!-- FILL: Steps to get this project running locally -->
-
 ```bash
-# Prerequisites: [list prerequisites]
+# Prerequisites: Python 3.12+, pip
 
-# Step 1: [description]
-[command]
+# Step 1: Clone the repository
+git clone https://github.com/WashingBearLabs/Roots.git
+cd Roots
 
-# Step 2: [description]
-[command]
+# Step 2: Install in development mode
+pip install -e ".[dev]"
 
-# Step 3: [description]
-[command]
+# Step 3: Start the API server
+roots serve
+
+# Or run the demo suite (opens browser to localhost:8200)
+python demo/run_all.py
 ```
 
 ---
 
 ## Links
 
-<!-- FILL: Relevant links. Delete rows that don't apply -->
-
 | Resource | URL |
 |----------|-----|
-| **Production** | [URL or N/A] |
-| **Repo** | [GitHub/GitLab URL] |
-| **Docs** | [External docs URL or N/A] |
-| **CI/CD** | [CI dashboard URL or N/A] |
+| **Production** | N/A |
+| **Repo** | https://github.com/WashingBearLabs/Roots |
+| **Docs** | `kit_tools/docs/` |
+| **CI/CD** | N/A |
 
 ---
 
 ## Quick Context for AI Assistants
 
-<!-- FILL: 2-3 sentences of critical context that helps an AI understand this project quickly -->
-
-This project [key architectural decision or constraint]. The most important thing to understand is [critical concept]. When making changes, always [key constraint or pattern to follow].
+This project uses a tick-based orchestrator that processes YAML-defined directed graphs node by node, accumulating state via `output_key`. The most important thing to understand is that all models use Pydantic v2 with `model_dump(by_alias=True, mode="json")` for serialization, and all datetime usage must be `datetime.now(datetime.UTC)` (never `utcnow()`). When making changes, always use `from __future__ import annotations` at the top of every file and ensure strict pyright compliance.
 
 ---
 

@@ -1,192 +1,157 @@
-<!-- Template Version: 2.0.0 -->
-<!-- Seeding:
-  explorer_focus: operations, tech-stack
-  required_sections:
-    - "Debugging Tools"
-  skip_if: never
--->
 # TROUBLESHOOTING.md
 
-> **TEMPLATE_INTENT:** Document debugging procedures and common fixes. How to diagnose problems.
+> Last updated: 2026-03-26
+> Updated by: Claude
 
-> Last updated: YYYY-MM-DD
-> Updated by: [Human/Claude]
+Debugging procedures and common fixes for the Roots framework.
 
 ---
 
 ## Quick Diagnostics
 
-<!-- FILL: First steps when something breaks -->
-
 When investigating an issue:
 
-1. **Check service health:** `[command or URL to health check]`
-2. **Check recent deploys:** `[command or URL to deployment history]`
-3. **Check logs:** `[command or URL to logs]`
-4. **Check alerts:** `[URL to alerting dashboard]`
-
----
-
-## How to Access Logs
-
-<!-- FILL: Where are logs and how to access them? -->
-
-### Application Logs
-
-| Environment | Location | How to Access |
-|-------------|----------|---------------|
-| Local | `[path or command]` | `[command]` |
-| Staging | `[service/location]` | `[command or URL]` |
-| Production | `[service/location]` | `[command or URL]` |
-
-### Useful Log Queries
-
-```
-# Find errors in the last hour
-[query]
-
-# Find logs for specific user/request
-[query]
-
-# Find slow requests
-[query]
-```
-
----
-
-## How to Trace a Request
-
-<!-- FILL: How to follow a request through the system -->
-
-### Request ID / Correlation ID
-
-[Explain how requests are tagged and how to trace them across services]
-
-```
-# Find all logs for a specific request
-[query or command]
-```
-
-### Tracing Flow
-
-```
-[Request] → [Service A] → [Service B] → [Database] → [Response]
-     │           │             │             │
-     └─ Log: X   └─ Log: Y     └─ Log: Z     └─ Log: W
-```
+1. **Check test suite:** `pytest` from the repo root
+2. **Check YAML validation:** Roots validates process YAML on load — look for validation errors in output
+3. **Check environment:** Verify env vars are set (see `docs/ENV_REFERENCE.md`)
+4. **Check Python version:** Roots requires Python 3.11+
 
 ---
 
 ## Common Issues & Solutions
 
-<!-- FILL: Document recurring problems and their fixes -->
-
-### [Issue Title]
+### Process YAML Fails Validation
 
 **Symptoms:**
-- [What the user/system sees]
+- Pydantic validation error on process load
+- Error message referencing schema mismatch in process definition
 
 **Cause:**
-[Why this happens]
+Process YAML has structural issues. Most common problems:
+- Fork node without matching join node (or vice versa)
+- Decision node edges missing or referencing non-existent nodes
+- Invalid expression syntax in conditions
+- Missing required fields (node type, name, edges)
+
+**Solution:**
+1. Check fork/join pairing — every `fork` node must have a corresponding `join` node with matching scope
+2. Verify decision edges — each edge must reference a valid target node and have a valid condition expression
+3. Validate expressions — conditions must be valid `simpleeval` syntax (no Python imports or function definitions)
+4. Check required fields against the process schema
+
+**Prevention:**
+Use the YAML validation tooling before running processes. Keep process definitions simple and test incrementally.
+
+---
+
+### Tests Skip PostgreSQL
+
+**Symptoms:**
+- PostgreSQL-related tests show as `SKIPPED` in pytest output
+- SQLite tests pass but PostgreSQL coverage is missing
+
+**Cause:**
+The `ROOTS_POSTGRES_DSN` environment variable is not set. PostgreSQL tests are conditionally skipped when no connection string is available.
 
 **Solution:**
 ```bash
-[Commands or steps to fix]
+# Set the PostgreSQL connection string
+export ROOTS_POSTGRES_DSN="postgresql://user:password@localhost:5432/roots_test"
+
+# Re-run tests
+pytest
 ```
 
 **Prevention:**
-[How to prevent this in the future]
+Add `ROOTS_POSTGRES_DSN` to your shell profile or `.env` file if you regularly need PostgreSQL test coverage.
 
 ---
 
-### [Issue Title]
+### Pyright Shows Errors in Third-Party Imports
 
 **Symptoms:**
-- [What the user/system sees]
+- Pyright reports type errors on imports from third-party libraries
+- Errors appear in CI or editor type checking
 
 **Cause:**
-[Why this happens]
+Some third-party libraries lack complete type stubs. This is expected and has been downgraded to warnings in the pyright configuration.
+
+**Solution:**
+No action needed — these are expected warnings, not errors. The pyright config has been adjusted to treat these as non-blocking. If you see pyright errors on *Roots* code (not third-party imports), those should be investigated and fixed.
+
+---
+
+### Demo Server Won't Start
+
+**Symptoms:**
+- Demo application fails to start
+- Address already in use error
+- Import errors when launching demo
+
+**Cause:**
+Common causes:
+- Port already in use by another process
+- Running from wrong directory (imports fail)
+- Missing dependencies
 
 **Solution:**
 ```bash
-[Commands or steps to fix]
+# Check if port is in use (default demo port)
+lsof -i :8000
+
+# Kill the process using the port if needed
+kill -9 <PID>
+
+# Always run from the repo root
+cd /path/to/Roots
+python -m demos.<demo_name>
 ```
+
+**Prevention:**
+Always run demo applications from the repository root directory to ensure correct module resolution.
 
 ---
 
-## Service-Specific Debugging
+### Agent Invocation Fails with Schema Error
 
-<!-- FILL: Debugging tips for each major service/component -->
+**Symptoms:**
+- Agent invocation raises a Pydantic validation error
+- Error references input or output schema mismatch
+- Process halts at an agent node
 
-### [Service/Component Name]
+**Cause:**
+The agent's input or output does not match the contract schema. The process definition references a contract with specific input/output Pydantic models, and the agent implementation is producing data that doesn't conform.
 
-**Health check:** `[command]`
+**Solution:**
+1. Check the agent contract's input schema — ensure the data flowing into the agent node matches
+2. Check the agent contract's output schema — ensure the agent returns data matching the expected shape
+3. Verify field names, types, and required/optional status match between contract and implementation
+4. Look at the full Pydantic validation error for specific field-level mismatches
 
-**Restart:** `[command]`
-
-**Common issues:**
-- [Issue 1]: [Quick fix]
-- [Issue 2]: [Quick fix]
-
-**Useful commands:**
-```bash
-[debugging commands specific to this service]
-```
+**Prevention:**
+Write tests that exercise agent contracts with representative data. Use Pydantic's `model_validate` to test schemas independently.
 
 ---
 
 ## Database Issues
 
-<!-- FILL: Database-specific troubleshooting. Delete if no database -->
-
-### Connection Issues
+### PostgreSQL Connection Fails
 
 ```bash
 # Test database connectivity
-[command]
-
-# Check connection pool status
-[command]
+python -c "import asyncpg; import asyncio; asyncio.run(asyncpg.connect('$ROOTS_POSTGRES_DSN'))"
 ```
 
-### Slow Queries
+If connection fails:
+- Verify PostgreSQL is running
+- Check DSN format: `postgresql://user:password@host:port/dbname`
+- Check network access (firewall, Docker networking)
 
-```bash
-# Find slow queries
-[command or query]
+### SQLite Lock Errors
 
-# Check query plan
-[command]
-```
+**Symptoms:** Database locked errors during concurrent test runs.
 
-### Data Issues
-
-```bash
-# Useful diagnostic queries
-[query]
-```
-
----
-
-## External Service Failures
-
-<!-- FILL: What to do when third-party services are down -->
-
-| Service | Status Page | Fallback Behavior |
-|---------|-------------|-------------------|
-| [Service] | [URL] | [What happens when it's down] |
-
----
-
-## Escalation Path
-
-<!-- FILL: Who to contact when you can't resolve an issue -->
-
-| Severity | Response Time | Contact |
-|----------|---------------|---------|
-| P1 - System down | Immediate | [Contact method] |
-| P2 - Major feature broken | [Timeframe] | [Contact method] |
-| P3 - Minor issue | [Timeframe] | [Contact method] |
+**Solution:** SQLite doesn't support concurrent writes well. Run tests sequentially or use PostgreSQL for concurrent testing.
 
 ---
 
@@ -194,7 +159,6 @@ When investigating an issue:
 
 After resolving an issue:
 
-- [ ] Document what happened in [incident log location]
 - [ ] Update this file if it's a new common issue
-- [ ] Update `GOTCHAS.md` if relevant
-- [ ] Consider preventive measures
+- [ ] Update `docs/GOTCHAS.md` if relevant
+- [ ] Consider adding a test case to prevent regression

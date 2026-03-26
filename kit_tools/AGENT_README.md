@@ -1,40 +1,29 @@
-<!-- Template Version: 2.0.0 -->
-<!-- Seeding:
-  explorer_focus: architecture, tech-stack
-  required_sections:
-    - "Quick Start — Read Order"
-    - "Patterns to Follow"
-    - "Off-Limits Areas"
-  skip_if: never
-  note: Seeded last after all other templates are populated
--->
 # AGENT_README.md
 
-> **TEMPLATE_INTENT:** Navigation guide for AI assistants. Defines read order, patterns to follow, and areas to avoid.
+> Last updated: 2026-03-26
+> Updated by: Claude
+
+Navigation guide for AI assistants working in the Roots framework codebase. Defines read order, patterns to follow, and areas to avoid.
 
 ---
 
 ## Quick Start — Read Order
 
 **For general orientation:**
-1. **This file** — How to navigate and update docs
-2. **SYNOPSIS.md** — What is this project, current state, tech stack
-3. **arch/CODE_ARCH.md** — Code structure, patterns, key abstractions
-4. **arch/SERVICE_MAP.md** — Dependencies, external integrations, what calls what
+1. **This file** — How to navigate the Roots codebase and update docs
+2. **SYNOPSIS.md** — Roots framework overview: YAML-driven process orchestration with agent contracts
+3. **arch/CODE_ARCH.md** — Module layout, orchestrator patterns, agent/storage abstractions
+4. **arch/SERVICE_MAP.md** — LLM integrations, storage backends, what calls what
 
 **For troubleshooting:**
-5. **docs/TROUBLESHOOTING.md** — How to debug, access logs, common fixes
-6. **docs/MONITORING.md** — Logs, metrics, alerts, tracing
+5. **docs/TROUBLESHOOTING.md** — Common issues: YAML validation, PostgreSQL tests, pyright warnings
+6. **docs/ENV_REFERENCE.md** — Environment variables for LLM and database configuration
 
 **For making changes:**
-7. **arch/SECURITY.md** — Auth flows, secrets, permissions
-8. **docs/GOTCHAS.md** — Known landmines, tech debt, non-obvious behaviors
-9. **specs/*.md** — Active feature specs
-10. **roadmap/*.md** — MVP milestones and backlog
-
-**For infrastructure:**
-11. **arch/INFRA_ARCH.md** — Cloud resources, networking, IAM
-12. **docs/CI_CD.md** — Pipeline, deployments
+7. **docs/GOTCHAS.md** — Known landmines: fork/join crash safety, expression evaluation quirks
+8. **arch/DECISIONS.md** — Why YAML over code, why custom LLM shim over LiteLLM, etc.
+9. **specs/*.md** — Active feature specs (check archive/ for completed ones)
+10. **roadmap/*.md** — Milestones and backlog
 
 ---
 
@@ -48,11 +37,11 @@ Before starting any work session:
 - [ ] Review `arch/CODE_ARCH.md` for structure and patterns
 - [ ] Scan `docs/GOTCHAS.md` for relevant landmines
 - [ ] Check `AUDIT_FINDINGS.md` for open findings
-- [ ] Check `arch/SERVICE_MAP.md` if working with integrations
+- [ ] Check `arch/DECISIONS.md` for recent architectural decisions
 
 **For troubleshooting tasks, also read:**
 - [ ] `docs/TROUBLESHOOTING.md` for debugging procedures
-- [ ] `docs/MONITORING.md` for log access
+- [ ] `docs/ENV_REFERENCE.md` for environment variable reference
 
 **Flag anything that looks like:**
 - Security concerns → Document in `arch/SECURITY.md`
@@ -76,28 +65,20 @@ Before closing any session, use this checklist to prevent documentation drift:
 | File | Update If... |
 |------|--------------|
 | `SYNOPSIS.md` | Project scope, status, or purpose changed |
-| `arch/CODE_ARCH.md` | New modules, patterns, workers, or caching added |
+| `arch/CODE_ARCH.md` | New modules, patterns, node types, or storage backends added |
 | `arch/SERVICE_MAP.md` | New dependencies or integrations added |
-| `arch/INFRA_ARCH.md` | New cloud resources, networking, or IAM changes |
 | `arch/DATA_MODEL.md` | Schema changes, new tables, new relationships |
-| `arch/SECURITY.md` | Auth changes, new secrets, permission changes |
 | `arch/DECISIONS.md` | A non-trivial "why" decision was made |
 
 ### Operations Changes
 | File | Update If... |
 |------|--------------|
-| `docs/CI_CD.md` | Pipeline changes, new checks, deploy process changes |
-| `docs/MONITORING.md` | New metrics, alerts, or log locations |
 | `docs/TROUBLESHOOTING.md` | Discovered new common issues or debug procedures |
-| `docs/DEPLOYMENT.md` | Deploy process changed |
+| `docs/ENV_REFERENCE.md` | New environment variables or secrets |
 
 ### Reference Changes
 | File | Update If... |
 |------|--------------|
-| `docs/API_GUIDE.md` | New endpoints, changed contracts, new parameters |
-| `docs/ENV_REFERENCE.md` | New environment variables or secrets |
-| `docs/LOCAL_DEV.md` | Setup process changed |
-| `docs/feature_guides/*` | New feature added or existing feature significantly changed |
 | `docs/GOTCHAS.md` | Discovered a landmine or tech debt worth noting |
 | `testing/TESTING_GUIDE.md` | Testing approach changed, new test patterns |
 
@@ -105,38 +86,40 @@ Before closing any session, use this checklist to prevent documentation drift:
 
 ## Patterns to Follow
 
-<!--
-CUSTOMIZE THIS SECTION: Replace these placeholder examples with actual
-patterns from this codebase. Delete categories that don't apply.
--->
-
 ### Code Organization
-<!-- FILL: Where do different types of code live? -->
-- [Pattern 1: e.g., "All API routes go in `/routes/`"]
-- [Pattern 2: e.g., "Business logic lives in `/services/`"]
-- [Pattern 3: e.g., "Database queries go through `/repositories/`"]
+- Process orchestration code lives in `roots/core/`
+- Agent implementations and contracts live in `roots/agents/`
+- Storage backends (SQLite, PostgreSQL) live in `roots/storage/`
+- YAML process definitions live alongside their consuming modules
+- Demo applications live in `demos/`
+- Root packaging code lives in `roots/packaging/`
 
 ### Naming Conventions
-<!-- FILL: How are things named in this project? -->
-- [Files: e.g., "snake_case for Python, camelCase for JS"]
-- [Classes/Functions: e.g., "PascalCase classes, camelCase functions"]
-- [Environment variables: e.g., "SCREAMING_SNAKE_CASE"]
+- **Files:** `snake_case.py` for all Python modules
+- **Classes:** `PascalCase` (e.g., `ProcessEngine`, `AgentContract`)
+- **Functions/methods:** `snake_case`
+- **Environment variables:** `SCREAMING_SNAKE_CASE` with `ROOTS_` prefix
+- **Process YAML keys:** `snake_case`
 
-### Security Patterns
-<!-- FILL: How is security handled? Delete if not applicable -->
-- [Input validation: e.g., "All user input validated with..."]
-- [SQL: e.g., "Parameterized statements only"]
-- [Secrets: e.g., "Never logged, stored in..."]
+### Data Modeling
+- **Pydantic for all models** — no raw dicts for structured data
+- Input/output schemas on agent contracts are Pydantic models
+- Process definitions are validated via Pydantic models loaded from YAML
 
-See `arch/SECURITY.md` for detailed security documentation.
+### Async-First
+- All I/O-bound operations use `async`/`await`
+- Orchestrator tick loop is async
+- Storage backends expose async interfaces
+- Use `asyncio` — no threads for concurrency
+
+### Expression Evaluation
+- Use `simpleeval` for safe expression evaluation in process conditions
+- Never use Python `eval()` or `exec()`
 
 ### Error Handling
-<!-- FILL: How are errors handled? -->
-- [Pattern: e.g., "Custom exception classes in `/exceptions/`"]
-- [Logging: e.g., "All errors logged with correlation ID"]
-- [User-facing: e.g., "Sanitized of internal details"]
-
-See `arch/patterns/ERROR_HANDLING.md` for details.
+- Custom exception classes for domain errors
+- Orchestrator errors are logged and do not crash the tick loop
+- Agent invocation errors are captured in process state
 
 ---
 
@@ -144,15 +127,13 @@ See `arch/patterns/ERROR_HANDLING.md` for details.
 
 The following changes should be drafted but **not applied** without human approval:
 
-<!-- CUSTOMIZE: Update this list based on actual sensitive areas in this project -->
-
-- [ ] **Authentication/Authorization flows** — Security-critical, needs review
-- [ ] **Database migrations** — Schema changes can be destructive
-- [ ] **Infrastructure changes** — IaC plans need human approval
-- [ ] **Dependency updates** — Major version bumps need testing
+- [ ] **Authentication/Authorization flows** — Not implemented yet; design decisions pending
+- [ ] **Database migrations** — Manual SQL in storage backends; schema changes need careful review
+- [ ] **Infrastructure changes** — No IaC in this project; deployment is manual
+- [ ] **Dependency updates** — Major version bumps need testing (especially after LiteLLM supply chain incident)
 - [ ] **Files marked `# HUMAN-REVIEW-REQUIRED`** — Explicitly flagged
-- [ ] **Secrets or API keys** — Never commit, always use secret management
-- [ ] **[Add project-specific sensitive areas]**
+- [ ] **Secrets or API keys** — Never commit; use environment variables
+- [ ] **LLM shim changes** — Custom shim replaced LiteLLM for security reasons; changes need review
 
 When in doubt, ask before applying.
 
@@ -170,21 +151,14 @@ kit_tools/
 ├── arch/                    # Architecture documentation
 │   ├── CODE_ARCH.md         # Code structure, patterns, modules
 │   ├── SERVICE_MAP.md       # Dependencies, integrations, topology
-│   ├── INFRA_ARCH.md        # Cloud resources, networking, IAM
 │   ├── DATA_MODEL.md        # Database schema
 │   ├── SECURITY.md          # Auth, secrets, permissions
 │   ├── DECISIONS.md         # Architectural decision records
 │   └── patterns/            # Detailed pattern documentation
 │
 ├── docs/                    # Operational documentation
-│   ├── LOCAL_DEV.md         # Local development setup
 │   ├── TROUBLESHOOTING.md   # Debugging guide
-│   ├── MONITORING.md        # Logs, metrics, alerts
-│   ├── CI_CD.md             # Pipeline documentation
-│   ├── DEPLOYMENT.md        # Deploy procedures
-│   ├── API_GUIDE.md         # API documentation
 │   ├── ENV_REFERENCE.md     # Environment variables
-│   ├── CONVENTIONS.md       # Code style guide
 │   ├── GOTCHAS.md           # Known issues and landmines
 │   └── feature_guides/      # Feature-specific docs
 │
@@ -204,11 +178,11 @@ kit_tools/
 
 | Type | Pattern | Example |
 |------|---------|---------|
-| Feature specs | `feature-feature-name.md` (kebab-case) | `feature-user-auth.md`, `feature-payments.md` |
-| Feature guides | `FEATURENAME_FEATURE_GUIDE.md` | `AUTH_FEATURE_GUIDE.md` |
+| Feature specs | `feature-feature-name.md` (kebab-case) | `feature-root-packaging.md` |
+| Feature guides | `FEATURENAME_FEATURE_GUIDE.md` | `PACKAGING_FEATURE_GUIDE.md` |
 | Milestone tracking | `MILESTONES.md` | `MILESTONES.md` |
-| Architecture patterns | `PATTERNNAME.md` | `LOGGING.md`, `AUTH.md` |
-| Decision records | Date prefix in `DECISIONS.md` | `2024-01-15: Chose X over Y` |
+| Architecture patterns | `PATTERNNAME.md` | `ORCHESTRATOR.md` |
+| Decision records | Date prefix in `DECISIONS.md` | `2026-03-23: YAML for process definitions` |
 
 ---
 
@@ -219,13 +193,13 @@ Every documentation file should include at the top:
 
 ```markdown
 # FILENAME.md
-> Last updated: YYYY-MM-DD
+> Last updated: 2026-03-26
 > Updated by: [Human/Claude]
 ```
 
 ### Cross-References
 Link related documentation:
-- Security info → `arch/SECURITY.md`
+- Architectural decisions → `arch/DECISIONS.md`
 - Environment variables → `docs/ENV_REFERENCE.md`
 - Debugging → `docs/TROUBLESHOOTING.md`
 

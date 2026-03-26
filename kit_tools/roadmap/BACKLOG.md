@@ -1,43 +1,75 @@
-<!-- Template Version: 2.0.0 -->
-<!-- Seeding:
-  explorer_focus: architecture
-  required_sections: []
-  skip_if: never
--->
 # BACKLOG.md
 
-> **TEMPLATE_INTENT:** Track future work items and ideas. The parking lot for 'someday' tasks.
+> Last updated: 2026-03-26
+> Updated by: Claude
 
-> Last updated: YYYY-MM-DD
-> Updated by: [Human/Claude]
+Future work items and ideas for the Roots framework.
+
+---
 
 ## Prioritized Items
 
-| Priority | Item | Type | Feature Spec | Status |
-|----------|------|------|--------------|--------|
-| P0 | [Item] | Feature / Tech Debt / Bug | [link or N/A] | Planned / In Progress |
+| Priority | Item | Type | Ref | Status |
+|----------|------|------|-----|--------|
+| P0 | Root Registry & Marketplace | Feature | T3.8 | Not Started |
+| P1 | Decision History Retrieval | Feature | T3.1 | Not Started |
+| P1 | Process Versioning | Feature | T3.2 | Not Started |
+| P2 | Process Composition | Feature | T3.3 | Not Started |
+| P2 | Vote Aggregation | Feature | T3.4 | Not Started |
+| P2 | Transform Node | Feature | T3.5 | Not Started |
 
 ---
 
 ## Future Features
 
-### [Feature Idea]
-**Priority:** Low / Medium / High
-**Effort:** Small / Medium / Large
-**Description:** [What and why]
+### Root Registry & Marketplace (T3.8)
+**Priority:** P0 (next major milestone)
+**Effort:** Large
+**Description:** Central registry for publishing, discovering, and installing .root packages. Enables community sharing of processes, agent contracts, and configurations. Foundation already laid by .root packaging format.
+
+### Decision History Retrieval (T3.1)
+**Priority:** P1
+**Effort:** Medium
+**Description:** Allow processes to query historical decision outcomes. Enables processes that learn from past executions and adapt behavior based on accumulated decision data.
+
+### Process Versioning (T3.2)
+**Priority:** P1
+**Effort:** Medium
+**Description:** Version management for process definitions. Support running multiple versions of a process simultaneously, migration between versions, and rollback capabilities.
+
+### Process Composition (T3.3)
+**Priority:** P2
+**Effort:** Large
+**Description:** Enable processes to invoke other processes as sub-processes. Supports modular process design where complex workflows are composed from simpler, reusable building blocks.
+
+### Vote Aggregation (T3.4)
+**Priority:** P2
+**Effort:** Small
+**Description:** Built-in support for multi-agent voting and consensus mechanisms in decision nodes. Aggregate responses from multiple agents to make collective decisions.
+
+### Transform Node (T3.5)
+**Priority:** P2
+**Effort:** Small
+**Description:** A new node type for data transformation between process steps. Applies mapping, filtering, or reshaping operations to process state without requiring an agent invocation.
 
 ---
 
 ## Technical Debt
 
-### [Tech Debt Item]
-**Impact:** Low / Medium / High
-**Description:** [What needs fixing]
+### Fork/Join Crash Safety
+**Impact:** Medium
+**Description:** Fork/join is not crash-safe in v1 (see `arch/DECISIONS.md`). A crash during fork execution loses in-flight branch progress and requires re-execution from the fork node. Needs state checkpointing per branch to enable resumption.
+
+### .gitignore for __pycache__
+**Impact:** Low
+**Description:** Ensure `__pycache__/` directories are properly gitignored across the project. Minor housekeeping item.
+
+### Pyright Warning Cleanup
+**Impact:** Low
+**Description:** Pyright shows errors on some third-party imports (currently downgraded to warnings in config). Clean up type stubs or add explicit `# type: ignore` annotations where appropriate to reduce noise.
 
 ---
 
 ## Icebox
 
-### [Icebox Item]
-**Reason shelved:** [Why not now]
-**Revisit when:** [Condition to reconsider]
+*No items currently in the icebox.*

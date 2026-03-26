@@ -1,20 +1,9 @@
-<!-- Template Version: 2.0.0 -->
-<!-- Seeding:
-  explorer_focus: tech-stack, infrastructure
-  required_sections:
-    - "Environment Variables"
-  skip_if: never
--->
 # ENV_REFERENCE.md
 
-> **TEMPLATE_INTENT:** Document environment variables and secrets. What config exists and where to find it.
+> Last updated: 2026-03-26
+> Updated by: Claude
 
-> Last updated: YYYY-MM-DD
-> Updated by: [Human/Claude]
-
-## Overview
-
-This document lists all environment variables used by the application, where they're stored, and how to manage them.
+Environment variables used by the Roots framework.
 
 ---
 
@@ -22,132 +11,108 @@ This document lists all environment variables used by the application, where the
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `[VAR_NAME]` | Yes/No | [Brief description] |
+| `ROOTS_POSTGRES_DSN` | No | PostgreSQL connection string |
+| `ROOTS_LLM_BASE_URL` | No | LLM API base URL |
+| `ROOTS_LLM_API_KEY` | No | LLM API key |
+| `OPENAI_API_KEY` | No | Fallback LLM API key |
 
----
-
-## Required Variables
-
-<!-- FILL: Variables that must be set for the app to run -->
-
-| Variable | Description | Example | Where Stored |
-|----------|-------------|---------|--------------|
-| `[VAR_NAME]` | [What it's for] | `[example value]` | [.env / Secret Manager / etc.] |
+No `.env` file is required for basic usage. The framework runs with SQLite and without LLM features by default.
 
 ---
 
 ## Optional Variables
 
-<!-- FILL: Variables with sensible defaults -->
-
-| Variable | Description | Default | Where Stored |
-|----------|-------------|---------|--------------|
-| `[VAR_NAME]` | [What it's for] | `[default]` | [.env / etc.] |
+| Variable | Description | Default | Notes |
+|----------|-------------|---------|-------|
+| `ROOTS_POSTGRES_DSN` | PostgreSQL connection string for storage backend | None (uses SQLite) | Format: `postgresql://user:pass@host:port/dbname` |
+| `ROOTS_LLM_BASE_URL` | Base URL for LLM API requests | OpenAI API (`https://api.openai.com/v1`) | Any OpenAI-compatible endpoint works |
+| `ROOTS_LLM_API_KEY` | API key for LLM requests | None | Takes precedence over `OPENAI_API_KEY` |
+| `OPENAI_API_KEY` | Fallback API key for LLM requests | None | Used if `ROOTS_LLM_API_KEY` is not set |
 
 ---
 
-## Secrets
+## Variable Details
 
-<!-- FILL: Sensitive values that require special handling -->
+### ROOTS_POSTGRES_DSN
 
-| Secret | Purpose | Rotation | Storage Location |
-|--------|---------|----------|------------------|
-| `[SECRET_NAME]` | [What it's for] | [Frequency] | [Where it lives per environment] |
-
-### Secret Storage by Environment
-
-| Environment | Storage Method | Access Method |
-|-------------|----------------|---------------|
-| Local | `.env` file (gitignored) | Direct env var |
-| Staging | [Secret Manager / Vault / etc.] | [How accessed] |
-| Production | [Secret Manager / Vault / etc.] | [How accessed] |
-
-### Getting Secrets for Local Development
+PostgreSQL connection string. When set, enables the PostgreSQL storage backend. When unset, Roots defaults to SQLite.
 
 ```bash
-# How to obtain secrets for local development
-[commands or instructions]
+# Standard format
+export ROOTS_POSTGRES_DSN="postgresql://user:password@localhost:5432/roots"
+
+# With SSL
+export ROOTS_POSTGRES_DSN="postgresql://user:password@host:5432/roots?sslmode=require"
 ```
 
-### Rotating Secrets
+**Used by:** Storage backend selection, PostgreSQL tests (tests are skipped when unset)
+
+### ROOTS_LLM_BASE_URL
+
+Base URL for the LLM API. The custom LLM shim uses OpenAI-compatible API format, so any provider with an OpenAI-compatible endpoint works.
 
 ```bash
-# How to rotate [secret type]
-[commands or process]
+# Default (OpenAI)
+export ROOTS_LLM_BASE_URL="https://api.openai.com/v1"
+
+# Local model (e.g., Ollama)
+export ROOTS_LLM_BASE_URL="http://localhost:11434/v1"
+
+# Other OpenAI-compatible providers
+export ROOTS_LLM_BASE_URL="https://api.together.xyz/v1"
 ```
 
----
+**Used by:** LLM shim for AI decision nodes
 
-## Feature Flags
+### ROOTS_LLM_API_KEY
 
-<!-- FILL: Environment-based feature toggles. Delete if none -->
-
-| Variable | Description | Values |
-|----------|-------------|--------|
-| `[FLAG_NAME]` | [What it toggles] | `true` / `false` |
-
----
-
-## Service-Specific Variables
-
-<!-- FILL: Group variables by service if you have multiple services -->
-
-### [Service Name]
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `[VAR_NAME]` | [Description] | Yes/No |
-
----
-
-## Third-Party Service Credentials
-
-<!-- FILL: API keys and credentials for external services -->
-
-| Service | Variable(s) | How to Obtain | Storage |
-|---------|-------------|---------------|---------|
-| [Service] | `[VAR_NAME]` | [Instructions or link] | [Where stored] |
-
----
-
-## Environment-Specific Values
-
-<!-- FILL: Values that differ by environment -->
-
-| Variable | Local | Staging | Production |
-|----------|-------|---------|------------|
-| `[VAR_NAME]` | `[value]` | `[value]` | `[value]` |
-
----
-
-## Example `.env` Files
-
-### Local Development (`.env`)
+API key sent in the `Authorization: Bearer` header for LLM requests. Takes precedence over `OPENAI_API_KEY`.
 
 ```bash
-# =============================================================================
-# Local Development Environment
-# =============================================================================
-# Copy this to .env and fill in the values
-
-# Required
-[VAR_NAME]=[example or placeholder]
-
-# Optional (defaults shown)
-[VAR_NAME]=[default value]
-
-# Feature Flags
-[FLAG_NAME]=false
+export ROOTS_LLM_API_KEY="sk-..."
 ```
 
-### Testing (`.env.test`)
+**Used by:** LLM shim authentication
+
+### OPENAI_API_KEY
+
+Fallback API key for LLM requests. Used only when `ROOTS_LLM_API_KEY` is not set. Provided for convenience since many developers already have this set.
 
 ```bash
-# =============================================================================
-# Test Environment
-# =============================================================================
+export OPENAI_API_KEY="sk-..."
+```
 
-[VAR_NAME]=[test value]
+**Used by:** LLM shim authentication (fallback)
+
+---
+
+## Example Configuration
+
+### Minimal (SQLite, no LLM)
+
+No environment variables needed. Roots runs with SQLite storage and LLM features disabled.
+
+### With PostgreSQL
+
+```bash
+export ROOTS_POSTGRES_DSN="postgresql://roots:roots@localhost:5432/roots_dev"
+```
+
+### With LLM (OpenAI)
+
+```bash
+export OPENAI_API_KEY="sk-..."
+```
+
+### Full Configuration
+
+```bash
+# Storage
+export ROOTS_POSTGRES_DSN="postgresql://roots:roots@localhost:5432/roots_dev"
+
+# LLM
+export ROOTS_LLM_BASE_URL="https://api.openai.com/v1"
+export ROOTS_LLM_API_KEY="sk-..."
 ```
 
 ---
@@ -156,41 +121,21 @@ This document lists all environment variables used by the application, where the
 
 When adding a new environment variable:
 
-1. Add it to this documentation with description
-2. Add to `.env.example` with placeholder/example value
-3. Add to CI/CD secrets if needed (see `docs/CI_CD.md`)
-4. Add to infrastructure secrets if needed (see `arch/SECURITY.md`)
-5. Update deployment configs if needed
-
----
-
-## Validation
-
-<!-- FILL: How env vars are validated at startup -->
-
-[Describe validation approach: startup checks, schema validation, etc.]
-
-```
-# Where validation happens
-[file path]
-```
+1. Add it to this documentation with description and default
+2. Use the `ROOTS_` prefix for all Roots-specific variables
+3. Make it optional with a sensible default where possible
+4. Update `docs/TROUBLESHOOTING.md` if misconfiguration causes confusing errors
 
 ---
 
 ## Troubleshooting
 
-### Missing Environment Variable Error
+### LLM Requests Failing
 
-```
-[Example error message]
-```
+1. Check that `ROOTS_LLM_API_KEY` or `OPENAI_API_KEY` is set
+2. Verify `ROOTS_LLM_BASE_URL` points to a reachable endpoint
+3. Test connectivity: `curl $ROOTS_LLM_BASE_URL/models -H "Authorization: Bearer $ROOTS_LLM_API_KEY"`
 
-**Fix:** [How to resolve]
+### PostgreSQL Tests Skipping
 
-### Invalid Value Error
-
-```
-[Example error message]
-```
-
-**Fix:** [How to resolve]
+Set `ROOTS_POSTGRES_DSN` to a valid PostgreSQL connection string. See `docs/TROUBLESHOOTING.md` for details.

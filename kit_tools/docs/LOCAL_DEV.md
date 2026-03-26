@@ -10,49 +10,43 @@
 
 > **TEMPLATE_INTENT:** Complete local development setup guide. Get a new developer running quickly.
 
-> Last updated: YYYY-MM-DD
-> Updated by: [Human/Claude]
+> Last updated: 2026-03-26
+> Updated by: Claude
 
 ---
 
 ## Prerequisites
 
-<!-- FILL: What needs to be installed before setup -->
-
 | Requirement | Version | Installation |
 |-------------|---------|--------------|
-| [Language runtime] | [version] | [install command or link] |
-| [Package manager] | [version] | [install command or link] |
-| [Database] | [version] | [install command or link] |
-| [Other tools] | [version] | [install command or link] |
+| Python | 3.12+ | [python.org](https://www.python.org/downloads/) or `brew install python@3.12` |
+| pip | Latest | Bundled with Python |
 
 ### Optional but Recommended
 
-- [Tool]: [Why it's helpful]
-- [Tool]: [Why it's helpful]
+- **PostgreSQL**: Only needed if you want to test with PostgreSQL storage instead of the default SQLite
+- **pyright**: For type checking (`pip install pyright` or use the VS Code Pylance extension)
 
 ---
 
 ## Quick Start
 
-<!-- FILL: Fastest path to a running local environment -->
-
 ```bash
 # 1. Clone the repository
-git clone [repo-url]
-cd [project-name]
+git clone https://github.com/WashingBearLabs/Roots.git
+cd Roots
 
-# 2. Install dependencies
-[command]
+# 2. Install dependencies (dev extras include test/lint tools)
+pip install -e ".[dev]"
 
-# 3. Set up environment
-[command]
+# 3. Start the API server
+roots serve
 
-# 4. Start the application
-[command]
+# Or run all demos (opens browser to localhost:8200)
+python demo/run_all.py
 ```
 
-After these steps, the application should be available at: `[local URL]`
+After these steps, the API should be available at: `http://localhost:8200`
 
 ---
 
@@ -60,132 +54,78 @@ After these steps, the application should be available at: `[local URL]`
 
 ### 1. Environment Configuration
 
-```bash
-# Copy example environment file
-cp .env.example .env
-```
+No `.env` file is required for basic usage. The framework runs with sensible defaults out of the box.
 
-**Required environment variables to set:**
-
-| Variable | How to Get It |
-|----------|---------------|
-| `[VAR_NAME]` | [Instructions to obtain this value] |
-
-**Optional variables:**
+**Optional environment variables:**
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `[VAR_NAME]` | `[default]` | [What it does] |
+| `ROOTS_POSTGRES_DSN` | (unset) | PostgreSQL connection string; when set, uses PostgreSQL instead of SQLite |
+| `ROOTS_DB_PATH` | `roots.db` | Path to the SQLite database file |
 
 ### 2. Database Setup
 
-<!-- FILL: How to set up local database. Delete if no database -->
+**SQLite (default):** No setup required. A `roots.db` file is created automatically in the working directory on first run.
+
+**PostgreSQL (optional):**
 
 ```bash
-# Start database (if using Docker)
-[command]
+# Set the DSN to use PostgreSQL
+export ROOTS_POSTGRES_DSN="postgresql://user:pass@localhost:5432/roots"
 
-# Or connect to local installation
-[instructions]
-
-# Run migrations
-[command]
-
-# Seed with test data (optional)
-[command]
+# Tables are created automatically on first connection
 ```
 
 ### 3. Install Dependencies
 
 ```bash
-# [Language/framework specific commands]
-[command]
+# Production dependencies only
+pip install -e .
+
+# Development dependencies (pytest, pyright, ruff, etc.)
+pip install -e ".[dev]"
 ```
 
 ### 4. Start the Application
 
 ```bash
-# Start all services
-[command]
+# Start the API server
+roots serve
 
-# Or start individually:
-# [Service 1]
-[command]
-
-# [Service 2]
-[command]
+# Or run programmatically
+python -c "from roots import Roots; import asyncio; asyncio.run(Roots().serve())"
 ```
 
 ---
 
 ## Running with Docker
 
-<!-- FILL: Docker-based setup. Delete if not using Docker -->
-
-```bash
-# Build and start all services
-docker-compose up --build
-
-# Start in background
-docker-compose up -d
-
-# View logs
-docker-compose logs -f [service-name]
-
-# Stop everything
-docker-compose down
-```
-
-### Docker Services
-
-| Service | Port | Description |
-|---------|------|-------------|
-| [service] | [port] | [what it is] |
+Docker is not required and no Docker configuration is provided. Roots runs directly on Python 3.12+ with no containerization needed for local development.
 
 ---
 
 ## Mocking External Services
 
-<!-- FILL: How to work without real external dependencies -->
+### Remote HTTP Agents
 
-### [External Service Name]
+Tests use `AsyncMock` to mock HTTP agent calls. No external services need to be running for the test suite.
 
-**Option 1: Use test/sandbox environment**
-```
-[Environment variables or configuration for sandbox]
-```
+### LLM Integrations
 
-**Option 2: Mock locally**
-```bash
-[How to run a local mock]
-```
-
-**Option 3: Skip in development**
-```
-[Configuration to disable this integration locally]
-```
+LLM-based decision modes are mocked with `AsyncMock` in tests. No API keys are required for development or testing.
 
 ---
 
 ## Test Data
 
-<!-- FILL: How to get useful data for local development -->
-
-### Seed Data
+### Demo Processes
 
 ```bash
-# Load standard development fixtures
-[command]
-
-# Create specific test scenarios
-[command]
+# Run all 5 demo applications (serves UI at localhost:8200)
+python demo/run_all.py
 ```
 
-### Test Accounts
-
-| Account | Credentials | Purpose |
-|---------|-------------|---------|
-| [type] | [username/password or how to create] | [what to test with it] |
+The demos create sample YAML process definitions and execute them, providing a good starting point for understanding the framework.
 
 ---
 
@@ -194,103 +134,123 @@ docker-compose down
 ### Reset Database
 
 ```bash
-# Drop and recreate
-[command]
+# SQLite: just delete the file
+rm roots.db
 
-# Or just reseed
-[command]
-```
-
-### Clear Caches
-
-```bash
-[command]
+# PostgreSQL: drop and recreate
+dropdb roots && createdb roots
 ```
 
 ### Run Tests
 
 ```bash
 # All tests
-[command]
+pytest tests/
 
 # Specific test file
-[command]
+pytest tests/test_sqlite.py -v
+
+# Filter by test name
+pytest -k fork_join
 
 # With coverage
-[command]
+pytest tests/ --cov=roots
 ```
 
 ### Linting / Formatting
 
 ```bash
-# Check for issues
-[command]
+# Type checking
+pyright roots/
 
-# Auto-fix
-[command]
+# Lint check
+ruff check roots/
+
+# Auto-fix lint issues
+ruff check roots/ --fix
 ```
 
 ---
 
 ## Troubleshooting Local Setup
 
-### [Common Problem 1]
+### Import errors after install
 
-**Symptom:** [What you see]
+**Symptom:** `ModuleNotFoundError: No module named 'roots'`
 
-**Cause:** [Why it happens]
+**Cause:** Package not installed in editable mode.
 
 **Fix:**
 ```bash
-[commands to fix]
+pip install -e ".[dev]"
 ```
 
 ---
 
-### [Common Problem 2]
+### PostgreSQL tests skipped
 
-**Symptom:** [What you see]
+**Symptom:** PostgreSQL-related tests show as skipped.
+
+**Cause:** The `ROOTS_POSTGRES_DSN` environment variable is not set. Tests auto-skip when PostgreSQL is unavailable.
 
 **Fix:**
 ```bash
-[commands to fix]
+export ROOTS_POSTGRES_DSN="postgresql://user:pass@localhost:5432/roots_test"
+pytest tests/
 ```
+
+---
+
+### Pyright errors on third-party libraries
+
+**Symptom:** Pyright reports type errors in `simpleeval` or `asyncpg` imports.
+
+**Cause:** These libraries lack complete type stubs. This is expected.
+
+**Fix:**
+Use `# type: ignore` comments on the specific import lines. This is the project convention.
 
 ---
 
 ## IDE Setup
 
-<!-- FILL: Recommended IDE configuration. Delete or customize -->
-
 ### VS Code
 
 Recommended extensions:
-- [Extension name] - [Why]
+- **Pylance** — Python language server with pyright type checking
+- **Ruff** — Fast Python linter integration
+- **Python** — Microsoft Python extension
 
 Workspace settings (`.vscode/settings.json`):
 ```json
 {
-  // [Recommended settings]
+  "python.analysis.typeCheckingMode": "strict",
+  "python.analysis.diagnosticSeverityOverrides": {},
+  "editor.formatOnSave": true,
+  "ruff.enable": true
 }
 ```
-
-### [Other IDE]
-
-[Setup instructions]
 
 ---
 
 ## Useful Local Commands
 
-<!-- FILL: Commands developers frequently need -->
-
 ```bash
-# [Description]
-[command]
+# Start the API server
+roots serve
 
-# [Description]
-[command]
+# Run all demos with browser UI
+python demo/run_all.py
 
-# [Description]
-[command]
+# Run the full test suite
+pytest tests/
+
+# Type check the codebase
+pyright roots/
+
+# Lint the codebase
+ruff check roots/
+
+# Install package in editable mode with dev extras
+pip install -e ".[dev]"
 ```
