@@ -26,6 +26,13 @@ from roots.packaging.installer import (
     validate_package,
 )
 from roots.packaging.pack import pack_process
+from roots.packaging.tracker import (
+    InstalledPackage,
+    PackageStatus,
+    get_package_status,
+    list_installed_packages,
+    uninstall_package,
+)
 
 __all__ = [
     "AgentContract",
@@ -33,19 +40,24 @@ __all__ = [
     "ConfigOverride",
     "ContractMatch",
     "ContractReport",
+    "InstalledPackage",
+    "PackageStatus",
     "RootManifest",
     "SchemaMismatch",
     "apply_override",
     "apply_overrides_from_file",
     "create_archive",
     "extract_agent_contracts",
-    "install_package",
     "extract_config_overrides",
+    "get_package_status",
     "inspect_package",
+    "install_package",
     "list_archive_contents",
+    "list_installed_packages",
     "list_overrides",
     "load_package",
     "pack_process",
+    "uninstall_package",
     "validate_contracts",
     "validate_package",
     "read_archive",

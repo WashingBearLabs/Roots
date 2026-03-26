@@ -859,5 +859,134 @@ def config_apply(
     )
 
 
+packages_app = typer.Typer(help="Manage installed Root packages.")
+app.add_typer(packages_app, name="packages")
+
+
+@packages_app.command("list")
+def packages_list(
+    ctx: typer.Context,
+) -> None:
+    """Show all installed packages with wiring status."""
+    import asyncio
+
+    storage = ctx.obj["storage"]
+    roots_instance = create_roots_from_options(storage)
+
+    packages = asyncio.run(roots_instance.list_installed_packages())
+
+    if not packages:
+        typer.echo("No packages installed.")
+        return
+
+    console = Console()
+    console.print("\n[bold]Installed Packages:[/bold]")
+    for pkg in packages:
+        wiring = f"{pkg.agents_wired}/{pkg.agents_total} agents wired"
+        ready_mark = "  [green]Ready[/green]" if pkg.ready else ""
+        # Format installed_at to date only if it's an ISO timestamp
+        installed_date = pkg.installed_at[:10] if len(pkg.installed_at) >= 10 else pkg.installed_at
+        console.print(
+            f"  {pkg.package_id:<25} v{pkg.package_version:<8} "
+            f"(installed {installed_date})  {wiring}{ready_mark}"
+        )
+
+
+@packages_app.command("status")
+def packages_status(
+    ctx: typer.Context,
+    package_id: str = typer.Argument(
+        ...,
+        help="Package ID to show status for.",
+    ),
+) -> None:
+    """Show detailed status for an installed package."""
+    import asyncio
+
+    storage = ctx.obj["storage"]
+    roots_instance = create_roots_from_options(storage)
+
+    status_info = asyncio.run(roots_instance.get_package_status(package_id))
+
+    if status_info is None:
+        typer.echo(
+            typer.style(f"Package '{package_id}' not found", fg=typer.colors.RED)
+        )
+        raise typer.Exit(code=1)
+
+    console = Console()
+    console.print(f"\n[bold]Package:[/bold] {status_info.package_id}")
+    console.print(f"[bold]Version:[/bold] {status_info.package_version}")
+    console.print(f"[bold]Process:[/bold] {status_info.process_id}")
+    console.print(f"[bold]Name:[/bold] {status_info.process_name}")
+    console.print(f"[bold]Description:[/bold] {status_info.process_description}")
+    console.print(f"[bold]Installed:[/bold] {status_info.installed_at}")
+    console.print(f"[bold]Source:[/bold] {status_info.installed_from}")
+    console.print(f"[bold]Active Runs:[/bold] {status_info.active_runs}")
+
+    # Agent wiring status
+    report = status_info.contract_report
+    console.print("\n[bold]Agent Status:[/bold]")
+    for match in report.satisfied:
+        agent_type = match.registration.get("agent_type", "local")
+        console.print(
+            f"  [green]✓[/green] {match.contract.name:<25} — Satisfied ({agent_type})"
+        )
+    for contract in report.missing:
+        desc = contract.description or "Required agent"
+        console.print(
+            f"  [red]✗[/red] {contract.name:<25} — MISSING — {desc}"
+        )
+    for contract in report.optional_missing:
+        console.print(
+            f"  [yellow]~[/yellow] {contract.name:<25} — Optional, not registered"
+        )
+
+    # Applied overrides
+    if status_info.overrides:
+        console.print("\n[bold]Configurable Parameters:[/bold]")
+        for override in status_info.overrides:
+            console.print(
+                f"  {override['path']} = {override['value']!r} ({override['type']})"
+            )
+
+
+@packages_app.command("uninstall")
+def packages_uninstall(
+    ctx: typer.Context,
+    package_id: str = typer.Argument(
+        ...,
+        help="Package ID to uninstall.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Force uninstall even if there are active runs.",
+    ),
+) -> None:
+    """Remove an installed package."""
+    import asyncio
+
+    storage = ctx.obj["storage"]
+    roots_instance = create_roots_from_options(storage)
+
+    try:
+        removed = asyncio.run(
+            roots_instance.uninstall_package(package_id, force=force)
+        )
+    except ValueError as exc:
+        typer.echo(typer.style(f"Error: {exc}", fg=typer.colors.RED))
+        raise typer.Exit(code=1)
+
+    if not removed:
+        typer.echo(
+            typer.style(f"Package '{package_id}' not found", fg=typer.colors.RED)
+        )
+        raise typer.Exit(code=1)
+
+    console = Console()
+    console.print(f"[green]Uninstalled[/green] package '{package_id}'")
+
+
 if __name__ == "__main__":
     app()

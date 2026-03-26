@@ -327,6 +327,37 @@ class Roots:
         except ResolutionError as exc:
             raise OrchestrationError(str(exc)) from exc
 
+    async def list_installed_packages(self) -> list[Any]:
+        """List all installed packages with wiring status.
+
+        Returns a list of InstalledPackage objects.
+        """
+        from roots.packaging.tracker import list_installed_packages as _list
+
+        return await _list(self.storage, self._agent_registry)
+
+    async def get_package_status(self, package_id: str) -> Any:
+        """Get detailed status for a specific installed package.
+
+        Returns a PackageStatus object, or None if not found.
+        """
+        from roots.packaging.tracker import get_package_status as _status
+
+        return await _status(package_id, self.storage, self._agent_registry)
+
+    async def uninstall_package(
+        self,
+        package_id: str,
+        force: bool = False,
+    ) -> bool:
+        """Uninstall a package by removing its process from storage.
+
+        Returns True if found and removed. Raises ValueError if active runs exist.
+        """
+        from roots.packaging.tracker import uninstall_package as _uninstall
+
+        return await _uninstall(package_id, self.storage, force=force)
+
     async def install_package(
         self,
         archive_path: str | Any,
