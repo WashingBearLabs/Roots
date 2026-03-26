@@ -445,8 +445,33 @@ def pack(
         "--include-defaults",
         help="Path to a defaults directory to bundle into the package.",
     ),
+    scaffold_defaults: bool = typer.Option(
+        False,
+        "--scaffold-defaults",
+        help="Generate a defaults/ directory with stub agent implementations.",
+    ),
 ) -> None:
     """Pack a process into a distributable .root package."""
+    if scaffold_defaults:
+        from roots.packaging.scaffold import scaffold_defaults as _scaffold
+
+        try:
+            defaults_dir = _scaffold(process_path)
+        except Exception as exc:
+            typer.echo(typer.style(f"Error: {exc}", fg=typer.colors.RED))
+            raise typer.Exit(code=1)
+
+        console = Console()
+        console.print(f"\n[bold green]Scaffolded defaults:[/bold green] {defaults_dir}")
+        agents_file = defaults_dir / "agents.py"
+        if agents_file.exists():
+            # Count stub functions
+            content = agents_file.read_text()
+            stub_count = content.count("async def ")
+            console.print(f"  Agent stubs:  {stub_count}")
+        console.print("  Next: fill in the stubs, then pack with --include-defaults defaults/")
+        return
+
     from roots.packaging.pack import pack_process
 
     try:

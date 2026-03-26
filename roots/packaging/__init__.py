@@ -27,6 +27,7 @@ from roots.packaging.installer import (
     validate_package,
 )
 from roots.packaging.pack import pack_process
+from roots.packaging.scaffold import scaffold_defaults
 from roots.packaging.tracker import (
     InstalledPackage,
     PackageStatus,
@@ -61,6 +62,7 @@ __all__ = [
     "pack_process",
     "uninstall_package",
     "validate_contracts",
+    "scaffold_defaults",
     "validate_package",
     "read_archive",
 ]
