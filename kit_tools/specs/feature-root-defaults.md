@@ -78,13 +78,13 @@ Default agent implementations bundled inside Root packages that work out of the 
   ```
 
 **Acceptance Criteria:**
-- [ ] `load_defaults` extracts and imports default agent module from archive
-- [ ] `register_agents` convention registers all agents with the Roots instance
-- [ ] Returns list of registered agent names
-- [ ] Prints security warning before loading
-- [ ] Skips gracefully when `has_defaults` is False
-- [ ] Tests verify default loading with a mock package
-- [ ] Tests verify security warning is displayed
+- [x] `load_defaults` extracts and imports default agent module from archive
+- [x] `register_agents` convention registers all agents with the Roots instance
+- [x] Returns list of registered agent names
+- [x] Prints security warning before loading
+- [x] Skips gracefully when `has_defaults` is False
+- [x] Tests verify default loading with a mock package
+- [x] Tests verify security warning is displayed
 
 ### US-002: Default Agent Scaffolding
 
