@@ -170,14 +170,14 @@ The consumption side of Root packages. `roots install` loads a `.root` package, 
 - Add CLI: `roots config apply <process-id> <overrides-file>` — applies overrides from YAML file
 
 **Acceptance Criteria:**
-- [ ] `apply_override` modifies the correct field in the process
-- [ ] Invalid paths raise ConfigError with helpful message
-- [ ] Value constraint validation works (min/max/enum)
-- [ ] `apply_overrides_from_file` reads YAML and applies all overrides
-- [ ] `roots config list` shows available overrides for installed process
-- [ ] `roots config set` applies and persists a single override
-- [ ] `roots config apply` applies overrides from file
-- [ ] Tests verify override application on decision thresholds and retry settings
+- [x] `apply_override` modifies the correct field in the process
+- [x] Invalid paths raise ConfigError with helpful message
+- [x] Value constraint validation works (min/max/enum)
+- [x] `apply_overrides_from_file` reads YAML and applies all overrides
+- [x] `roots config list` shows available overrides for installed process
+- [x] `roots config set` applies and persists a single override
+- [x] `roots config apply` applies overrides from file
+- [x] Tests verify override application on decision thresholds and retry settings
 
 ### US-005: Installed Package Tracking
 
