@@ -229,12 +229,12 @@ Default agent implementations bundled inside Root packages that work out of the 
   - README explaining the packaging workflow
 
 **Acceptance Criteria:**
-- [ ] End-to-end test passes: pack → inspect → install → run → configure
-- [ ] Process executes successfully with default agents
-- [ ] Config override persists and affects execution
-- [ ] Example package and script exist in examples/packaging/
-- [ ] Test uses in-memory SQLite (fast, hermetic)
-- [ ] Test is self-contained (creates temp files, cleans up)
+- [x] End-to-end test passes: pack → inspect → install → run → configure
+- [x] Process executes successfully with default agents
+- [x] Config override persists and affects execution
+- [x] Example package and script exist in examples/packaging/
+- [x] Test uses in-memory SQLite (fast, hermetic)
+- [x] Test is self-contained (creates temp files, cleans up)
 
 ## Out of Scope
 
