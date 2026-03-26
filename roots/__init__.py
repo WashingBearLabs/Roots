@@ -371,7 +371,8 @@ class Roots:
         from pathlib import Path as _Path
 
         from roots.packaging.installer import install_package as _install
-        from roots.packaging.installer import ContractReport
+        from roots.packaging.installer import ContractReport, load_package
+        from roots.packaging.defaults import load_defaults
 
         path = _Path(archive_path)
         _manifest, _process, report = await _install(
@@ -381,8 +382,14 @@ class Roots:
             force=force,
         )
 
-        # apply_defaults is a forward reference to feature-root-defaults
-        # When that feature exists, this would load and register default agents
+        if apply_defaults:
+            _, _, contents = load_package(path)
+            load_defaults(contents, _manifest, self)
+
+            # Re-validate contracts after loading defaults
+            from roots.packaging.installer import validate_contracts
+
+            report = validate_contracts(_manifest, self._agent_registry)
 
         return report
 

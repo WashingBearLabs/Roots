@@ -7,6 +7,7 @@ from roots.packaging.archive import (
     list_archive_contents,
     read_archive,
 )
+from roots.packaging.defaults import load_defaults
 from roots.packaging.config import (
     ConfigError,
     apply_override,
@@ -40,6 +41,7 @@ __all__ = [
     "ConfigOverride",
     "ContractMatch",
     "ContractReport",
+    "load_defaults",
     "InstalledPackage",
     "PackageStatus",
     "RootManifest",
