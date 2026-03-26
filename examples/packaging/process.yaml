@@ -1,0 +1,48 @@
+id: sample-review
+name: Sample Review Process
+version: "1.0.0"
+description: A sample process that ingests data, makes a quality decision, and routes to enrichment or review
+nodes:
+  - id: ingest
+    type: agent
+    label: Ingest Data
+    config:
+      agent: ingest_agent
+      output_key: ingest_out
+  - id: gate
+    type: decision
+    label: Quality Gate
+    config:
+      mode: deterministic
+      edges:
+        - target: enrich
+          condition: "ingest_out.quality == 'good'"
+          label: Good quality
+        - target: review
+          condition: "ingest_out.quality == 'bad'"
+          label: Bad quality
+  - id: enrich
+    type: agent
+    label: Enrich Data
+    config:
+      agent: enrich_agent
+      output_key: enrich_out
+  - id: review
+    type: agent
+    label: Review Data
+    config:
+      agent: review_agent
+      output_key: review_out
+  - id: done
+    type: end
+    label: Complete
+    config:
+      status: completed
+edges:
+  - from: ingest
+    to: gate
+  - from: enrich
+    to: done
+  - from: review
+    to: done
+entry_point: ingest
