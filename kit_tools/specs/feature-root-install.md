@@ -200,12 +200,12 @@ The consumption side of Root packages. `roots install` loads a `.root` package, 
 - Add programmatic APIs to Roots class: `list_installed_packages()`, `get_package_status(package_id)`, `uninstall_package(package_id)`
 
 **Acceptance Criteria:**
-- [ ] `roots packages list` shows all installed packages with wiring status
-- [ ] `roots packages status` shows detailed package info
-- [ ] `roots packages uninstall` removes the process
-- [ ] Uninstall warns about active runs
-- [ ] Programmatic APIs available on Roots class
-- [ ] Tests verify list, status, and uninstall flows
+- [x] `roots packages list` shows all installed packages with wiring status
+- [x] `roots packages status` shows detailed package info
+- [x] `roots packages uninstall` removes the process
+- [x] Uninstall warns about active runs
+- [x] Programmatic APIs available on Roots class
+- [x] Tests verify list, status, and uninstall flows
 
 ## Out of Scope
 
