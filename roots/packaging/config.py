@@ -9,7 +9,7 @@ import yaml
 from pydantic import BaseModel
 
 from roots.core.schema import ProcessDefinition
-from roots.packaging.manifest import ConfigOverride, RootManifest
+from roots.packaging.manifest import ConfigOverride, ConfigTemplate, RootManifest
 
 
 class ConfigError(Exception):
@@ -202,3 +202,24 @@ def apply_overrides_from_file(
 def list_overrides(manifest: RootManifest) -> list[ConfigOverride]:
     """Return the config overrides from the manifest."""
     return list(manifest.config_overrides)
+
+
+def list_templates(manifest: RootManifest) -> list[ConfigTemplate]:
+    """Return the config templates from the manifest."""
+    return list(manifest.config_templates)
+
+
+def apply_template(
+    process: ProcessDefinition,
+    template: ConfigTemplate,
+    config_overrides: list[ConfigOverride] | None = None,
+) -> ProcessDefinition:
+    """Apply all overrides from a config template to a process definition.
+
+    Returns a new ProcessDefinition with the template overrides applied.
+    Raises ConfigError if any override in the template fails.
+    """
+    result = process
+    for path, value in template.overrides.items():
+        result = apply_override(result, path, value, config_overrides=config_overrides)
+    return result

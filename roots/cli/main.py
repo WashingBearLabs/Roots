@@ -884,6 +884,110 @@ def config_apply(
     )
 
 
+@config_app.command("templates")
+def config_templates(
+    ctx: typer.Context,
+    process_id: str = typer.Argument(
+        ...,
+        help="Process ID to list available templates for.",
+    ),
+) -> None:
+    """List available configuration templates for an installed process."""
+    import asyncio
+
+    storage = ctx.obj["storage"]
+    roots_instance = create_roots_from_options(storage)
+
+    process = asyncio.run(roots_instance.storage.get_process(process_id))
+    if process is None:
+        typer.echo(
+            typer.style(f"Process '{process_id}' not found", fg=typer.colors.RED)
+        )
+        raise typer.Exit(code=1)
+
+    templates = process.metadata.get("config_templates", [])
+    if not templates:
+        typer.echo(f"No configuration templates for process '{process_id}'.")
+        return
+
+    console = Console()
+    console.print(f"\n[bold]Configuration Templates: {process_id}[/bold]")
+    for tmpl in templates:
+        console.print(f"\n  [cyan]{tmpl['name']}[/cyan] — {tmpl['description']}")
+        for path, value in tmpl["overrides"].items():
+            console.print(f"    {path} = {value!r}")
+
+
+@config_app.command("apply-template")
+def config_apply_template(
+    ctx: typer.Context,
+    process_id: str = typer.Argument(
+        ...,
+        help="Process ID to apply the template to.",
+    ),
+    template_name: str = typer.Argument(
+        ...,
+        help="Name of the configuration template to apply.",
+    ),
+) -> None:
+    """Apply all overrides from a named configuration template."""
+    import asyncio
+    from roots.packaging.config import ConfigError, apply_template
+    from roots.packaging.extractor import extract_config_overrides
+    from roots.packaging.manifest import ConfigTemplate
+
+    storage = ctx.obj["storage"]
+    roots_instance = create_roots_from_options(storage)
+
+    process = asyncio.run(roots_instance.storage.get_process(process_id))
+    if process is None:
+        typer.echo(
+            typer.style(f"Process '{process_id}' not found", fg=typer.colors.RED)
+        )
+        raise typer.Exit(code=1)
+
+    templates = process.metadata.get("config_templates", [])
+    template_data = None
+    for tmpl in templates:
+        if tmpl["name"] == template_name:
+            template_data = tmpl
+            break
+
+    if template_data is None:
+        available = [t["name"] for t in templates]
+        typer.echo(
+            typer.style(
+                f"Template '{template_name}' not found. "
+                f"Available: {', '.join(available) if available else 'none'}",
+                fg=typer.colors.RED,
+            )
+        )
+        raise typer.Exit(code=1)
+
+    template = ConfigTemplate(**template_data)
+    config_overrides = extract_config_overrides(process)
+
+    try:
+        updated = apply_template(process, template, config_overrides=config_overrides)
+    except ConfigError as exc:
+        typer.echo(typer.style(f"Error: {exc}", fg=typer.colors.RED))
+        raise typer.Exit(code=1)
+
+    # Save back to storage (delete + re-save since storage doesn't support upsert)
+    async def _save() -> None:
+        await roots_instance.storage.delete_process(process_id)
+        await roots_instance.storage.save_process(updated)
+
+    asyncio.run(_save())
+
+    console = Console()
+    console.print(
+        f"[green]Applied template[/green] '{template_name}' to process '{process_id}'"
+    )
+    for path, value in template.overrides.items():
+        console.print(f"  {path} = {value!r}")
+
+
 packages_app = typer.Typer(help="Manage installed Root packages.")
 app.add_typer(packages_app, name="packages")
 

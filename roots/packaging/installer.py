@@ -308,6 +308,10 @@ async def install_package(
     process.metadata["package_version"] = manifest.package_version
     process.metadata["installed_at"] = datetime.now(UTC).isoformat()
     process.metadata["installed_from"] = archive_path.name
+    if manifest.config_templates:
+        process.metadata["config_templates"] = [
+            t.model_dump(mode="json") for t in manifest.config_templates
+        ]
 
     # Save (or overwrite) the process
     if existing is not None and force:

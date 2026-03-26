@@ -12,10 +12,12 @@ from roots.packaging.config import (
     ConfigError,
     apply_override,
     apply_overrides_from_file,
+    apply_template,
     list_overrides,
+    list_templates,
 )
 from roots.packaging.extractor import extract_agent_contracts, extract_config_overrides
-from roots.packaging.manifest import AgentContract, ConfigOverride, RootManifest
+from roots.packaging.manifest import AgentContract, ConfigOverride, ConfigTemplate, RootManifest
 from roots.packaging.inspect import inspect_package
 from roots.packaging.installer import (
     ContractMatch,
@@ -40,6 +42,7 @@ __all__ = [
     "AgentContract",
     "ConfigError",
     "ConfigOverride",
+    "ConfigTemplate",
     "ContractMatch",
     "ContractReport",
     "load_defaults",
@@ -49,6 +52,7 @@ __all__ = [
     "SchemaMismatch",
     "apply_override",
     "apply_overrides_from_file",
+    "apply_template",
     "create_archive",
     "extract_agent_contracts",
     "extract_config_overrides",
@@ -58,6 +62,7 @@ __all__ = [
     "list_archive_contents",
     "list_installed_packages",
     "list_overrides",
+    "list_templates",
     "load_package",
     "pack_process",
     "uninstall_package",

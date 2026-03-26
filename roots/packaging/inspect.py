@@ -173,6 +173,16 @@ def inspect_package(
 
         console.print(table)
 
+    # Config templates
+    if manifest.config_templates:
+        console.print(
+            f"\n[bold]Configuration Templates ({len(manifest.config_templates)}):[/bold]"
+        )
+        for tmpl in manifest.config_templates:
+            console.print(f"  [cyan]{tmpl.name}[/cyan] — {tmpl.description}")
+            for path, value in tmpl.overrides.items():
+                console.print(f"    {path} = {value!r}")
+
     # Footer info
     console.print()
     has_defaults = "Yes" if manifest.has_defaults else "No"

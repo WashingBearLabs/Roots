@@ -14,10 +14,12 @@ from roots.packaging.config import (
     ConfigError,
     apply_override,
     apply_overrides_from_file,
+    apply_template,
     list_overrides,
+    list_templates,
 )
 from roots.packaging.extractor import extract_config_overrides
-from roots.packaging.manifest import ConfigOverride, RootManifest
+from roots.packaging.manifest import ConfigOverride, ConfigTemplate, RootManifest
 
 
 # ---------------------------------------------------------------------------
@@ -357,3 +359,205 @@ class TestTypeCoercion:
         )
         node = updated.get_node("triage")
         assert node.config.confidence_threshold == 0.88
+
+
+# ---------------------------------------------------------------------------
+# ConfigTemplate model
+# ---------------------------------------------------------------------------
+
+
+class TestConfigTemplate:
+    def test_template_creation(self):
+        template = ConfigTemplate(
+            name="high-security",
+            description="Strict thresholds for production",
+            overrides={
+                "nodes.triage.config.confidence_threshold": 0.95,
+                "nodes.respond.config.retry.max_attempts": 5,
+            },
+        )
+        assert template.name == "high-security"
+        assert template.description == "Strict thresholds for production"
+        assert len(template.overrides) == 2
+
+    def test_template_empty_name_rejected(self):
+        with pytest.raises(ValueError, match="name must not be empty"):
+            ConfigTemplate(
+                name="  ",
+                description="Bad template",
+                overrides={},
+            )
+
+    def test_template_serializes_to_json(self):
+        template = ConfigTemplate(
+            name="permissive",
+            description="Lower thresholds",
+            overrides={"nodes.triage.config.confidence_threshold": 0.5},
+        )
+        data = template.model_dump(mode="json")
+        assert data["name"] == "permissive"
+        assert data["overrides"]["nodes.triage.config.confidence_threshold"] == 0.5
+
+    def test_manifest_with_templates(self):
+        manifest = RootManifest(
+            package_id="test/pkg",
+            package_version="1.0.0",
+            name="Test",
+            description="Test package",
+            roots_version=">=0.1.0",
+            agent_contracts=[],
+            config_templates=[
+                ConfigTemplate(
+                    name="high-security",
+                    description="Strict thresholds",
+                    overrides={"nodes.triage.config.confidence_threshold": 0.95},
+                ),
+                ConfigTemplate(
+                    name="permissive",
+                    description="Lower thresholds",
+                    overrides={"nodes.triage.config.confidence_threshold": 0.5},
+                ),
+            ],
+        )
+        assert len(manifest.config_templates) == 2
+        assert manifest.config_templates[0].name == "high-security"
+
+    def test_manifest_templates_default_empty(self):
+        manifest = RootManifest(
+            package_id="test/pkg",
+            package_version="1.0.0",
+            name="Test",
+            description="Test",
+            roots_version=">=0.1.0",
+            agent_contracts=[],
+        )
+        assert manifest.config_templates == []
+
+    def test_manifest_templates_serialize_in_json(self):
+        manifest = RootManifest(
+            package_id="test/pkg",
+            package_version="1.0.0",
+            name="Test",
+            description="Test",
+            roots_version=">=0.1.0",
+            agent_contracts=[],
+            config_templates=[
+                ConfigTemplate(
+                    name="prod",
+                    description="Production settings",
+                    overrides={"nodes.triage.config.confidence_threshold": 0.9},
+                ),
+            ],
+        )
+        data = manifest.model_dump(mode="json")
+        assert len(data["config_templates"]) == 1
+        assert data["config_templates"][0]["name"] == "prod"
+
+
+# ---------------------------------------------------------------------------
+# list_templates
+# ---------------------------------------------------------------------------
+
+
+class TestListTemplates:
+    def test_list_templates_returns_manifest_templates(self):
+        manifest = RootManifest(
+            package_id="test/pkg",
+            package_version="1.0.0",
+            name="Test",
+            description="Test",
+            roots_version=">=0.1.0",
+            agent_contracts=[],
+            config_templates=[
+                ConfigTemplate(
+                    name="high-security",
+                    description="Strict thresholds",
+                    overrides={"nodes.triage.config.confidence_threshold": 0.95},
+                ),
+            ],
+        )
+        result = list_templates(manifest)
+        assert len(result) == 1
+        assert result[0].name == "high-security"
+
+    def test_list_templates_empty(self):
+        manifest = RootManifest(
+            package_id="test/pkg",
+            package_version="1.0.0",
+            name="Test",
+            description="Test",
+            roots_version=">=0.1.0",
+            agent_contracts=[],
+        )
+        assert list_templates(manifest) == []
+
+
+# ---------------------------------------------------------------------------
+# apply_template
+# ---------------------------------------------------------------------------
+
+
+class TestApplyTemplate:
+    def test_apply_template_modifies_all_overrides(
+        self, process: ProcessDefinition
+    ):
+        template = ConfigTemplate(
+            name="high-security",
+            description="Strict thresholds",
+            overrides={
+                "nodes.triage.config.confidence_threshold": 0.95,
+                "nodes.respond.config.retry.max_attempts": 5,
+            },
+        )
+        updated = apply_template(process, template)
+
+        triage = updated.get_node("triage")
+        assert triage.config.confidence_threshold == 0.95
+
+        respond = updated.get_node("respond")
+        assert respond.retry.max_attempts == 5
+
+    def test_apply_template_does_not_mutate_original(
+        self, process: ProcessDefinition
+    ):
+        original_threshold = process.get_node("triage").config.confidence_threshold
+        template = ConfigTemplate(
+            name="test",
+            description="Test",
+            overrides={"nodes.triage.config.confidence_threshold": 0.99},
+        )
+        apply_template(process, template)
+        assert process.get_node("triage").config.confidence_threshold == original_threshold
+
+    def test_apply_template_with_constraints(
+        self, process: ProcessDefinition, overrides: list[ConfigOverride]
+    ):
+        template = ConfigTemplate(
+            name="valid",
+            description="Valid template",
+            overrides={"nodes.triage.config.confidence_threshold": 0.85},
+        )
+        updated = apply_template(process, template, config_overrides=overrides)
+        assert updated.get_node("triage").config.confidence_threshold == 0.85
+
+    def test_apply_template_invalid_path_raises(
+        self, process: ProcessDefinition
+    ):
+        template = ConfigTemplate(
+            name="bad",
+            description="Bad template",
+            overrides={"bad.path": 42},
+        )
+        with pytest.raises(ConfigError, match="Invalid override path"):
+            apply_template(process, template)
+
+    def test_apply_template_constraint_violation_raises(
+        self, process: ProcessDefinition, overrides: list[ConfigOverride]
+    ):
+        template = ConfigTemplate(
+            name="invalid",
+            description="Invalid values",
+            overrides={"nodes.triage.config.confidence_threshold": 1.5},
+        )
+        with pytest.raises(ConfigError, match="above maximum"):
+            apply_template(process, template, config_overrides=overrides)

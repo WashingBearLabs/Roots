@@ -47,6 +47,21 @@ class ConfigOverride(BaseModel):
     constraints: dict[str, Any] | None = None
 
 
+class ConfigTemplate(BaseModel):
+    """A named preset of configuration overrides."""
+
+    name: str
+    description: str
+    overrides: dict[str, Any]
+
+    @field_validator("name")
+    @classmethod
+    def name_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("name must not be empty")
+        return v
+
+
 class RootManifest(BaseModel):
     """Top-level manifest describing a packaged Root."""
 
@@ -62,6 +77,7 @@ class RootManifest(BaseModel):
     process_file: str = "process.yaml"
     agent_contracts: list[AgentContract]
     config_overrides: list[ConfigOverride] = []
+    config_templates: list[ConfigTemplate] = []
     has_defaults: bool = False
     defaults_module: str | None = None
     readme_file: str | None = "README.md"
