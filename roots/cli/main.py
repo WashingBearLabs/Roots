@@ -682,5 +682,182 @@ def health(
     console.print(table)
 
 
+config_app = typer.Typer(help="Manage configuration overrides for installed processes.")
+app.add_typer(config_app, name="config")
+
+
+
+@config_app.command("list")
+def config_list(
+    ctx: typer.Context,
+    process_id: str = typer.Argument(
+        ...,
+        help="Process ID to list available overrides for.",
+    ),
+) -> None:
+    """Show available configuration overrides for an installed process."""
+    from roots.packaging.extractor import extract_config_overrides
+
+    storage = ctx.obj["storage"]
+    roots_instance = create_roots_from_options(storage)
+
+    import asyncio
+
+    process = asyncio.run(roots_instance.storage.get_process(process_id))
+    if process is None:
+        typer.echo(
+            typer.style(f"Process '{process_id}' not found", fg=typer.colors.RED)
+        )
+        raise typer.Exit(code=1)
+
+    overrides = extract_config_overrides(process)
+
+    if not overrides:
+        typer.echo(f"No configurable parameters for process '{process_id}'.")
+        return
+
+    console = Console()
+    table = Table(title=f"Configurable Parameters: {process_id}")
+    table.add_column("Path", style="cyan")
+    table.add_column("Current Value")
+    table.add_column("Type")
+    table.add_column("Constraints")
+    table.add_column("Description")
+
+    for override in overrides:
+        constraints_str = ""
+        if override.constraints:
+            parts = []
+            for k, v in override.constraints.items():
+                parts.append(f"{k}={v}")
+            constraints_str = ", ".join(parts)
+
+        table.add_row(
+            override.path,
+            repr(override.default_value),
+            override.value_type,
+            constraints_str or "—",
+            override.description,
+        )
+
+    console.print(table)
+
+
+@config_app.command("set")
+def config_set(
+    ctx: typer.Context,
+    process_id: str = typer.Argument(
+        ...,
+        help="Process ID to apply the override to.",
+    ),
+    path: str = typer.Argument(
+        ...,
+        help="Dot-notation path (e.g., nodes.triage.config.confidence_threshold).",
+    ),
+    value: str = typer.Argument(
+        ...,
+        help="New value to set.",
+    ),
+) -> None:
+    """Apply a single configuration override and save to storage."""
+    import asyncio
+    from roots.packaging.config import ConfigError, apply_override
+    from roots.packaging.extractor import extract_config_overrides
+
+    storage = ctx.obj["storage"]
+    roots_instance = create_roots_from_options(storage)
+
+    process = asyncio.run(roots_instance.storage.get_process(process_id))
+    if process is None:
+        typer.echo(
+            typer.style(f"Process '{process_id}' not found", fg=typer.colors.RED)
+        )
+        raise typer.Exit(code=1)
+
+    overrides = extract_config_overrides(process)
+
+    # Try to parse the value as JSON first (for numbers, bools), fall back to string
+    parsed_value: Any = value
+    try:
+        parsed_value = json.loads(value)
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    try:
+        updated = apply_override(process, path, parsed_value, config_overrides=overrides)
+    except ConfigError as exc:
+        typer.echo(typer.style(f"Error: {exc}", fg=typer.colors.RED))
+        raise typer.Exit(code=1)
+
+    # Save back to storage (delete + re-save since storage doesn't support upsert)
+    async def _save() -> None:
+        await roots_instance.storage.delete_process(process_id)
+        await roots_instance.storage.save_process(updated)
+
+    asyncio.run(_save())
+
+    console = Console()
+    console.print(f"[green]Set[/green] {path} = {parsed_value!r} on process '{process_id}'")
+
+
+@config_app.command("apply")
+def config_apply(
+    ctx: typer.Context,
+    process_id: str = typer.Argument(
+        ...,
+        help="Process ID to apply overrides to.",
+    ),
+    overrides_file: str = typer.Argument(
+        ...,
+        help="Path to a YAML overrides file.",
+    ),
+) -> None:
+    """Apply configuration overrides from a YAML file."""
+    import asyncio
+    from pathlib import Path as _Path
+    from roots.packaging.config import ConfigError, apply_overrides_from_file
+    from roots.packaging.extractor import extract_config_overrides
+
+    storage = ctx.obj["storage"]
+    roots_instance = create_roots_from_options(storage)
+
+    process = asyncio.run(roots_instance.storage.get_process(process_id))
+    if process is None:
+        typer.echo(
+            typer.style(f"Process '{process_id}' not found", fg=typer.colors.RED)
+        )
+        raise typer.Exit(code=1)
+
+    overrides_path = _Path(overrides_file)
+    if not overrides_path.is_file():
+        typer.echo(
+            typer.style(f"File not found: {overrides_file}", fg=typer.colors.RED)
+        )
+        raise typer.Exit(code=1)
+
+    config_overrides = extract_config_overrides(process)
+
+    try:
+        updated = apply_overrides_from_file(
+            process, overrides_path, config_overrides=config_overrides
+        )
+    except ConfigError as exc:
+        typer.echo(typer.style(f"Error: {exc}", fg=typer.colors.RED))
+        raise typer.Exit(code=1)
+
+    # Save back to storage
+    async def _save() -> None:
+        await roots_instance.storage.delete_process(process_id)
+        await roots_instance.storage.save_process(updated)
+
+    asyncio.run(_save())
+
+    console = Console()
+    console.print(
+        f"[green]Applied overrides[/green] from '{overrides_file}' "
+        f"to process '{process_id}'"
+    )
+
+
 if __name__ == "__main__":
     app()
