@@ -67,13 +67,13 @@ Defines the `.root` package format and the tooling to create packages from exist
 - Create `roots/packaging/__init__.py` with exports
 
 **Acceptance Criteria:**
-- [ ] `AgentContract` model with all fields and validation
-- [ ] `ConfigOverride` model with all fields
-- [ ] `RootManifest` model with all fields and validation
-- [ ] Manifest serializes to/from JSON cleanly (round-trip test)
-- [ ] `package_id` validated for format (e.g., "org/name" or simple "name")
-- [ ] `package_version` validated as semver
-- [ ] Tests cover model creation, validation, serialization
+- [x] `AgentContract` model with all fields and validation
+- [x] `ConfigOverride` model with all fields
+- [x] `RootManifest` model with all fields and validation
+- [x] Manifest serializes to/from JSON cleanly (round-trip test)
+- [x] `package_id` validated for format (e.g., "org/name" or simple "name")
+- [x] `package_version` validated as semver
+- [x] Tests cover model creation, validation, serialization
 
 ### US-002: Agent Contract Extraction
 
@@ -101,14 +101,14 @@ Defines the `.root` package format and the tooling to create packages from exist
     - Path format: `"nodes.{node_id}.config.{field}"` — maps directly to YAML structure
 
 **Acceptance Criteria:**
-- [ ] Extracts all agent names from agent and agent_pool nodes
-- [ ] Deduplicates agents referenced multiple times
-- [ ] Pulls schemas from registry when available
-- [ ] Creates placeholder contracts for unregistered agents
-- [ ] first_pass pool agents (except first) marked as optional
-- [ ] Config overrides extracted for decision thresholds, retry settings, prompts
-- [ ] Override paths use consistent dot-notation format
-- [ ] Tests cover extraction from a multi-node process with pools
+- [x] Extracts all agent names from agent and agent_pool nodes
+- [x] Deduplicates agents referenced multiple times
+- [x] Pulls schemas from registry when available
+- [x] Creates placeholder contracts for unregistered agents
+- [x] first_pass pool agents (except first) marked as optional
+- [x] Config overrides extracted for decision thresholds, retry settings, prompts
+- [x] Override paths use consistent dot-notation format
+- [x] Tests cover extraction from a multi-node process with pools
 
 ### US-003: Package Archive Format
 
@@ -146,13 +146,13 @@ Defines the `.root` package format and the tooling to create packages from exist
 - Use `zipfile.ZipFile` from stdlib — no extra dependencies
 
 **Acceptance Criteria:**
-- [ ] `.root` files are valid zip archives
-- [ ] Archive contains manifest.json + process.yaml at minimum
-- [ ] `create_archive` writes a valid package
-- [ ] `read_archive` reads and validates a package
-- [ ] SHA-256 checksum verified on read
-- [ ] Extra files (README, defaults) included when present
-- [ ] Tests verify round-trip: create → read → compare
+- [x] `.root` files are valid zip archives
+- [x] Archive contains manifest.json + process.yaml at minimum
+- [x] `create_archive` writes a valid package
+- [x] `read_archive` reads and validates a package
+- [x] SHA-256 checksum verified on read
+- [x] Extra files (README, defaults) included when present
+- [x] Tests verify round-trip: create → read → compare
 
 ### US-004: `roots pack` CLI Command
 
@@ -179,14 +179,14 @@ Defines the `.root` package format and the tooling to create packages from exist
 - Also add a programmatic API: `Roots.pack_process(process_id, output_path, **kwargs) -> Path`
 
 **Acceptance Criteria:**
-- [ ] `roots pack examples/processes/simple-linear.yaml` creates a .root file
-- [ ] Output file is a valid zip with correct structure
-- [ ] Agent contracts extracted automatically from the process
-- [ ] --version, --author, --description flags populate manifest
-- [ ] --include-defaults bundles a directory into the package
-- [ ] Summary printed with package info
-- [ ] Programmatic API available on Roots class
-- [ ] Tests verify pack creates valid archive
+- [x] `roots pack examples/processes/simple-linear.yaml` creates a .root file
+- [x] Output file is a valid zip with correct structure
+- [x] Agent contracts extracted automatically from the process
+- [x] --version, --author, --description flags populate manifest
+- [x] --include-defaults bundles a directory into the package
+- [x] Summary printed with package info
+- [x] Programmatic API available on Roots class
+- [x] Tests verify pack creates valid archive
 
 ### US-005: `roots inspect` CLI Command
 
@@ -231,14 +231,14 @@ Defines the `.root` package format and the tooling to create packages from exist
   - Verify checksum and report pass/fail
 
 **Acceptance Criteria:**
-- [ ] `roots inspect package.root` shows formatted package summary
-- [ ] Agent contracts listed with required/optional status
-- [ ] Input/output schemas displayed in readable format
-- [ ] Config overrides listed with types, constraints, and defaults
-- [ ] Default implementations and README presence noted
-- [ ] Checksum verification reported
-- [ ] `--json` flag outputs raw manifest JSON
-- [ ] Tests verify inspect output for a test package
+- [x] `roots inspect package.root` shows formatted package summary
+- [x] Agent contracts listed with required/optional status
+- [x] Input/output schemas displayed in readable format
+- [x] Config overrides listed with types, constraints, and defaults
+- [x] Default implementations and README presence noted
+- [x] Checksum verification reported
+- [x] `--json` flag outputs raw manifest JSON
+- [x] Tests verify inspect output for a test package
 
 ### US-006: ProcessDefinition Metadata Extension
 
@@ -255,11 +255,11 @@ Defines the `.root` package format and the tooling to create packages from exist
 - Existing processes without metadata continue to work (default empty dict)
 
 **Acceptance Criteria:**
-- [ ] `ProcessDefinition` has `metadata: dict[str, Any]` field
-- [ ] Existing YAML files without metadata parse correctly (backward compatible)
-- [ ] Metadata round-trips through storage (save → load → compare)
-- [ ] Metadata preserved through YAML parse → serialize → reparse
-- [ ] Tests verify backward compatibility and round-trip
+- [x] `ProcessDefinition` has `metadata: dict[str, Any]` field
+- [x] Existing YAML files without metadata parse correctly (backward compatible)
+- [x] Metadata round-trips through storage (save → load → compare)
+- [x] Metadata preserved through YAML parse → serialize → reparse
+- [x] Tests verify backward compatibility and round-trip
 
 ## Out of Scope
 

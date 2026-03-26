@@ -49,14 +49,14 @@ The consumption side of Root packages. `roots install` loads a `.root` package, 
 - Validation errors should be specific: "manifest.json: field 'package_version' is not valid semver", "process.yaml: Node 'triage' references unregistered agent 'threat_intel' (agent contract exists — will need to be wired)", etc.
 
 **Acceptance Criteria:**
-- [ ] Valid packages pass validation with zero errors
-- [ ] Corrupted zip files produce clear error
-- [ ] Missing manifest.json produces clear error
-- [ ] Invalid manifest schema produces field-level errors
-- [ ] Missing process.yaml produces clear error
-- [ ] Invalid process YAML produces standard validation errors
-- [ ] Failed checksum produces clear error
-- [ ] Tests cover valid package, corrupted package, missing files, bad checksum
+- [x] Valid packages pass validation with zero errors
+- [x] Corrupted zip files produce clear error
+- [x] Missing manifest.json produces clear error
+- [x] Invalid manifest schema produces field-level errors
+- [x] Missing process.yaml produces clear error
+- [x] Invalid process YAML produces standard validation errors
+- [x] Failed checksum produces clear error
+- [x] Tests cover valid package, corrupted package, missing files, bad checksum
 
 ### US-002: Agent Contract Validation
 
@@ -85,13 +85,13 @@ The consumption side of Root packages. `roots install` loads a `.root` package, 
   - A simple heuristic for compatibility: all `required` properties in the contract schema exist in the registration schema with compatible types.
 
 **Acceptance Criteria:**
-- [ ] Registered agents matching contract name + schema → satisfied
-- [ ] Unregistered required agents → missing
-- [ ] Unregistered optional agents → optional_missing (not blocking)
-- [ ] Registered agent with incompatible schema → schema_mismatch
-- [ ] `ready` is True only when all required agents satisfied and no schema mismatches
-- [ ] Agents with no declared schema → soft pass (compatible by default)
-- [ ] Tests cover: all matched, some missing, schema mismatch, optional agents
+- [x] Registered agents matching contract name + schema → satisfied
+- [x] Unregistered required agents → missing
+- [x] Unregistered optional agents → optional_missing (not blocking)
+- [x] Registered agent with incompatible schema → schema_mismatch
+- [x] `ready` is True only when all required agents satisfied and no schema mismatches
+- [x] Agents with no declared schema → soft pass (compatible by default)
+- [x] Tests cover: all matched, some missing, schema mismatch, optional agents
 
 ### US-003: `roots install` CLI Command
 
@@ -131,14 +131,14 @@ The consumption side of Root packages. `roots install` loads a `.root` package, 
 - Also add programmatic API: `Roots.install_package(archive_path, force=False, apply_defaults=False) -> ContractReport`
 
 **Acceptance Criteria:**
-- [ ] `roots install package.root` loads process into storage
-- [ ] Existing process ID blocked without --force
-- [ ] --force overwrites existing process
-- [ ] Package metadata stored on the process definition
-- [ ] Contract report shows satisfied/missing/optional status
-- [ ] Next steps printed with specific agent names to register
-- [ ] Programmatic API available on Roots class
-- [ ] Tests verify install flow with and without pre-registered agents
+- [x] `roots install package.root` loads process into storage
+- [x] Existing process ID blocked without --force
+- [x] --force overwrites existing process
+- [x] Package metadata stored on the process definition
+- [x] Contract report shows satisfied/missing/optional status
+- [x] Next steps printed with specific agent names to register
+- [x] Programmatic API available on Roots class
+- [x] Tests verify install flow with and without pre-registered agents
 
 ### US-004: Configuration Override Application
 
@@ -170,14 +170,14 @@ The consumption side of Root packages. `roots install` loads a `.root` package, 
 - Add CLI: `roots config apply <process-id> <overrides-file>` — applies overrides from YAML file
 
 **Acceptance Criteria:**
-- [ ] `apply_override` modifies the correct field in the process
-- [ ] Invalid paths raise ConfigError with helpful message
-- [ ] Value constraint validation works (min/max/enum)
-- [ ] `apply_overrides_from_file` reads YAML and applies all overrides
-- [ ] `roots config list` shows available overrides for installed process
-- [ ] `roots config set` applies and persists a single override
-- [ ] `roots config apply` applies overrides from file
-- [ ] Tests verify override application on decision thresholds and retry settings
+- [x] `apply_override` modifies the correct field in the process
+- [x] Invalid paths raise ConfigError with helpful message
+- [x] Value constraint validation works (min/max/enum)
+- [x] `apply_overrides_from_file` reads YAML and applies all overrides
+- [x] `roots config list` shows available overrides for installed process
+- [x] `roots config set` applies and persists a single override
+- [x] `roots config apply` applies overrides from file
+- [x] Tests verify override application on decision thresholds and retry settings
 
 ### US-005: Installed Package Tracking
 
@@ -200,12 +200,12 @@ The consumption side of Root packages. `roots install` loads a `.root` package, 
 - Add programmatic APIs to Roots class: `list_installed_packages()`, `get_package_status(package_id)`, `uninstall_package(package_id)`
 
 **Acceptance Criteria:**
-- [ ] `roots packages list` shows all installed packages with wiring status
-- [ ] `roots packages status` shows detailed package info
-- [ ] `roots packages uninstall` removes the process
-- [ ] Uninstall warns about active runs
-- [ ] Programmatic APIs available on Roots class
-- [ ] Tests verify list, status, and uninstall flows
+- [x] `roots packages list` shows all installed packages with wiring status
+- [x] `roots packages status` shows detailed package info
+- [x] `roots packages uninstall` removes the process
+- [x] Uninstall warns about active runs
+- [x] Programmatic APIs available on Roots class
+- [x] Tests verify list, status, and uninstall flows
 
 ## Out of Scope
 

@@ -1,10 +1,11 @@
 <!-- Template Version: 2.0.0 -->
 ---
 epic: root-packaging
-status: active
+status: completed
 vision_ref: "Root Packaging & Registry — portable, versionable process packages"
 created: 2026-03-24
-updated: 2026-03-24
+updated: 2026-03-25
+completed: 2026-03-25
 ---
 
 # Epic: Root Packaging — Portable Process Packages
@@ -19,18 +20,18 @@ The end state: `roots pack` exports a working process as a `.root` archive. `roo
 
 | Seq | Feature Spec | Stories | Status | Dependencies |
 |-----|-------------|---------|--------|--------------|
-| 1 | feature-root-manifest.md | 6 | Planned | None |
-| 2 | feature-root-install.md | 5 | Planned | feature-root-manifest.md |
-| 3 | feature-root-defaults.md | 5 | Planned | feature-root-install.md |
+| 1 | feature-root-manifest.md | 6 | Completed | None |
+| 2 | feature-root-install.md | 5 | Completed | feature-root-manifest.md |
+| 3 | feature-root-defaults.md | 5 | Completed | feature-root-install.md |
 
 ## Completion Criteria
 
-- [ ] `roots pack` exports a process as a `.root` archive with manifest and agent contracts
-- [ ] `roots inspect` shows package contents, required agents, and compatibility info
-- [ ] `roots install` loads a package, validates agent contracts, and reports what needs wiring
-- [ ] Default agent implementations bundled in a package work without additional configuration
-- [ ] Configuration overrides allow installers to customize thresholds, prompts, and models without modifying the process
-- [ ] Round-trip test: pack a process → install on a fresh Roots instance → run with defaults → passes
+- [x] `roots pack` exports a process as a `.root` archive with manifest and agent contracts
+- [x] `roots inspect` shows package contents, required agents, and compatibility info
+- [x] `roots install` loads a package, validates agent contracts, and reports what needs wiring
+- [x] Default agent implementations bundled in a package work without additional configuration
+- [x] Configuration overrides allow installers to customize thresholds, prompts, and models without modifying the process
+- [x] Round-trip test: pack a process → install on a fresh Roots instance → run with defaults → passes
 
 ## Notes
 

@@ -669,6 +669,52 @@ class TestProcessDefinition:
         assert len(proc.edges) == 1
         assert proc.entry_point == "start"
 
+    def test_metadata_defaults_to_empty_dict(self) -> None:
+        proc = _make_process()
+        assert proc.metadata == {}
+
+    def test_metadata_with_values(self) -> None:
+        meta = {"package_id": "pkg-1", "package_version": "1.0.0"}
+        proc = _make_process(metadata=meta)
+        assert proc.metadata == meta
+
+    def test_metadata_round_trip_through_serialize(self) -> None:
+        import json
+
+        from pydantic import BaseModel as _BaseModel
+
+        meta = {
+            "package_id": "pkg-1",
+            "package_version": "2.0.0",
+            "installed_from": "/tmp/test.root",
+            "installed_at": "2026-03-25T12:00:00Z",
+        }
+        proc = _make_process(metadata=meta)
+        data = proc.model_dump(by_alias=True, mode="json")
+        for i, node in enumerate(proc.nodes):
+            if isinstance(node.config, _BaseModel):
+                data["nodes"][i]["config"] = node.config.model_dump(mode="json")
+        json_str = json.dumps(data)
+        reloaded = ProcessDefinition.model_validate(json.loads(json_str))
+        assert reloaded.metadata == meta
+
+    def test_metadata_absent_in_dict_gives_empty(self) -> None:
+        data = {
+            "id": "proc-1",
+            "name": "Test",
+            "version": "1.0.0",
+            "nodes": [
+                {"id": "start", "type": "agent", "label": "Start",
+                 "config": {"agent": "a", "output_key": "out"}},
+                {"id": "end", "type": "end", "label": "End",
+                 "config": {"status": "completed"}},
+            ],
+            "edges": [{"from": "start", "to": "end"}],
+            "entry_point": "start",
+        }
+        proc = ProcessDefinition.model_validate(data)
+        assert proc.metadata == {}
+
     def test_optional_fields_default(self) -> None:
         proc = _make_process()
         assert proc.description is None

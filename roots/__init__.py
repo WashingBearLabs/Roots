@@ -327,6 +327,92 @@ class Roots:
         except ResolutionError as exc:
             raise OrchestrationError(str(exc)) from exc
 
+    async def list_installed_packages(self) -> list[Any]:
+        """List all installed packages with wiring status.
+
+        Returns a list of InstalledPackage objects.
+        """
+        from roots.packaging.tracker import list_installed_packages as _list
+
+        return await _list(self.storage, self._agent_registry)
+
+    async def get_package_status(self, package_id: str) -> Any:
+        """Get detailed status for a specific installed package.
+
+        Returns a PackageStatus object, or None if not found.
+        """
+        from roots.packaging.tracker import get_package_status as _status
+
+        return await _status(package_id, self.storage, self._agent_registry)
+
+    async def uninstall_package(
+        self,
+        package_id: str,
+        force: bool = False,
+    ) -> bool:
+        """Uninstall a package by removing its process from storage.
+
+        Returns True if found and removed. Raises ValueError if active runs exist.
+        """
+        from roots.packaging.tracker import uninstall_package as _uninstall
+
+        return await _uninstall(package_id, self.storage, force=force)
+
+    async def install_package(
+        self,
+        archive_path: str | Any,
+        force: bool = False,
+        apply_defaults: bool = False,
+    ) -> Any:
+        """Install a .root package: load, save process, and validate contracts.
+
+        Returns a ContractReport indicating which agents are satisfied/missing.
+        """
+        from pathlib import Path as _Path
+
+        from roots.packaging.installer import install_package as _install
+        from roots.packaging.installer import ContractReport, load_package
+        from roots.packaging.defaults import load_defaults
+
+        path = _Path(archive_path)
+        _manifest, _process, report = await _install(
+            archive_path=path,
+            storage=self.storage,
+            registry=self._agent_registry,
+            force=force,
+        )
+
+        if apply_defaults:
+            _, _, contents = load_package(path)
+            load_defaults(contents, _manifest, self)
+
+            # Re-validate contracts after loading defaults
+            from roots.packaging.installer import validate_contracts
+
+            report = validate_contracts(_manifest, self._agent_registry)
+
+        return report
+
+    def pack_process(
+        self,
+        process_path: str,
+        output_path: str | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        """Pack a process YAML into a distributable .root package.
+
+        Delegates to ``packaging.pack.pack_process``. If this Roots instance
+        has registered agents, their schemas are used to enrich contracts.
+        """
+        from roots.packaging.pack import pack_process as _pack
+
+        result = _pack(
+            process_path=process_path,
+            output_path=output_path,
+            **kwargs,
+        )
+        return result
+
     async def close(self) -> None:
         """Drain pending events, close MCP connections, and close storage."""
         await self._event_emitter.close()

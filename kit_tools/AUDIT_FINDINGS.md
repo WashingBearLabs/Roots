@@ -10,7 +10,7 @@
 > **TEMPLATE_INTENT:** Persistent record of code quality, security, and intent alignment findings from automated validation. Tracks findings across sessions with status tracking and archival.
 
 > Last updated: 2026-03-25
-> Updated by: Claude (validate-feature — feature-demo-apps)
+> Updated by: Claude (validate-feature — feature-root-defaults)
 
 ---
 
@@ -36,6 +36,267 @@
 
 <!-- Newest findings at top. Each entry has a unique ID: YYYY-MM-DD-NNN -->
 <!-- Findings are added by /kit-tools:validate-feature -->
+
+### 2026-03-25 — feature-root-defaults Validation
+
+| ID | Category | Severity | File | Status |
+|----|----------|----------|------|--------|
+| 2026-03-25-301 | security | warning | `roots/packaging/defaults.py` | resolved |
+| 2026-03-25-302 | security | warning | `roots/packaging/manifest.py` | resolved |
+| 2026-03-25-303 | security | warning | `roots/packaging/defaults.py` | resolved |
+| 2026-03-25-304 | security | warning | `roots/packaging/manifest.py` | resolved |
+| 2026-03-25-305 | security | warning | `roots/packaging/defaults.py` | dismissed |
+| 2026-03-25-306 | quality | warning | `roots/packaging/inspect.py` | resolved |
+| 2026-03-25-307 | quality | warning | `roots/packaging/inspect.py` | open |
+| 2026-03-25-308 | quality | warning | `roots/packaging/inspect.py` | open |
+| 2026-03-25-309 | quality | warning | `roots/cli/main.py` | open |
+| 2026-03-25-310 | quality | warning | `roots/cli/main.py` | open |
+| 2026-03-25-311 | quality | warning | `roots/packaging/installer.py` | open |
+| 2026-03-25-312 | security | info | `roots/packaging/archive.py` | open |
+| 2026-03-25-313 | security | info | `roots/packaging/scaffold.py` | open |
+| 2026-03-25-314 | security | info | `roots/cli/main.py` | open |
+| 2026-03-25-315 | quality | info | `roots/__init__.py` | open |
+| 2026-03-25-316 | quality | info | `roots/packaging/defaults.py` | open |
+| 2026-03-25-317 | quality | info | `roots/packaging/__init__.py` | open |
+| 2026-03-25-318 | quality | info | `roots/packaging/config.py` | open |
+| 2026-03-25-319 | testing | info | test suite | open |
+
+**2026-03-25-301** — Path traversal in file extraction from archive. Malicious archive entries with `..` components could write outside temp directory.
+> Recommendation: Add `dest.resolve().is_relative_to(tmp_path.resolve())` check. **RESOLVED:** Fix applied — path traversal guard added.
+
+**2026-03-25-302** — No validation on `defaults_module` manifest field. Could reference arbitrary Python modules (e.g. "os", "subprocess").
+> Recommendation: Restrict to `^defaults(\.[a-zA-Z_][a-zA-Z0-9_]*)*$`. **RESOLVED:** Validator added to RootManifest.
+
+**2026-03-25-303** — `sys.path.insert(0, tmp_dir)` could shadow stdlib/installed packages if module name collides.
+> Recommendation: Use `spec_from_file_location` for isolated import. **RESOLVED:** Replaced sys.path manipulation with direct file-based import.
+
+**2026-03-25-304** — No validation on `process_file` manifest field. Could contain path traversal.
+> Recommendation: Reject values containing `..` or absolute prefixes. **RESOLVED:** Validator added to RootManifest.
+
+**2026-03-25-305** — Dynamic code execution via `importlib` in `load_defaults` runs arbitrary Python from packages with full process privileges.
+> **DISMISSED:** By design per feature spec. The spec explicitly acknowledges this risk and documents mitigations: opt-in `--apply-defaults` flag, printed security warning. Future package signing is out of scope. Hardened in this validation via findings 301-304.
+
+**2026-03-25-306** — `_format_schema` truncation drops closing brace, producing unbalanced output like `{key1: string, key2: int...` without `}`.
+> Recommendation: Use `result[:56] + "...}"`. **RESOLVED:** Fix applied.
+
+**2026-03-25-307** — `inspect_package` function is ~150 lines of logic, well above 50-line guideline.
+> Recommendation: Extract subsections into helper functions (`_print_header`, `_print_agents`, etc.).
+
+**2026-03-25-308** — `import yaml` inside `inspect_package` function body rather than at module level.
+> Recommendation: Move to top-level imports for consistency with rest of packaging module.
+
+**2026-03-25-309** — `install` CLI command function >100 lines combining validation, installation, and output.
+> Recommendation: Extract output formatting into `_print_install_summary()`.
+
+**2026-03-25-310** — Bare `except Exception` in `_check_agent_health` silently swallows all exceptions.
+> Recommendation: Narrow to `except (httpx.HTTPError, OSError)` or log at debug level.
+
+**2026-03-25-311** — `load_package` reads zip archive twice — once in `validate_package`, once after.
+> Recommendation: Refactor to return parsed contents from validation in a single pass.
+
+**2026-03-25-312** — `read_archive` reads all zip entries into memory without size limits. Zip bomb risk.
+> Recommendation: Add max uncompressed size check (e.g., 100MB threshold).
+
+**2026-03-25-313** — Scaffold generates code with raw `contract.name` in string literals. Quotes/backslashes in names could produce malformed code.
+> Recommendation: Use `repr()` for agent name strings in generated code.
+
+**2026-03-25-314** — PostgreSQL DSN on CLI `--storage` option may contain credentials visible in shell history.
+> Recommendation: Support env var references as alternative to command-line credentials.
+
+**2026-03-25-315** — Packaging methods on `Roots` class return `Any` instead of concrete types.
+> Recommendation: Use `TYPE_CHECKING` conditional imports for proper return annotations.
+
+**2026-03-25-316** — Security warning in `load_defaults` uses bare `print()` instead of logging/rich.
+> Recommendation: Use `warnings.warn()` or rich console for consistency.
+
+**2026-03-25-317** — `__all__` list in `roots/packaging/__init__.py` not sorted alphabetically.
+> Recommendation: Sort for maintainability.
+
+**2026-03-25-318** — `apply_override` function ~90 lines with mixed concerns.
+> Recommendation: Extract serialization round-trip and field mutation into helpers.
+
+**2026-03-25-319** — Test suite: 1173 passed, 80 skipped, 0 failures. Duplicate zip entry warning in e2e test.
+> Note: All tests pass. Skipped tests are unrelated (MCP gateway, etc.).
+
+---
+
+### 2026-03-25 — feature-root-install Validation
+
+| ID | Category | Severity | File | Status |
+|----|----------|----------|------|--------|
+| 2026-03-25-201 | quality | warning | `roots/cli/main.py` | open |
+| 2026-03-25-202 | quality | warning | `roots/cli/main.py` | open |
+| 2026-03-25-203 | quality | warning | `roots/cli/main.py` | open |
+| 2026-03-25-204 | quality | warning | `roots/cli/main.py` | open |
+| 2026-03-25-205 | quality | warning | `roots/cli/main.py` | open |
+| 2026-03-25-206 | quality | warning | `roots/packaging/installer.py` | open |
+| 2026-03-25-207 | quality | warning | `roots/packaging/inspect.py` | open |
+| 2026-03-25-208 | quality | warning | `roots/packaging/inspect.py` | open |
+| 2026-03-25-209 | quality | warning | `roots/__init__.py` | open |
+| 2026-03-25-210 | quality | warning | `roots/packaging/tracker.py` | open |
+| 2026-03-25-211 | quality | info | `roots/cli/main.py` | open |
+| 2026-03-25-212 | quality | info | `roots/__init__.py` | open |
+| 2026-03-25-213 | quality | info | `roots/packaging/config.py` | open |
+| 2026-03-25-214 | quality | info | `roots/packaging/__init__.py` | open |
+| 2026-03-25-215 | quality | info | `roots/packaging/inspect.py` | open |
+| 2026-03-25-216 | security | warning | `roots/packaging/archive.py` | open |
+| 2026-03-25-217 | security | warning | `roots/packaging/installer.py` | open |
+| 2026-03-25-218 | security | warning | `roots/packaging/installer.py` | open |
+| 2026-03-25-219 | security | warning | `roots/packaging/archive.py` | open |
+| 2026-03-25-220 | security | warning | `roots/packaging/pack.py` | open |
+| 2026-03-25-221 | security | info | `roots/packaging/manifest.py` | open |
+| 2026-03-25-222 | security | info | `roots/cli/main.py` | open |
+| 2026-03-25-223 | security | info | `roots/packaging/archive.py` | open |
+| 2026-03-25-224 | compliance | info | `roots/__init__.py` | open |
+| 2026-03-25-225 | compliance | info | `roots/packaging/installer.py` | open |
+| 2026-03-25-226 | testing | info | `test suite` | open |
+
+**2026-03-25-201** — Unused imports in `install` CLI command: `RootManifest` and `ContractReport` are imported but never used.
+> Recommendation: Remove the unused imports.
+
+**2026-03-25-202** — Bare `except Exception` in `_check_agent_health` (line 407) swallows all errors without logging, making debugging difficult.
+> Recommendation: Include `str(exc)` in the result dict so users can diagnose connectivity issues.
+
+**2026-03-25-203** — Duplicated backend creation pattern (DSN check + backend init) appears 6 times across CLI helpers.
+> Recommendation: Extract a shared `_create_backend(storage: str) -> StorageBackend` helper.
+
+**2026-03-25-204** — `install` command calls `asyncio.run()` multiple times in one function (once via `create_roots_from_options`, once directly), creating/destroying event loops repeatedly.
+> Recommendation: Restructure to a single `asyncio.run()` wrapping an async function for all async work.
+
+**2026-03-25-205** — `config_set` and `config_apply` perform non-atomic delete+save on process storage. Crash between delete and save loses data.
+> Recommendation: Wrap delete+save in error handling, or use an atomic update pattern.
+
+**2026-03-25-206** — `load_package` reads the zip archive twice — once in `validate_package`, once after. Inefficient for large archives.
+> Recommendation: Refactor to optionally return parsed contents from validation, or share a single read pass.
+
+**2026-03-25-207** — `inspect_package` is ~140 lines mixing checksum verification, YAML parsing, and Rich output formatting.
+> Recommendation: Extract sub-functions for distinct concerns: `_verify_checksum`, `_parse_process_stats`, `_print_header`, etc.
+
+**2026-03-25-208** — Checksum verification in `inspect_package` duplicates logic already in `read_archive`. If `read_archive` checksum fails, ValueError is raised before inspect can show a formatted error.
+> Recommendation: Catch ValueError from `read_archive` or use `list_archive_contents` to avoid double-validation.
+
+**2026-03-25-209** — `install_package` method uses `archive_path: str | Any` — `Any` is overly permissive, masking the actual type (`str | Path`).
+> Recommendation: Change to `archive_path: str | Path`.
+
+**2026-03-25-210** — `get_package_status` and `uninstall_package` both scan all processes to find one by `package_id` — duplicated lookup logic.
+> Recommendation: Extract a shared `_find_process_by_package_id()` async helper.
+
+**2026-03-25-211** — `roots/cli/main.py` is 992 lines containing all CLI commands in a single module. Several functions exceed 50 lines.
+> Recommendation: Consider splitting into separate modules (e.g., `cli/install.py`, `cli/config.py`, `cli/packages.py`).
+
+**2026-03-25-212** — Several Roots methods (lines 330-407) use deferred imports inside method bodies without comments explaining why.
+> Recommendation: Add a brief comment at first deferred import (e.g., `# Deferred to avoid circular import`).
+
+**2026-03-25-213** — `_coerce_value` silently returns original value for unrecognized `value_type` values.
+> Recommendation: Raise `ConfigError` for unrecognized types, or log a warning.
+
+**2026-03-25-214** — `__all__` list has `read_archive` out of alphabetical order.
+> Recommendation: Move to correct alphabetical position.
+
+**2026-03-25-215** — `import yaml` on line 84 of inspect.py is inside the function body, inconsistent with other packaging modules.
+> Recommendation: Move to module-level imports for consistency.
+
+**2026-03-25-216** — `read_archive` reads all zip entries without size/count limits. No protection against zip bombs exhausting memory. No validation of entry names for path traversal patterns.
+> Recommendation: Add decompressed size limit, file count limit, and reject entries with `..` or absolute paths.
+
+**2026-03-25-217** — `validate_package` and `load_package` read all zip contents into memory without size limits. Large crafted archives could exhaust memory.
+> Recommendation: Check `zf.getinfo(name).file_size` before reading each entry; enforce a total decompressed size cap.
+
+**2026-03-25-218** — `manifest.process_file` is attacker-controlled data from archive. No validation against path traversal patterns in the RootManifest schema.
+> Recommendation: Add a field validator on `process_file` rejecting values with `..`, absolute paths, or unusual path separators.
+
+**2026-03-25-219** — `create_archive` follows symlinks via `rglob("*")` when bundling defaults/ and config/ directories. Symlinks outside the source tree would leak files.
+> Recommendation: Verify resolved paths are within the expected parent directory, or skip symlinks.
+
+**2026-03-25-220** — `pack_process` traverses `include_defaults` directory with `rglob("*")` following symlinks without path containment validation.
+> Recommendation: Add symlink checks or path containment validation before including files.
+
+**2026-03-25-221** — `RootManifest` fields `process_file`, `readme_file`, and `defaults_module` lack validation constraining them to safe filenames. `defaults_module` is used with `.replace(".", "/")` to construct a path prefix.
+> Recommendation: Add field validators ensuring safe characters and no `..` sequences.
+
+**2026-03-25-222** — PostgreSQL DSN (potentially containing credentials) is passed as plain string through `ctx.obj["storage"]`. Current masking in logs is good but may not cover all error paths.
+> Recommendation: Ensure DSN credential masking is consistent across all error paths.
+
+**2026-03-25-223** — `create_archive` `extra_files` parameter allows arbitrary `arcname` keys without validation for path traversal.
+> Recommendation: Validate `arcname` values to reject `..` or absolute paths (defense-in-depth).
+
+**2026-03-25-224** — Programmatic API methods use `-> Any` return types instead of concrete types (ContractReport, InstalledPackage, PackageStatus), losing type safety.
+> Recommendation: Import and use concrete return types for better IDE support and API clarity.
+
+**2026-03-25-225** — `load_package` reads the archive twice (once for validation, once for loading). Stylistic divergence from spec hint to reuse `read_archive()`.
+> Recommendation: No action required — functionally correct. Could optionally refactor for consistency.
+
+**2026-03-25-226** — Test suite: 1124 passed, 80 skipped, 0 failed (24.42s). Full suite healthy.
+> Recommendation: None — all tests passing.
+
+---
+
+### 2026-03-25 — feature-root-manifest Validation
+
+| ID | Category | Severity | File | Status |
+|----|----------|----------|------|--------|
+| 2026-03-25-101 | security | warning | `roots/packaging/archive.py` | open |
+| 2026-03-25-102 | security | warning | `roots/packaging/archive.py` | open |
+| 2026-03-25-103 | security | warning | `roots/packaging/archive.py` | open |
+| 2026-03-25-104 | security | info | `roots/packaging/archive.py` | open |
+| 2026-03-25-105 | security | info | `roots/packaging/manifest.py` | open |
+| 2026-03-25-106 | quality | warning | `roots/packaging/inspect.py` | open |
+| 2026-03-25-107 | quality | warning | `roots/packaging/inspect.py` | open |
+| 2026-03-25-108 | quality | warning | `roots/packaging/inspect.py` | open |
+| 2026-03-25-109 | quality | warning | `roots/packaging/archive.py` | open |
+| 2026-03-25-110 | quality | warning | `roots/__init__.py` | open |
+| 2026-03-25-111 | quality | info | `roots/packaging/inspect.py` | open |
+| 2026-03-25-112 | quality | info | `roots/packaging/manifest.py` | open |
+| 2026-03-25-113 | quality | info | `roots/packaging/extractor.py` | open |
+| 2026-03-25-114 | quality | info | `roots/cli/main.py` | open |
+| 2026-03-25-115 | testing | info | `test suite` | open |
+
+**2026-03-25-101** — read_archive() reads all zip entries into memory without size/count limits; a zip bomb could exhaust memory.
+> Recommendation: Add maximum decompressed size limit (e.g., 100MB) and file count limit. Check file_info.file_size before reading and track cumulative bytes.
+
+**2026-03-25-102** — create_archive() follows symlinks via rglob("*") when bundling defaults/ and config/ directories. A symlink pointing outside the source tree would leak external files into the archive.
+> Recommendation: Verify each resolved file path is within the expected parent directory. Skip or raise on symlinks pointing outside the source tree.
+
+**2026-03-25-103** — read_archive() does not validate archive entry names for path traversal patterns. Dict keys preserve raw entry names which could enable zip-slip if a downstream consumer writes entries to disk.
+> Recommendation: Reject or normalize entries containing ".." path components or absolute paths in read_archive() for defense-in-depth.
+
+**2026-03-25-104** — create_archive() extra_files parameter allows arbitrary arcnames without validation for ".." or absolute paths.
+> Recommendation: Add validation in create_archive() to reject unsafe arcnames.
+
+**2026-03-25-105** — Checksum field defaults to None; a tampered archive could remove the checksum to bypass integrity verification.
+> Recommendation: Consider making checksum required in a future format version, or log a warning when a package lacks a checksum.
+
+**2026-03-25-106** — inspect_package() is ~90 lines mixing multiple concerns (checksum verification, YAML parsing, rendering).
+> Recommendation: Extract Rich rendering into smaller helper functions for readability.
+
+**2026-03-25-107** — `import yaml` on line 84 of inspect.py is inside the function body instead of at module level without explanation.
+> Recommendation: Move to top-level imports or add a comment explaining the deferred import.
+
+**2026-03-25-108** — Checksum verification logic in inspect_package duplicates logic already in read_archive.
+> Recommendation: Have read_archive return a checksum validation result, or extract into shared utility.
+
+**2026-03-25-109** — Potential duplicate zip entries when defaults/ exists alongside process.yaml AND include_defaults points to the same directory.
+> Recommendation: Have create_archive skip defaults/ when extra_files contains entries under "defaults/", or rely solely on the caller.
+
+**2026-03-25-110** — Roots.pack_process is sync while all other public methods are async. Return type is `Any` instead of `Path`. `**kwargs` obscures the API contract.
+> Recommendation: Use explicit parameters matching pack_process signature. Change return type to `Path`.
+
+**2026-03-25-111** — _format_schema truncation produces unclosed "{" brace (e.g., "{key1: string, ke...").
+> Recommendation: Append "...}" instead of "..." when truncating.
+
+**2026-03-25-112** — Mutable list defaults use `= []` instead of project convention `Field(default_factory=list)`.
+> Recommendation: Use Field(default_factory=list) for consistency with schema.py patterns.
+
+**2026-03-25-113** — Config override paths use "nodes.{id}.config.retry.max_attempts" but retry is a sibling of config in the schema, not nested inside it.
+> Recommendation: Use "nodes.{id}.retry.max_attempts" or document the abstraction.
+
+**2026-03-25-114** — `--version` option on pack command may conflict with global `--version` flag.
+> Recommendation: Consider renaming to `--pkg-version` or `--package-version`.
+
+**2026-03-25-115** — All 199 tests pass (0.53s). Full suite executed for packaging feature.
+> Recommendation: None — test suite healthy.
+
+---
 
 ### 2026-03-25 — feature-demo-apps Validation
 

@@ -412,6 +412,236 @@ async def _check_agent_health(agents: list[dict[str, Any]]) -> list[dict[str, An
     return results
 
 
+@app.command()
+def pack(
+    ctx: typer.Context,
+    process_path: str = typer.Argument(
+        ...,
+        help="Path to a YAML process definition file.",
+    ),
+    output: Optional[str] = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Output path for the .root file.",
+    ),
+    version: Optional[str] = typer.Option(
+        None,
+        "--version",
+        help="Package version (semver). Defaults to process version.",
+    ),
+    author: Optional[str] = typer.Option(
+        None,
+        "--author",
+        help="Author name for the manifest.",
+    ),
+    description: Optional[str] = typer.Option(
+        None,
+        "--description",
+        help="Package description. Defaults to process description.",
+    ),
+    include_defaults: Optional[str] = typer.Option(
+        None,
+        "--include-defaults",
+        help="Path to a defaults directory to bundle into the package.",
+    ),
+    scaffold_defaults: bool = typer.Option(
+        False,
+        "--scaffold-defaults",
+        help="Generate a defaults/ directory with stub agent implementations.",
+    ),
+) -> None:
+    """Pack a process into a distributable .root package."""
+    if scaffold_defaults:
+        from roots.packaging.scaffold import scaffold_defaults as _scaffold
+
+        try:
+            defaults_dir = _scaffold(process_path)
+        except Exception as exc:
+            typer.echo(typer.style(f"Error: {exc}", fg=typer.colors.RED))
+            raise typer.Exit(code=1)
+
+        console = Console()
+        console.print(f"\n[bold green]Scaffolded defaults:[/bold green] {defaults_dir}")
+        agents_file = defaults_dir / "agents.py"
+        if agents_file.exists():
+            # Count stub functions
+            content = agents_file.read_text()
+            stub_count = content.count("async def ")
+            console.print(f"  Agent stubs:  {stub_count}")
+        console.print("  Next: fill in the stubs, then pack with --include-defaults defaults/")
+        return
+
+    from roots.packaging.pack import pack_process
+
+    try:
+        result = pack_process(
+            process_path=process_path,
+            output_path=output,
+            version=version,
+            author=author,
+            description=description,
+            include_defaults=include_defaults,
+        )
+    except Exception as exc:
+        typer.echo(typer.style(f"Error: {exc}", fg=typer.colors.RED))
+        raise typer.Exit(code=1)
+
+    # Read the manifest back for summary
+    from roots.packaging.archive import read_archive
+
+    manifest, _contents = read_archive(result)
+    size_kb = result.stat().st_size / 1024
+
+    console = Console()
+    console.print(f"\n[bold green]Package created:[/bold green] {result}")
+    console.print(f"  Name:             {manifest.name}")
+    console.print(f"  Version:          {manifest.package_version}")
+    if manifest.author:
+        console.print(f"  Author:           {manifest.author}")
+    console.print(f"  Agent contracts:  {len(manifest.agent_contracts)}")
+    console.print(f"  Config overrides: {len(manifest.config_overrides)}")
+    console.print(f"  Archive size:     {size_kb:.1f} KB")
+
+
+@app.command()
+def inspect(
+    ctx: typer.Context,
+    package_path: str = typer.Argument(
+        ...,
+        help="Path to a .root package file.",
+    ),
+    output_json: bool = typer.Option(
+        False,
+        "--json",
+        help="Output raw manifest as JSON (for scripting).",
+    ),
+) -> None:
+    """Inspect a .root package and display its contents."""
+    from roots.packaging.inspect import inspect_package
+
+    try:
+        inspect_package(package_path, output_json=output_json)
+    except FileNotFoundError as exc:
+        typer.echo(typer.style(str(exc), fg=typer.colors.RED))
+        raise typer.Exit(code=1)
+    except Exception as exc:
+        typer.echo(typer.style(f"Error: {exc}", fg=typer.colors.RED))
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def install(
+    ctx: typer.Context,
+    package_path: str = typer.Argument(
+        ...,
+        help="Path to a .root package file.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Overwrite existing process if it already exists.",
+    ),
+    apply_defaults: bool = typer.Option(
+        False,
+        "--apply-defaults",
+        help="Load and register default agents from the package.",
+    ),
+) -> None:
+    """Install a .root package into the local environment."""
+    import asyncio
+    from pathlib import Path as _Path
+
+    from roots.packaging.installer import (
+        ContractReport,
+        install_package as _install_package,
+        load_package,
+    )
+    from roots.packaging.manifest import RootManifest
+
+    path = _Path(package_path)
+    if not path.is_file():
+        typer.echo(typer.style(f"File not found: {package_path}", fg=typer.colors.RED))
+        raise typer.Exit(code=1)
+
+    storage = ctx.obj["storage"]
+
+    try:
+        roots_instance = create_roots_from_options(storage)
+    except Exception as exc:
+        typer.echo(typer.style(f"Error initializing storage: {exc}", fg=typer.colors.RED))
+        raise typer.Exit(code=1)
+
+    try:
+        report = asyncio.run(
+            roots_instance.install_package(
+                archive_path=path,
+                force=force,
+                apply_defaults=apply_defaults,
+            )
+        )
+    except ValueError as exc:
+        typer.echo(typer.style(f"Error: {exc}", fg=typer.colors.RED))
+        raise typer.Exit(code=1)
+
+    # Re-load manifest for display info
+    manifest, process, _contents = load_package(path)
+
+    console = Console()
+    console.print(
+        f"\n[bold green]Installed:[/bold green] {manifest.name} v{manifest.package_version}"
+    )
+
+    # Agent Status section
+    console.print("\n[bold]Agent Status:[/bold]")
+    for match in report.satisfied:
+        agent_type = match.registration.get("agent_type", "local")
+        console.print(
+            f"  [green]✓[/green] {match.contract.name:<25} — Satisfied ({agent_type})"
+        )
+    for contract in report.missing:
+        desc = contract.description or "Required agent"
+        console.print(
+            f"  [red]✗[/red] {contract.name:<25} — MISSING — {desc}"
+        )
+    for contract in report.optional_missing:
+        console.print(
+            f"  [yellow]~[/yellow] {contract.name:<25} — Optional, not registered"
+        )
+    for mismatch in report.schema_mismatches:
+        console.print(
+            f"  [red]![/red] {mismatch.agent_name:<25} — Schema mismatch ({mismatch.direction}): {mismatch.details}"
+        )
+
+    # Configurable Parameters section
+    if manifest.config_overrides:
+        console.print("\n[bold]Configurable Parameters:[/bold]")
+        for override in manifest.config_overrides:
+            console.print(
+                f"  {override.path} = {override.default_value!r}  "
+                f"(override with roots config set ...)"
+            )
+
+    # Next steps section
+    missing_names = [c.name for c in report.missing]
+    console.print("\n[bold]Next steps:[/bold]")
+    step = 1
+    if missing_names:
+        console.print(
+            f"  {step}. Register missing agents: {', '.join(missing_names)}"
+        )
+        step += 1
+    if manifest.config_overrides:
+        console.print(
+            f"  {step}. Optionally configure parameters "
+            f"(see: roots config list {process.id})"
+        )
+        step += 1
+    console.print(
+        f"  {step}. Run: roots run {process.id} --work-item '{{...}}'"
+    )
+
+
 @agents_app.callback(invoke_without_command=True)
 def agents_list(
     ctx: typer.Context,
@@ -475,6 +705,473 @@ def health(
         table.add_row(r["name"], r["type"], r["status"], rt)
 
     console.print(table)
+
+
+config_app = typer.Typer(help="Manage configuration overrides for installed processes.")
+app.add_typer(config_app, name="config")
+
+
+
+@config_app.command("list")
+def config_list(
+    ctx: typer.Context,
+    process_id: str = typer.Argument(
+        ...,
+        help="Process ID to list available overrides for.",
+    ),
+) -> None:
+    """Show available configuration overrides for an installed process."""
+    from roots.packaging.extractor import extract_config_overrides
+
+    storage = ctx.obj["storage"]
+    roots_instance = create_roots_from_options(storage)
+
+    import asyncio
+
+    process = asyncio.run(roots_instance.storage.get_process(process_id))
+    if process is None:
+        typer.echo(
+            typer.style(f"Process '{process_id}' not found", fg=typer.colors.RED)
+        )
+        raise typer.Exit(code=1)
+
+    overrides = extract_config_overrides(process)
+
+    if not overrides:
+        typer.echo(f"No configurable parameters for process '{process_id}'.")
+        return
+
+    console = Console()
+    table = Table(title=f"Configurable Parameters: {process_id}")
+    table.add_column("Path", style="cyan")
+    table.add_column("Current Value")
+    table.add_column("Type")
+    table.add_column("Constraints")
+    table.add_column("Description")
+
+    for override in overrides:
+        constraints_str = ""
+        if override.constraints:
+            parts = []
+            for k, v in override.constraints.items():
+                parts.append(f"{k}={v}")
+            constraints_str = ", ".join(parts)
+
+        table.add_row(
+            override.path,
+            repr(override.default_value),
+            override.value_type,
+            constraints_str or "—",
+            override.description,
+        )
+
+    console.print(table)
+
+
+@config_app.command("set")
+def config_set(
+    ctx: typer.Context,
+    process_id: str = typer.Argument(
+        ...,
+        help="Process ID to apply the override to.",
+    ),
+    path: str = typer.Argument(
+        ...,
+        help="Dot-notation path (e.g., nodes.triage.config.confidence_threshold).",
+    ),
+    value: str = typer.Argument(
+        ...,
+        help="New value to set.",
+    ),
+) -> None:
+    """Apply a single configuration override and save to storage."""
+    import asyncio
+    from roots.packaging.config import ConfigError, apply_override
+    from roots.packaging.extractor import extract_config_overrides
+
+    storage = ctx.obj["storage"]
+    roots_instance = create_roots_from_options(storage)
+
+    process = asyncio.run(roots_instance.storage.get_process(process_id))
+    if process is None:
+        typer.echo(
+            typer.style(f"Process '{process_id}' not found", fg=typer.colors.RED)
+        )
+        raise typer.Exit(code=1)
+
+    overrides = extract_config_overrides(process)
+
+    # Try to parse the value as JSON first (for numbers, bools), fall back to string
+    parsed_value: Any = value
+    try:
+        parsed_value = json.loads(value)
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    try:
+        updated = apply_override(process, path, parsed_value, config_overrides=overrides)
+    except ConfigError as exc:
+        typer.echo(typer.style(f"Error: {exc}", fg=typer.colors.RED))
+        raise typer.Exit(code=1)
+
+    # Save back to storage (delete + re-save since storage doesn't support upsert)
+    async def _save() -> None:
+        await roots_instance.storage.delete_process(process_id)
+        await roots_instance.storage.save_process(updated)
+
+    asyncio.run(_save())
+
+    console = Console()
+    console.print(f"[green]Set[/green] {path} = {parsed_value!r} on process '{process_id}'")
+
+
+@config_app.command("apply")
+def config_apply(
+    ctx: typer.Context,
+    process_id: str = typer.Argument(
+        ...,
+        help="Process ID to apply overrides to.",
+    ),
+    overrides_file: str = typer.Argument(
+        ...,
+        help="Path to a YAML overrides file.",
+    ),
+) -> None:
+    """Apply configuration overrides from a YAML file."""
+    import asyncio
+    from pathlib import Path as _Path
+    from roots.packaging.config import ConfigError, apply_overrides_from_file
+    from roots.packaging.extractor import extract_config_overrides
+
+    storage = ctx.obj["storage"]
+    roots_instance = create_roots_from_options(storage)
+
+    process = asyncio.run(roots_instance.storage.get_process(process_id))
+    if process is None:
+        typer.echo(
+            typer.style(f"Process '{process_id}' not found", fg=typer.colors.RED)
+        )
+        raise typer.Exit(code=1)
+
+    overrides_path = _Path(overrides_file)
+    if not overrides_path.is_file():
+        typer.echo(
+            typer.style(f"File not found: {overrides_file}", fg=typer.colors.RED)
+        )
+        raise typer.Exit(code=1)
+
+    config_overrides = extract_config_overrides(process)
+
+    try:
+        updated = apply_overrides_from_file(
+            process, overrides_path, config_overrides=config_overrides
+        )
+    except ConfigError as exc:
+        typer.echo(typer.style(f"Error: {exc}", fg=typer.colors.RED))
+        raise typer.Exit(code=1)
+
+    # Save back to storage
+    async def _save() -> None:
+        await roots_instance.storage.delete_process(process_id)
+        await roots_instance.storage.save_process(updated)
+
+    asyncio.run(_save())
+
+    console = Console()
+    console.print(
+        f"[green]Applied overrides[/green] from '{overrides_file}' "
+        f"to process '{process_id}'"
+    )
+
+
+@config_app.command("templates")
+def config_templates(
+    ctx: typer.Context,
+    process_id: str = typer.Argument(
+        ...,
+        help="Process ID to list available templates for.",
+    ),
+) -> None:
+    """List available configuration templates for an installed process."""
+    import asyncio
+
+    storage = ctx.obj["storage"]
+    roots_instance = create_roots_from_options(storage)
+
+    process = asyncio.run(roots_instance.storage.get_process(process_id))
+    if process is None:
+        typer.echo(
+            typer.style(f"Process '{process_id}' not found", fg=typer.colors.RED)
+        )
+        raise typer.Exit(code=1)
+
+    templates = process.metadata.get("config_templates", [])
+    if not templates:
+        typer.echo(f"No configuration templates for process '{process_id}'.")
+        return
+
+    console = Console()
+    console.print(f"\n[bold]Configuration Templates: {process_id}[/bold]")
+    for tmpl in templates:
+        console.print(f"\n  [cyan]{tmpl['name']}[/cyan] — {tmpl['description']}")
+        for path, value in tmpl["overrides"].items():
+            console.print(f"    {path} = {value!r}")
+
+
+@config_app.command("apply-template")
+def config_apply_template(
+    ctx: typer.Context,
+    process_id: str = typer.Argument(
+        ...,
+        help="Process ID to apply the template to.",
+    ),
+    template_name: str = typer.Argument(
+        ...,
+        help="Name of the configuration template to apply.",
+    ),
+) -> None:
+    """Apply all overrides from a named configuration template."""
+    import asyncio
+    from roots.packaging.config import ConfigError, apply_template
+    from roots.packaging.extractor import extract_config_overrides
+    from roots.packaging.manifest import ConfigTemplate
+
+    storage = ctx.obj["storage"]
+    roots_instance = create_roots_from_options(storage)
+
+    process = asyncio.run(roots_instance.storage.get_process(process_id))
+    if process is None:
+        typer.echo(
+            typer.style(f"Process '{process_id}' not found", fg=typer.colors.RED)
+        )
+        raise typer.Exit(code=1)
+
+    templates = process.metadata.get("config_templates", [])
+    template_data = None
+    for tmpl in templates:
+        if tmpl["name"] == template_name:
+            template_data = tmpl
+            break
+
+    if template_data is None:
+        available = [t["name"] for t in templates]
+        typer.echo(
+            typer.style(
+                f"Template '{template_name}' not found. "
+                f"Available: {', '.join(available) if available else 'none'}",
+                fg=typer.colors.RED,
+            )
+        )
+        raise typer.Exit(code=1)
+
+    template = ConfigTemplate(**template_data)
+    config_overrides = extract_config_overrides(process)
+
+    try:
+        updated = apply_template(process, template, config_overrides=config_overrides)
+    except ConfigError as exc:
+        typer.echo(typer.style(f"Error: {exc}", fg=typer.colors.RED))
+        raise typer.Exit(code=1)
+
+    # Save back to storage (delete + re-save since storage doesn't support upsert)
+    async def _save() -> None:
+        await roots_instance.storage.delete_process(process_id)
+        await roots_instance.storage.save_process(updated)
+
+    asyncio.run(_save())
+
+    console = Console()
+    console.print(
+        f"[green]Applied template[/green] '{template_name}' to process '{process_id}'"
+    )
+    for path, value in template.overrides.items():
+        console.print(f"  {path} = {value!r}")
+
+
+packages_app = typer.Typer(help="Manage installed Root packages.")
+app.add_typer(packages_app, name="packages")
+
+
+@packages_app.command("list")
+def packages_list(
+    ctx: typer.Context,
+) -> None:
+    """Show all installed packages with wiring status."""
+    import asyncio
+
+    storage = ctx.obj["storage"]
+    roots_instance = create_roots_from_options(storage)
+
+    packages = asyncio.run(roots_instance.list_installed_packages())
+
+    if not packages:
+        typer.echo("No packages installed.")
+        return
+
+    console = Console()
+    console.print("\n[bold]Installed Packages:[/bold]")
+    for pkg in packages:
+        wiring = f"{pkg.agents_wired}/{pkg.agents_total} agents wired"
+        ready_mark = "  [green]Ready[/green]" if pkg.ready else ""
+        # Format installed_at to date only if it's an ISO timestamp
+        installed_date = pkg.installed_at[:10] if len(pkg.installed_at) >= 10 else pkg.installed_at
+        console.print(
+            f"  {pkg.package_id:<25} v{pkg.package_version:<8} "
+            f"(installed {installed_date})  {wiring}{ready_mark}"
+        )
+
+
+@packages_app.command("status")
+def packages_status(
+    ctx: typer.Context,
+    package_id: str = typer.Argument(
+        ...,
+        help="Package ID to show status for.",
+    ),
+) -> None:
+    """Show detailed status for an installed package."""
+    import asyncio
+
+    storage = ctx.obj["storage"]
+    roots_instance = create_roots_from_options(storage)
+
+    status_info = asyncio.run(roots_instance.get_package_status(package_id))
+
+    if status_info is None:
+        typer.echo(
+            typer.style(f"Package '{package_id}' not found", fg=typer.colors.RED)
+        )
+        raise typer.Exit(code=1)
+
+    console = Console()
+    console.print(f"\n[bold]Package:[/bold] {status_info.package_id}")
+    console.print(f"[bold]Version:[/bold] {status_info.package_version}")
+    console.print(f"[bold]Process:[/bold] {status_info.process_id}")
+    console.print(f"[bold]Name:[/bold] {status_info.process_name}")
+    console.print(f"[bold]Description:[/bold] {status_info.process_description}")
+    console.print(f"[bold]Installed:[/bold] {status_info.installed_at}")
+    console.print(f"[bold]Source:[/bold] {status_info.installed_from}")
+    console.print(f"[bold]Active Runs:[/bold] {status_info.active_runs}")
+
+    # Agent wiring status
+    report = status_info.contract_report
+    console.print("\n[bold]Agent Status:[/bold]")
+    for match in report.satisfied:
+        agent_type = match.registration.get("agent_type", "local")
+        console.print(
+            f"  [green]✓[/green] {match.contract.name:<25} — Satisfied ({agent_type})"
+        )
+    for contract in report.missing:
+        desc = contract.description or "Required agent"
+        console.print(
+            f"  [red]✗[/red] {contract.name:<25} — MISSING — {desc}"
+        )
+    for contract in report.optional_missing:
+        console.print(
+            f"  [yellow]~[/yellow] {contract.name:<25} — Optional, not registered"
+        )
+
+    # Applied overrides
+    if status_info.overrides:
+        console.print("\n[bold]Configurable Parameters:[/bold]")
+        for override in status_info.overrides:
+            console.print(
+                f"  {override['path']} = {override['value']!r} ({override['type']})"
+            )
+
+
+@packages_app.command("readme")
+def packages_readme(
+    ctx: typer.Context,
+    package: str = typer.Argument(
+        ...,
+        help="Path to a .root file or an installed process ID.",
+    ),
+) -> None:
+    """Display the README for a Root package."""
+    import asyncio
+    from pathlib import Path as _Path
+
+    from rich.markdown import Markdown
+
+    console = Console()
+
+    path = _Path(package)
+    if path.is_file() and path.suffix == ".root":
+        # Extract README from archive
+        from roots.packaging.archive import read_archive
+
+        try:
+            _manifest, contents = read_archive(path)
+        except Exception as exc:
+            typer.echo(typer.style(f"Error: {exc}", fg=typer.colors.RED))
+            raise typer.Exit(code=1)
+
+        if "README.md" not in contents:
+            console.print("No README found in package.")
+            return
+
+        readme_text = contents["README.md"].decode("utf-8")
+        console.print(Markdown(readme_text))
+        return
+
+    # Treat as installed process ID — look up in storage
+    storage = ctx.obj["storage"]
+    roots_instance = create_roots_from_options(storage)
+
+    process = asyncio.run(roots_instance.storage.get_process(package))
+    if process is None:
+        typer.echo(
+            typer.style(
+                f"No .root file or installed process found: {package}",
+                fg=typer.colors.RED,
+            )
+        )
+        raise typer.Exit(code=1)
+
+    readme_text = process.metadata.get("readme")
+    if not readme_text:
+        console.print(f"No README stored for process '{package}'.")
+        return
+
+    console.print(Markdown(readme_text))
+
+
+@packages_app.command("uninstall")
+def packages_uninstall(
+    ctx: typer.Context,
+    package_id: str = typer.Argument(
+        ...,
+        help="Package ID to uninstall.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Force uninstall even if there are active runs.",
+    ),
+) -> None:
+    """Remove an installed package."""
+    import asyncio
+
+    storage = ctx.obj["storage"]
+    roots_instance = create_roots_from_options(storage)
+
+    try:
+        removed = asyncio.run(
+            roots_instance.uninstall_package(package_id, force=force)
+        )
+    except ValueError as exc:
+        typer.echo(typer.style(f"Error: {exc}", fg=typer.colors.RED))
+        raise typer.Exit(code=1)
+
+    if not removed:
+        typer.echo(
+            typer.style(f"Package '{package_id}' not found", fg=typer.colors.RED)
+        )
+        raise typer.Exit(code=1)
+
+    console = Console()
+    console.print(f"[green]Uninstalled[/green] package '{package_id}'")
 
 
 if __name__ == "__main__":

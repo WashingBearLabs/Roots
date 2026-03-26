@@ -214,6 +214,7 @@ class ProcessDefinition(BaseModel):
     version: str
     description: str | None = None
     work_item_schema: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
     nodes: list[NodeDefinition]
     edges: list[EdgeDefinition]
     entry_point: str

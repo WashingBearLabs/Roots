@@ -78,13 +78,13 @@ Default agent implementations bundled inside Root packages that work out of the 
   ```
 
 **Acceptance Criteria:**
-- [ ] `load_defaults` extracts and imports default agent module from archive
-- [ ] `register_agents` convention registers all agents with the Roots instance
-- [ ] Returns list of registered agent names
-- [ ] Prints security warning before loading
-- [ ] Skips gracefully when `has_defaults` is False
-- [ ] Tests verify default loading with a mock package
-- [ ] Tests verify security warning is displayed
+- [x] `load_defaults` extracts and imports default agent module from archive
+- [x] `register_agents` convention registers all agents with the Roots instance
+- [x] Returns list of registered agent names
+- [x] Prints security warning before loading
+- [x] Skips gracefully when `has_defaults` is False
+- [x] Tests verify default loading with a mock package
+- [x] Tests verify security warning is displayed
 
 ### US-002: Default Agent Scaffolding
 
@@ -113,12 +113,12 @@ Default agent implementations bundled inside Root packages that work out of the 
 - This is a development-time convenience — the author runs `roots pack --scaffold-defaults`, fills in the stubs, then packs again with `--include-defaults defaults/`
 
 **Acceptance Criteria:**
-- [ ] `--scaffold-defaults` creates a defaults/ directory with agents.py
-- [ ] Generated stubs match extracted agent contracts (names, schemas in docstrings)
-- [ ] Generated `register_agents` function registers all agents
-- [ ] Stubs return minimal valid output matching output schema structure
-- [ ] Generated code is syntactically valid Python
-- [ ] Tests verify scaffold generation for a multi-agent process
+- [x] `--scaffold-defaults` creates a defaults/ directory with agents.py
+- [x] Generated stubs match extracted agent contracts (names, schemas in docstrings)
+- [x] Generated `register_agents` function registers all agents
+- [x] Stubs return minimal valid output matching output schema structure
+- [x] Generated code is syntactically valid Python
+- [x] Tests verify scaffold generation for a multi-agent process
 
 ### US-003: Configuration Templates
 
@@ -159,12 +159,12 @@ Default agent implementations bundled inside Root packages that work out of the 
 - Templates show up in `roots inspect` output
 
 **Acceptance Criteria:**
-- [ ] `ConfigTemplate` model added to manifest schema
-- [ ] Templates serialized in manifest.json
-- [ ] `roots config templates` lists available templates with descriptions
-- [ ] `roots config apply-template` applies all overrides from a template
-- [ ] Templates visible in `roots inspect` output
-- [ ] Tests verify template application on installed process
+- [x] `ConfigTemplate` model added to manifest schema
+- [x] Templates serialized in manifest.json
+- [x] `roots config templates` lists available templates with descriptions
+- [x] `roots config apply-template` applies all overrides from a template
+- [x] Templates visible in `roots inspect` output
+- [x] Tests verify template application on installed process
 
 ### US-004: Package README Rendering
 
@@ -198,12 +198,12 @@ Default agent implementations bundled inside Root packages that work out of the 
   ```
 
 **Acceptance Criteria:**
-- [ ] `roots packages readme package.root` displays README from archive
-- [ ] `roots packages readme incident-response` displays README from installed process
-- [ ] README stored in process metadata during install
-- [ ] Markdown rendered with rich formatting in terminal
-- [ ] Missing README handled gracefully (message, not error)
-- [ ] Tests verify README extraction and storage
+- [x] `roots packages readme package.root` displays README from archive
+- [x] `roots packages readme incident-response` displays README from installed process
+- [x] README stored in process metadata during install
+- [x] Markdown rendered with rich formatting in terminal
+- [x] Missing README handled gracefully (message, not error)
+- [x] Tests verify README extraction and storage
 
 ### US-005: End-to-End Pack → Install → Run
 
@@ -229,12 +229,12 @@ Default agent implementations bundled inside Root packages that work out of the 
   - README explaining the packaging workflow
 
 **Acceptance Criteria:**
-- [ ] End-to-end test passes: pack → inspect → install → run → configure
-- [ ] Process executes successfully with default agents
-- [ ] Config override persists and affects execution
-- [ ] Example package and script exist in examples/packaging/
-- [ ] Test uses in-memory SQLite (fast, hermetic)
-- [ ] Test is self-contained (creates temp files, cleans up)
+- [x] End-to-end test passes: pack → inspect → install → run → configure
+- [x] Process executes successfully with default agents
+- [x] Config override persists and affects execution
+- [x] Example package and script exist in examples/packaging/
+- [x] Test uses in-memory SQLite (fast, hermetic)
+- [x] Test is self-contained (creates temp files, cleans up)
 
 ## Out of Scope
 

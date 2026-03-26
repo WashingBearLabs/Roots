@@ -634,3 +634,121 @@
 - Total attempts: 9
 - Total sessions: 18
 
+
+## Run: Epic root-packaging — 2026-03-25
+
+**Mode:** Guarded (max 3 retries)
+**Branch:** `epic/root-packaging`
+**Specs:** 3 feature specs, 16 stories
+**Completion:** Merge to main
+
+---
+
+
+## Run: epic/root-packaging — 2026-03-25
+- **Epic:** root-packaging
+- **Branch:** epic/root-packaging
+- **Mode:** guarded (max 3 retries)
+- **Feature Specs:** 3 total
+
+### US-001: Root Manifest Schema (Attempt 1) — PASS
+- Completed: 2026-03-25T23:34:50Z
+- Verified by: independent verifier session
+- Learnings: Project uses Pydantic v2 with from __future__ import annotations and field_validator/model_validator patterns; Python binary is python3, not python; Verifier note: Clean implementation. All three Pydantic models match the spec exactly. Validators are correct and well-tested. The __init__.py properly exports all three models. 31 tests all pass in 0.04s.
+- Committed: feat(root-manifest): US-001 - Root Manifest Schema
+
+### US-002: Agent Contract Extraction (Attempt 1) — PASS
+- Completed: 2026-03-25T23:37:43Z
+- Verified by: independent verifier session
+- Learnings: ProcessDefinition nodes have validated config objects (AgentNodeConfig, etc.) after model_validator runs, so isinstance checks work reliably for type narrowing; AgentRegistration.metadata is an optional dict — must check both existence and key presence before accessing description; Verifier note: Clean implementation. Both functions are well-structured, handle edge cases (dedup, missing registry, empty metadata), and are properly exported from the package __init__.py. 17 tests all pass in 0.03s.
+- Committed: feat(root-manifest): US-002 - Agent Contract Extraction
+
+### US-003: Package Archive Format (Attempt 1) — PASS
+- Completed: 2026-03-25T23:40:21Z
+- Verified by: independent verifier session
+- Learnings: RootManifest.model_copy(update={...}) is the clean way to set checksum without mutating the original; zipfile.ZipFile with ZIP_DEFLATED works well for the .root archive format; Verifier note: Clean implementation using stdlib zipfile. All 15 tests pass in 0.05s. Code follows project conventions (from __future__ annotations, Pydantic models). No extra dependencies added. Functions properly exported via __init__.py __all__.
+- Committed: feat(root-manifest): US-003 - Package Archive Format
+
+### US-004: `roots pack` CLI Command (Attempt 1) — PASS
+- Completed: 2026-03-25T23:43:50Z
+- Verified by: independent verifier session
+- Learnings: pack_process delegates to existing extract_agent_contracts, extract_config_overrides, and create_archive — no new dependencies needed; CLI --version flag conflicts with typer's version callback on the main app, but works fine as a command-level option since typer scopes options per command; Roots.pack_process is synchronous (no async needed) since all packaging operations are pure file I/O with no storage backend calls; Verifier note: Clean implementation. All 13 tests pass. End-to-end test with actual example process file succeeds. Code follows existing patterns (imports from packaging submodules, CLI uses typer/rich). The pack_process function correctly orchestrates load -> extract -> manifest -> archive pipeline.
+- Committed: feat(root-manifest): US-004 - `roots pack` CLI Command
+
+### US-005: `roots inspect` CLI Command (Attempt 1) — PASS
+- Completed: 2026-03-25T23:48:31Z
+- Verified by: independent verifier session
+- Learnings: Rich table rendering truncates long paths with ellipsis — test assertions should use substrings that fit within typical column widths; Decision nodes in process YAML require mode (ai_bounded/deterministic/etc) and config-level edges, not top-level edges; inspect_package uses yaml.safe_load to parse process.yaml from archive contents for node/edge statistics; Verifier note: Clean implementation. Uses rich.Panel and rich.Table as specified in hints. All 17 tests pass. Code properly handles edge cases (missing author, missing readme, missing defaults). The _format_schema helper truncates long schemas gracefully. CLI error handling covers FileNotFoundError and generic exceptions.
+- Committed: feat(root-manifest): US-005 - `roots inspect` CLI Command
+
+### US-006: ProcessDefinition Metadata Extension (Attempt 1) — PASS
+- Completed: 2026-03-25T23:52:06Z
+- Verified by: independent verifier session
+- Learnings: ProcessDefinition.model_dump(mode='json') serializes BaseModel configs to empty dicts that lose their fields — must manually re-dump node configs for proper round-trip testing; Adding a Pydantic field with Field(default_factory=dict) requires no changes to storage backends or parsing functions since model_dump/model_validate handle it automatically; Verifier note: Clean implementation. Single line added to schema using Field(default_factory=dict) which is the correct Pydantic pattern. Tests are thorough covering backward compat, round-trips through JSON/YAML/model_dump, and empty metadata edge case.
+- Committed: feat(root-manifest): US-006 - ProcessDefinition Metadata Extension
+
+### US-001: Package Loading and Validation (Attempt 1) — PASS
+- Completed: 2026-03-25T23:59:43Z
+- Verified by: independent verifier session
+- Learnings: validate_package reads the archive once with zipfile.ZipFile directly rather than using read_archive to avoid its checksum ValueError — validation should return error strings, not raise; parse_process_dict already calls recompute_fork_join_map so no need to do it separately; load_package double-reads the archive (once for validation, once for loading) which is acceptable for correctness — validation must complete fully before loading; Verifier note: Clean implementation. All 17 tests pass. Code follows the implementation hints closely: validate_package returns list[str], load_package returns tuple of manifest/process/contents and raises ValueError on failure. Error messages are specific and include file context. Exports added to __init__.py correctly.
+- Committed: feat(root-install): US-001 - Package Loading and Validation
+
+### US-002: Agent Contract Validation (Attempt 1) — PASS
+- Completed: 2026-03-26T00:03:33Z
+- Verified by: independent verifier session
+- Learnings: AgentRegistration.model_dump with exclude={'callable'} serializes registrations to JSON-safe dicts for ContractMatch; Schema compatibility heuristic: check required properties exist in registration with compatible types — no need for full jsonschema subset validation; Verifier note: Implementation is clean and well-structured. Models match the spec exactly. Schema compatibility uses the specified heuristic (required properties + type checking). Tests are comprehensive with 17 tests covering all acceptance criteria. All tests pass.
+- Committed: feat(root-install): US-002 - Agent Contract Validation
+
+### US-003: `roots install` CLI Command (Attempt 1) — PASS
+- Completed: 2026-03-26T00:07:56Z
+- Verified by: independent verifier session
+- Learnings: install_package is async because it needs storage.get_process, storage.save_process, and storage.delete_process which are all async; The --apply-defaults flag is a forward reference to feature-root-defaults — flag is accepted but defaults loading is not yet implemented; Existing process deletion before re-save is needed because save_process doesn't support upsert — delete then save for force overwrite; Verifier note: Implementation is clean and complete. All 8 acceptance criteria are met. 13 tests in test_install.py pass, plus 17 in test_installer.py (from prior stories). The installer correctly handles the full flow: validation, loading, duplicate detection, force overwrite, metadata storage, contract validation, and reporting. The CLI renders a well-formatted installation report with agent status, configurable parameters, and next steps. The Roots class exposes a programmatic API that delegates to the installer module.
+- Committed: feat(root-install): US-003 - `roots install` CLI Command
+
+### US-004: Configuration Override Application (Attempt 1) — PASS
+- Completed: 2026-03-26T00:12:52Z
+- Verified by: independent verifier session
+- Learnings: ProcessDefinition.model_dump(mode='json') serializes BaseModel configs to empty dicts — must manually re-dump node configs via node.config.model_dump(mode='json') before modifying serialized data; Storage doesn't support upsert so config set/apply must delete_process then save_process for persistence; extract_config_overrides uses 'nodes.<id>.config.retry.<field>' path convention even though retry lives on NodeDefinition not inside config — the override path is a user-facing abstraction; Verifier note: Clean implementation. All 8 acceptance criteria met. 22 tests pass. Code follows project conventions with proper error handling, type coercion, and immutable process updates. CLI commands are well-structured with appropriate validation. The packaging __init__.py properly exports all new symbols.
+- Committed: feat(root-install): US-004 - Configuration Override Application
+
+### US-005: Installed Package Tracking (Attempt 1) — PASS
+- Completed: 2026-03-26T00:17:56Z
+- Verified by: independent verifier session
+- Learnings: Storage create_run defaults to 'pending' status — must call update_run_status to set 'running' for active run tests; _manifest_from_process builds a RootManifest from process metadata + extract_agent_contracts for contract validation without needing the original archive; ProcessDefinition.description is Optional[str] — must use 'or ""' when passing to RootManifest which requires str; Verifier note: Clean implementation. tracker.py provides the core logic with proper dataclasses. CLI commands follow existing patterns (typer subgroup, asyncio.run wrapper, Rich console output). Roots class methods properly delegate to tracker functions. Tests are thorough with proper fixtures and cover both happy paths and edge cases. No regressions — full suite passes.
+- Committed: feat(root-install): US-005 - Installed Package Tracking
+
+### US-001: Default Agent Loading (Attempt 1) — PASS
+- Completed: 2026-03-26T00:28:59Z
+- Verified by: independent verifier session
+- Learnings: Roots.register_agent is async but defaults modules are synchronous — _SyncRegistrationProxy bridges this by calling _agent_registry.register_local directly; importlib.util.find_spec raises ModuleNotFoundError for missing parent packages rather than returning None — must catch and convert; _ensure_init_files is needed to create __init__.py files in extracted defaults directories for package imports to work; Verifier note: All 7 acceptance criteria are met. 9 tests pass. Implementation is clean with proper cleanup of sys.path and sys.modules, error handling for missing modules and missing register_agents function, and a sync proxy to bridge the async/sync gap.
+- Committed: feat(root-defaults): US-001 - Default Agent Loading
+
+### US-002: Default Agent Scaffolding (Attempt 1) — PASS
+- Completed: 2026-03-26T00:32:38Z
+- Verified by: independent verifier session
+- Learnings: extract_agent_contracts returns sorted contracts with no registry — schemas are None when no registry is provided, so scaffold stubs handle None schemas gracefully; The pack CLI command uses early-return pattern for --scaffold-defaults since it's a dev-time convenience that doesn't produce a .root archive; Verifier note: Clean implementation. 4 files changed, 500 lines added. Code is well-structured with clear separation between scaffolding logic and CLI integration. Tests are thorough with both integration tests (using process YAML files) and unit tests for individual functions.
+- Committed: feat(root-defaults): US-002 - Default Agent Scaffolding
+
+### US-003: Configuration Templates (Attempt 1) — PASS
+- Completed: 2026-03-26T00:36:37Z
+- Verified by: independent verifier session
+- Learnings: Config templates are stored in process.metadata['config_templates'] during install so CLI can access them without needing the original archive; apply_template reuses apply_override sequentially for each override in the template, getting constraint validation for free; Verifier note: Clean implementation. All six acceptance criteria are met. The ConfigTemplate model, CLI commands, inspect integration, installer metadata storage, and tests are all present and correct. 100 tests pass with no failures.
+- Committed: feat(root-defaults): US-003 - Configuration Templates
+
+### US-004: Package README Rendering (Attempt 1) — PASS
+- Completed: 2026-03-26T00:39:38Z
+- Verified by: independent verifier session
+- Learnings: README.md is already bundled into .root archives by create_archive when it exists alongside process.yaml; load_package returns archive contents dict which includes README.md bytes — used during install to store in metadata; rich.Markdown renders markdown content with terminal formatting for CLI display; Verifier note: Clean implementation. All 6 acceptance criteria are met. Both test_readme.py (8 passed) and test_installer.py (17 passed) run green. The code follows existing patterns in the CLI and installer modules.
+- Committed: feat(root-defaults): US-004 - Package README Rendering
+
+### US-005: End-to-End Pack → Install → Run (Attempt 1) — PASS
+- Completed: 2026-03-26T00:45:06Z
+- Verified by: independent verifier session
+- Learnings: pack_process sets defaults_module='defaults' (the top-level package name), so register_agents must be in defaults/__init__.py not a submodule; Deterministic decision nodes work well for e2e tests — no LLM needed, conditions evaluated via simpleeval; In-memory SQLite (':memory:') with async Roots context manager provides fast hermetic tests; Verifier note: All 6 acceptance criteria are met. Full test suite passes (1173 passed, 80 skipped, 0 failures). Minor note: there is a UserWarning about 'Duplicate name: defaults/__init__.py' in the zip archive — cosmetic, does not affect functionality.
+- Committed: feat(root-defaults): US-005 - End-to-End Pack → Install → Run
+
+### Execution Complete — 2026-03-26T00:52:06Z
+- Stories: 16/16 completed
+- Total attempts: 16
+- Total sessions: 35
+
