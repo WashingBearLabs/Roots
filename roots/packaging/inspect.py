@@ -28,7 +28,7 @@ def _format_schema(schema: dict[str, Any] | None) -> str:
         parts.append(f"{key}: {vtype}")
     result = "{" + ", ".join(parts)
     if len(result) > 60:
-        result = result[:57] + "..."
+        result = result[:56] + "...}"
     else:
         result += "}"
     return result

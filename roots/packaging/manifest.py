@@ -83,6 +83,27 @@ class RootManifest(BaseModel):
     readme_file: str | None = "README.md"
     checksum: str | None = None
 
+    @field_validator("defaults_module")
+    @classmethod
+    def validate_defaults_module(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if not re.match(r"^defaults(\.[a-zA-Z_][a-zA-Z0-9_]*)*$", v):
+            raise ValueError(
+                f"defaults_module must start with 'defaults' and contain only "
+                f"valid Python identifiers: {v!r}"
+            )
+        return v
+
+    @field_validator("process_file")
+    @classmethod
+    def validate_process_file(cls, v: str) -> str:
+        if ".." in v or v.startswith("/"):
+            raise ValueError(
+                f"process_file must be a simple relative path: {v!r}"
+            )
+        return v
+
     @field_validator("package_id")
     @classmethod
     def validate_package_id(cls, v: str) -> str:

@@ -71,27 +71,40 @@ def load_defaults(
         for name, data in archive_contents.items():
             if name.startswith(defaults_dir_prefix) or name == module_parts[0]:
                 dest = tmp_path / name
+                # Prevent path traversal (zip-slip)
+                if not dest.resolve().is_relative_to(tmp_path.resolve()):
+                    raise ValueError(
+                        f"Path traversal detected in archive entry: {name!r}"
+                    )
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 dest.write_bytes(data)
 
         # Ensure __init__.py files exist for package imports
         _ensure_init_files(tmp_path / module_parts[0])
 
-        # Add tmp_dir to sys.path so the module can be imported
+        # Resolve the module file directly — avoids sys.path manipulation
+        # which could shadow stdlib/installed packages.
         module_name = manifest.defaults_module
-        sys.path.insert(0, tmp_dir)
+        module_file = tmp_path / Path(*module_parts[:-1]) / (module_parts[-1] + ".py")
+        if not module_file.exists():
+            # Try as a package (__init__.py)
+            module_file = tmp_path / Path(*module_parts) / "__init__.py"
+        if not module_file.exists():
+            raise ImportError(
+                f"Could not find module '{module_name}' in extracted defaults"
+            )
+
         try:
-            try:
-                spec = importlib.util.find_spec(module_name)
-            except ModuleNotFoundError:
-                spec = None
-            if spec is None:
+            spec = importlib.util.spec_from_file_location(
+                module_name, module_file
+            )
+            if spec is None or spec.loader is None:
                 raise ImportError(
-                    f"Could not find module '{module_name}' in extracted defaults"
+                    f"Could not load module '{module_name}' from {module_file}"
                 )
             module = importlib.util.module_from_spec(spec)
             sys.modules[module_name] = module
-            spec.loader.exec_module(module)  # type: ignore[union-attr]
+            spec.loader.exec_module(module)
 
             if not hasattr(module, "register_agents"):
                 raise AttributeError(
@@ -103,7 +116,6 @@ def load_defaults(
             registered: list[str] = module.register_agents(proxy)
             return registered
         finally:
-            sys.path.remove(tmp_dir)
             # Clean up sys.modules to avoid stale references
             for key in list(sys.modules):
                 if key == module_name or key.startswith(module_name + "."):
