@@ -687,3 +687,33 @@
 - Learnings: ProcessDefinition.model_dump(mode='json') serializes BaseModel configs to empty dicts that lose their fields — must manually re-dump node configs for proper round-trip testing; Adding a Pydantic field with Field(default_factory=dict) requires no changes to storage backends or parsing functions since model_dump/model_validate handle it automatically; Verifier note: Clean implementation. Single line added to schema using Field(default_factory=dict) which is the correct Pydantic pattern. Tests are thorough covering backward compat, round-trips through JSON/YAML/model_dump, and empty metadata edge case.
 - Committed: feat(root-manifest): US-006 - ProcessDefinition Metadata Extension
 
+### US-001: Package Loading and Validation (Attempt 1) — PASS
+- Completed: 2026-03-25T23:59:43Z
+- Verified by: independent verifier session
+- Learnings: validate_package reads the archive once with zipfile.ZipFile directly rather than using read_archive to avoid its checksum ValueError — validation should return error strings, not raise; parse_process_dict already calls recompute_fork_join_map so no need to do it separately; load_package double-reads the archive (once for validation, once for loading) which is acceptable for correctness — validation must complete fully before loading; Verifier note: Clean implementation. All 17 tests pass. Code follows the implementation hints closely: validate_package returns list[str], load_package returns tuple of manifest/process/contents and raises ValueError on failure. Error messages are specific and include file context. Exports added to __init__.py correctly.
+- Committed: feat(root-install): US-001 - Package Loading and Validation
+
+### US-002: Agent Contract Validation (Attempt 1) — PASS
+- Completed: 2026-03-26T00:03:33Z
+- Verified by: independent verifier session
+- Learnings: AgentRegistration.model_dump with exclude={'callable'} serializes registrations to JSON-safe dicts for ContractMatch; Schema compatibility heuristic: check required properties exist in registration with compatible types — no need for full jsonschema subset validation; Verifier note: Implementation is clean and well-structured. Models match the spec exactly. Schema compatibility uses the specified heuristic (required properties + type checking). Tests are comprehensive with 17 tests covering all acceptance criteria. All tests pass.
+- Committed: feat(root-install): US-002 - Agent Contract Validation
+
+### US-003: `roots install` CLI Command (Attempt 1) — PASS
+- Completed: 2026-03-26T00:07:56Z
+- Verified by: independent verifier session
+- Learnings: install_package is async because it needs storage.get_process, storage.save_process, and storage.delete_process which are all async; The --apply-defaults flag is a forward reference to feature-root-defaults — flag is accepted but defaults loading is not yet implemented; Existing process deletion before re-save is needed because save_process doesn't support upsert — delete then save for force overwrite; Verifier note: Implementation is clean and complete. All 8 acceptance criteria are met. 13 tests in test_install.py pass, plus 17 in test_installer.py (from prior stories). The installer correctly handles the full flow: validation, loading, duplicate detection, force overwrite, metadata storage, contract validation, and reporting. The CLI renders a well-formatted installation report with agent status, configurable parameters, and next steps. The Roots class exposes a programmatic API that delegates to the installer module.
+- Committed: feat(root-install): US-003 - `roots install` CLI Command
+
+### US-004: Configuration Override Application (Attempt 1) — PASS
+- Completed: 2026-03-26T00:12:52Z
+- Verified by: independent verifier session
+- Learnings: ProcessDefinition.model_dump(mode='json') serializes BaseModel configs to empty dicts — must manually re-dump node configs via node.config.model_dump(mode='json') before modifying serialized data; Storage doesn't support upsert so config set/apply must delete_process then save_process for persistence; extract_config_overrides uses 'nodes.<id>.config.retry.<field>' path convention even though retry lives on NodeDefinition not inside config — the override path is a user-facing abstraction; Verifier note: Clean implementation. All 8 acceptance criteria met. 22 tests pass. Code follows project conventions with proper error handling, type coercion, and immutable process updates. CLI commands are well-structured with appropriate validation. The packaging __init__.py properly exports all new symbols.
+- Committed: feat(root-install): US-004 - Configuration Override Application
+
+### US-005: Installed Package Tracking (Attempt 1) — PASS
+- Completed: 2026-03-26T00:17:56Z
+- Verified by: independent verifier session
+- Learnings: Storage create_run defaults to 'pending' status — must call update_run_status to set 'running' for active run tests; _manifest_from_process builds a RootManifest from process metadata + extract_agent_contracts for contract validation without needing the original archive; ProcessDefinition.description is Optional[str] — must use 'or ""' when passing to RootManifest which requires str; Verifier note: Clean implementation. tracker.py provides the core logic with proper dataclasses. CLI commands follow existing patterns (typer subgroup, asyncio.run wrapper, Rich console output). Roots class methods properly delegate to tracker functions. Tests are thorough with proper fixtures and cover both happy paths and edge cases. No regressions — full suite passes.
+- Committed: feat(root-install): US-005 - Installed Package Tracking
+

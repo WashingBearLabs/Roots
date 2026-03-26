@@ -10,7 +10,7 @@
 > **TEMPLATE_INTENT:** Persistent record of code quality, security, and intent alignment findings from automated validation. Tracks findings across sessions with status tracking and archival.
 
 > Last updated: 2026-03-25
-> Updated by: Claude (validate-feature — feature-root-manifest)
+> Updated by: Claude (validate-feature — feature-root-install)
 
 ---
 
@@ -36,6 +36,117 @@
 
 <!-- Newest findings at top. Each entry has a unique ID: YYYY-MM-DD-NNN -->
 <!-- Findings are added by /kit-tools:validate-feature -->
+
+### 2026-03-25 — feature-root-install Validation
+
+| ID | Category | Severity | File | Status |
+|----|----------|----------|------|--------|
+| 2026-03-25-201 | quality | warning | `roots/cli/main.py` | open |
+| 2026-03-25-202 | quality | warning | `roots/cli/main.py` | open |
+| 2026-03-25-203 | quality | warning | `roots/cli/main.py` | open |
+| 2026-03-25-204 | quality | warning | `roots/cli/main.py` | open |
+| 2026-03-25-205 | quality | warning | `roots/cli/main.py` | open |
+| 2026-03-25-206 | quality | warning | `roots/packaging/installer.py` | open |
+| 2026-03-25-207 | quality | warning | `roots/packaging/inspect.py` | open |
+| 2026-03-25-208 | quality | warning | `roots/packaging/inspect.py` | open |
+| 2026-03-25-209 | quality | warning | `roots/__init__.py` | open |
+| 2026-03-25-210 | quality | warning | `roots/packaging/tracker.py` | open |
+| 2026-03-25-211 | quality | info | `roots/cli/main.py` | open |
+| 2026-03-25-212 | quality | info | `roots/__init__.py` | open |
+| 2026-03-25-213 | quality | info | `roots/packaging/config.py` | open |
+| 2026-03-25-214 | quality | info | `roots/packaging/__init__.py` | open |
+| 2026-03-25-215 | quality | info | `roots/packaging/inspect.py` | open |
+| 2026-03-25-216 | security | warning | `roots/packaging/archive.py` | open |
+| 2026-03-25-217 | security | warning | `roots/packaging/installer.py` | open |
+| 2026-03-25-218 | security | warning | `roots/packaging/installer.py` | open |
+| 2026-03-25-219 | security | warning | `roots/packaging/archive.py` | open |
+| 2026-03-25-220 | security | warning | `roots/packaging/pack.py` | open |
+| 2026-03-25-221 | security | info | `roots/packaging/manifest.py` | open |
+| 2026-03-25-222 | security | info | `roots/cli/main.py` | open |
+| 2026-03-25-223 | security | info | `roots/packaging/archive.py` | open |
+| 2026-03-25-224 | compliance | info | `roots/__init__.py` | open |
+| 2026-03-25-225 | compliance | info | `roots/packaging/installer.py` | open |
+| 2026-03-25-226 | testing | info | `test suite` | open |
+
+**2026-03-25-201** — Unused imports in `install` CLI command: `RootManifest` and `ContractReport` are imported but never used.
+> Recommendation: Remove the unused imports.
+
+**2026-03-25-202** — Bare `except Exception` in `_check_agent_health` (line 407) swallows all errors without logging, making debugging difficult.
+> Recommendation: Include `str(exc)` in the result dict so users can diagnose connectivity issues.
+
+**2026-03-25-203** — Duplicated backend creation pattern (DSN check + backend init) appears 6 times across CLI helpers.
+> Recommendation: Extract a shared `_create_backend(storage: str) -> StorageBackend` helper.
+
+**2026-03-25-204** — `install` command calls `asyncio.run()` multiple times in one function (once via `create_roots_from_options`, once directly), creating/destroying event loops repeatedly.
+> Recommendation: Restructure to a single `asyncio.run()` wrapping an async function for all async work.
+
+**2026-03-25-205** — `config_set` and `config_apply` perform non-atomic delete+save on process storage. Crash between delete and save loses data.
+> Recommendation: Wrap delete+save in error handling, or use an atomic update pattern.
+
+**2026-03-25-206** — `load_package` reads the zip archive twice — once in `validate_package`, once after. Inefficient for large archives.
+> Recommendation: Refactor to optionally return parsed contents from validation, or share a single read pass.
+
+**2026-03-25-207** — `inspect_package` is ~140 lines mixing checksum verification, YAML parsing, and Rich output formatting.
+> Recommendation: Extract sub-functions for distinct concerns: `_verify_checksum`, `_parse_process_stats`, `_print_header`, etc.
+
+**2026-03-25-208** — Checksum verification in `inspect_package` duplicates logic already in `read_archive`. If `read_archive` checksum fails, ValueError is raised before inspect can show a formatted error.
+> Recommendation: Catch ValueError from `read_archive` or use `list_archive_contents` to avoid double-validation.
+
+**2026-03-25-209** — `install_package` method uses `archive_path: str | Any` — `Any` is overly permissive, masking the actual type (`str | Path`).
+> Recommendation: Change to `archive_path: str | Path`.
+
+**2026-03-25-210** — `get_package_status` and `uninstall_package` both scan all processes to find one by `package_id` — duplicated lookup logic.
+> Recommendation: Extract a shared `_find_process_by_package_id()` async helper.
+
+**2026-03-25-211** — `roots/cli/main.py` is 992 lines containing all CLI commands in a single module. Several functions exceed 50 lines.
+> Recommendation: Consider splitting into separate modules (e.g., `cli/install.py`, `cli/config.py`, `cli/packages.py`).
+
+**2026-03-25-212** — Several Roots methods (lines 330-407) use deferred imports inside method bodies without comments explaining why.
+> Recommendation: Add a brief comment at first deferred import (e.g., `# Deferred to avoid circular import`).
+
+**2026-03-25-213** — `_coerce_value` silently returns original value for unrecognized `value_type` values.
+> Recommendation: Raise `ConfigError` for unrecognized types, or log a warning.
+
+**2026-03-25-214** — `__all__` list has `read_archive` out of alphabetical order.
+> Recommendation: Move to correct alphabetical position.
+
+**2026-03-25-215** — `import yaml` on line 84 of inspect.py is inside the function body, inconsistent with other packaging modules.
+> Recommendation: Move to module-level imports for consistency.
+
+**2026-03-25-216** — `read_archive` reads all zip entries without size/count limits. No protection against zip bombs exhausting memory. No validation of entry names for path traversal patterns.
+> Recommendation: Add decompressed size limit, file count limit, and reject entries with `..` or absolute paths.
+
+**2026-03-25-217** — `validate_package` and `load_package` read all zip contents into memory without size limits. Large crafted archives could exhaust memory.
+> Recommendation: Check `zf.getinfo(name).file_size` before reading each entry; enforce a total decompressed size cap.
+
+**2026-03-25-218** — `manifest.process_file` is attacker-controlled data from archive. No validation against path traversal patterns in the RootManifest schema.
+> Recommendation: Add a field validator on `process_file` rejecting values with `..`, absolute paths, or unusual path separators.
+
+**2026-03-25-219** — `create_archive` follows symlinks via `rglob("*")` when bundling defaults/ and config/ directories. Symlinks outside the source tree would leak files.
+> Recommendation: Verify resolved paths are within the expected parent directory, or skip symlinks.
+
+**2026-03-25-220** — `pack_process` traverses `include_defaults` directory with `rglob("*")` following symlinks without path containment validation.
+> Recommendation: Add symlink checks or path containment validation before including files.
+
+**2026-03-25-221** — `RootManifest` fields `process_file`, `readme_file`, and `defaults_module` lack validation constraining them to safe filenames. `defaults_module` is used with `.replace(".", "/")` to construct a path prefix.
+> Recommendation: Add field validators ensuring safe characters and no `..` sequences.
+
+**2026-03-25-222** — PostgreSQL DSN (potentially containing credentials) is passed as plain string through `ctx.obj["storage"]`. Current masking in logs is good but may not cover all error paths.
+> Recommendation: Ensure DSN credential masking is consistent across all error paths.
+
+**2026-03-25-223** — `create_archive` `extra_files` parameter allows arbitrary `arcname` keys without validation for path traversal.
+> Recommendation: Validate `arcname` values to reject `..` or absolute paths (defense-in-depth).
+
+**2026-03-25-224** — Programmatic API methods use `-> Any` return types instead of concrete types (ContractReport, InstalledPackage, PackageStatus), losing type safety.
+> Recommendation: Import and use concrete return types for better IDE support and API clarity.
+
+**2026-03-25-225** — `load_package` reads the archive twice (once for validation, once for loading). Stylistic divergence from spec hint to reuse `read_archive()`.
+> Recommendation: No action required — functionally correct. Could optionally refactor for consistency.
+
+**2026-03-25-226** — Test suite: 1124 passed, 80 skipped, 0 failed (24.42s). Full suite healthy.
+> Recommendation: None — all tests passing.
+
+---
 
 ### 2026-03-25 — feature-root-manifest Validation
 
