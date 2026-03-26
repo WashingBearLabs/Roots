@@ -198,12 +198,12 @@ Default agent implementations bundled inside Root packages that work out of the 
   ```
 
 **Acceptance Criteria:**
-- [ ] `roots packages readme package.root` displays README from archive
-- [ ] `roots packages readme incident-response` displays README from installed process
-- [ ] README stored in process metadata during install
-- [ ] Markdown rendered with rich formatting in terminal
-- [ ] Missing README handled gracefully (message, not error)
-- [ ] Tests verify README extraction and storage
+- [x] `roots packages readme package.root` displays README from archive
+- [x] `roots packages readme incident-response` displays README from installed process
+- [x] README stored in process metadata during install
+- [x] Markdown rendered with rich formatting in terminal
+- [x] Missing README handled gracefully (message, not error)
+- [x] Tests verify README extraction and storage
 
 ### US-005: End-to-End Pack → Install → Run
 
