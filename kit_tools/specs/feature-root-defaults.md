@@ -113,12 +113,12 @@ Default agent implementations bundled inside Root packages that work out of the 
 - This is a development-time convenience — the author runs `roots pack --scaffold-defaults`, fills in the stubs, then packs again with `--include-defaults defaults/`
 
 **Acceptance Criteria:**
-- [ ] `--scaffold-defaults` creates a defaults/ directory with agents.py
-- [ ] Generated stubs match extracted agent contracts (names, schemas in docstrings)
-- [ ] Generated `register_agents` function registers all agents
-- [ ] Stubs return minimal valid output matching output schema structure
-- [ ] Generated code is syntactically valid Python
-- [ ] Tests verify scaffold generation for a multi-agent process
+- [x] `--scaffold-defaults` creates a defaults/ directory with agents.py
+- [x] Generated stubs match extracted agent contracts (names, schemas in docstrings)
+- [x] Generated `register_agents` function registers all agents
+- [x] Stubs return minimal valid output matching output schema structure
+- [x] Generated code is syntactically valid Python
+- [x] Tests verify scaffold generation for a multi-agent process
 
 ### US-003: Configuration Templates
 
