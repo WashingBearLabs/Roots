@@ -1080,6 +1080,63 @@ def packages_status(
             )
 
 
+@packages_app.command("readme")
+def packages_readme(
+    ctx: typer.Context,
+    package: str = typer.Argument(
+        ...,
+        help="Path to a .root file or an installed process ID.",
+    ),
+) -> None:
+    """Display the README for a Root package."""
+    import asyncio
+    from pathlib import Path as _Path
+
+    from rich.markdown import Markdown
+
+    console = Console()
+
+    path = _Path(package)
+    if path.is_file() and path.suffix == ".root":
+        # Extract README from archive
+        from roots.packaging.archive import read_archive
+
+        try:
+            _manifest, contents = read_archive(path)
+        except Exception as exc:
+            typer.echo(typer.style(f"Error: {exc}", fg=typer.colors.RED))
+            raise typer.Exit(code=1)
+
+        if "README.md" not in contents:
+            console.print("No README found in package.")
+            return
+
+        readme_text = contents["README.md"].decode("utf-8")
+        console.print(Markdown(readme_text))
+        return
+
+    # Treat as installed process ID — look up in storage
+    storage = ctx.obj["storage"]
+    roots_instance = create_roots_from_options(storage)
+
+    process = asyncio.run(roots_instance.storage.get_process(package))
+    if process is None:
+        typer.echo(
+            typer.style(
+                f"No .root file or installed process found: {package}",
+                fg=typer.colors.RED,
+            )
+        )
+        raise typer.Exit(code=1)
+
+    readme_text = process.metadata.get("readme")
+    if not readme_text:
+        console.print(f"No README stored for process '{package}'.")
+        return
+
+    console.print(Markdown(readme_text))
+
+
 @packages_app.command("uninstall")
 def packages_uninstall(
     ctx: typer.Context,

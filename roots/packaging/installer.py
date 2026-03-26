@@ -312,6 +312,8 @@ async def install_package(
         process.metadata["config_templates"] = [
             t.model_dump(mode="json") for t in manifest.config_templates
         ]
+    if "README.md" in _contents:
+        process.metadata["readme"] = _contents["README.md"].decode("utf-8")
 
     # Save (or overwrite) the process
     if existing is not None and force:
