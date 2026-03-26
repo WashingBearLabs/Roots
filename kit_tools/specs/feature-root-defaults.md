@@ -159,12 +159,12 @@ Default agent implementations bundled inside Root packages that work out of the 
 - Templates show up in `roots inspect` output
 
 **Acceptance Criteria:**
-- [ ] `ConfigTemplate` model added to manifest schema
-- [ ] Templates serialized in manifest.json
-- [ ] `roots config templates` lists available templates with descriptions
-- [ ] `roots config apply-template` applies all overrides from a template
-- [ ] Templates visible in `roots inspect` output
-- [ ] Tests verify template application on installed process
+- [x] `ConfigTemplate` model added to manifest schema
+- [x] Templates serialized in manifest.json
+- [x] `roots config templates` lists available templates with descriptions
+- [x] `roots config apply-template` applies all overrides from a template
+- [x] Templates visible in `roots inspect` output
+- [x] Tests verify template application on installed process
 
 ### US-004: Package README Rendering
 
