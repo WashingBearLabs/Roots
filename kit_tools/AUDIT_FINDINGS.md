@@ -10,7 +10,7 @@
 > **TEMPLATE_INTENT:** Persistent record of code quality, security, and intent alignment findings from automated validation. Tracks findings across sessions with status tracking and archival.
 
 > Last updated: 2026-03-25
-> Updated by: Claude (validate-feature — feature-root-install)
+> Updated by: Claude (validate-feature — feature-root-defaults)
 
 ---
 
@@ -36,6 +36,89 @@
 
 <!-- Newest findings at top. Each entry has a unique ID: YYYY-MM-DD-NNN -->
 <!-- Findings are added by /kit-tools:validate-feature -->
+
+### 2026-03-25 — feature-root-defaults Validation
+
+| ID | Category | Severity | File | Status |
+|----|----------|----------|------|--------|
+| 2026-03-25-301 | security | warning | `roots/packaging/defaults.py` | resolved |
+| 2026-03-25-302 | security | warning | `roots/packaging/manifest.py` | resolved |
+| 2026-03-25-303 | security | warning | `roots/packaging/defaults.py` | resolved |
+| 2026-03-25-304 | security | warning | `roots/packaging/manifest.py` | resolved |
+| 2026-03-25-305 | security | warning | `roots/packaging/defaults.py` | dismissed |
+| 2026-03-25-306 | quality | warning | `roots/packaging/inspect.py` | resolved |
+| 2026-03-25-307 | quality | warning | `roots/packaging/inspect.py` | open |
+| 2026-03-25-308 | quality | warning | `roots/packaging/inspect.py` | open |
+| 2026-03-25-309 | quality | warning | `roots/cli/main.py` | open |
+| 2026-03-25-310 | quality | warning | `roots/cli/main.py` | open |
+| 2026-03-25-311 | quality | warning | `roots/packaging/installer.py` | open |
+| 2026-03-25-312 | security | info | `roots/packaging/archive.py` | open |
+| 2026-03-25-313 | security | info | `roots/packaging/scaffold.py` | open |
+| 2026-03-25-314 | security | info | `roots/cli/main.py` | open |
+| 2026-03-25-315 | quality | info | `roots/__init__.py` | open |
+| 2026-03-25-316 | quality | info | `roots/packaging/defaults.py` | open |
+| 2026-03-25-317 | quality | info | `roots/packaging/__init__.py` | open |
+| 2026-03-25-318 | quality | info | `roots/packaging/config.py` | open |
+| 2026-03-25-319 | testing | info | test suite | open |
+
+**2026-03-25-301** — Path traversal in file extraction from archive. Malicious archive entries with `..` components could write outside temp directory.
+> Recommendation: Add `dest.resolve().is_relative_to(tmp_path.resolve())` check. **RESOLVED:** Fix applied — path traversal guard added.
+
+**2026-03-25-302** — No validation on `defaults_module` manifest field. Could reference arbitrary Python modules (e.g. "os", "subprocess").
+> Recommendation: Restrict to `^defaults(\.[a-zA-Z_][a-zA-Z0-9_]*)*$`. **RESOLVED:** Validator added to RootManifest.
+
+**2026-03-25-303** — `sys.path.insert(0, tmp_dir)` could shadow stdlib/installed packages if module name collides.
+> Recommendation: Use `spec_from_file_location` for isolated import. **RESOLVED:** Replaced sys.path manipulation with direct file-based import.
+
+**2026-03-25-304** — No validation on `process_file` manifest field. Could contain path traversal.
+> Recommendation: Reject values containing `..` or absolute prefixes. **RESOLVED:** Validator added to RootManifest.
+
+**2026-03-25-305** — Dynamic code execution via `importlib` in `load_defaults` runs arbitrary Python from packages with full process privileges.
+> **DISMISSED:** By design per feature spec. The spec explicitly acknowledges this risk and documents mitigations: opt-in `--apply-defaults` flag, printed security warning. Future package signing is out of scope. Hardened in this validation via findings 301-304.
+
+**2026-03-25-306** — `_format_schema` truncation drops closing brace, producing unbalanced output like `{key1: string, key2: int...` without `}`.
+> Recommendation: Use `result[:56] + "...}"`. **RESOLVED:** Fix applied.
+
+**2026-03-25-307** — `inspect_package` function is ~150 lines of logic, well above 50-line guideline.
+> Recommendation: Extract subsections into helper functions (`_print_header`, `_print_agents`, etc.).
+
+**2026-03-25-308** — `import yaml` inside `inspect_package` function body rather than at module level.
+> Recommendation: Move to top-level imports for consistency with rest of packaging module.
+
+**2026-03-25-309** — `install` CLI command function >100 lines combining validation, installation, and output.
+> Recommendation: Extract output formatting into `_print_install_summary()`.
+
+**2026-03-25-310** — Bare `except Exception` in `_check_agent_health` silently swallows all exceptions.
+> Recommendation: Narrow to `except (httpx.HTTPError, OSError)` or log at debug level.
+
+**2026-03-25-311** — `load_package` reads zip archive twice — once in `validate_package`, once after.
+> Recommendation: Refactor to return parsed contents from validation in a single pass.
+
+**2026-03-25-312** — `read_archive` reads all zip entries into memory without size limits. Zip bomb risk.
+> Recommendation: Add max uncompressed size check (e.g., 100MB threshold).
+
+**2026-03-25-313** — Scaffold generates code with raw `contract.name` in string literals. Quotes/backslashes in names could produce malformed code.
+> Recommendation: Use `repr()` for agent name strings in generated code.
+
+**2026-03-25-314** — PostgreSQL DSN on CLI `--storage` option may contain credentials visible in shell history.
+> Recommendation: Support env var references as alternative to command-line credentials.
+
+**2026-03-25-315** — Packaging methods on `Roots` class return `Any` instead of concrete types.
+> Recommendation: Use `TYPE_CHECKING` conditional imports for proper return annotations.
+
+**2026-03-25-316** — Security warning in `load_defaults` uses bare `print()` instead of logging/rich.
+> Recommendation: Use `warnings.warn()` or rich console for consistency.
+
+**2026-03-25-317** — `__all__` list in `roots/packaging/__init__.py` not sorted alphabetically.
+> Recommendation: Sort for maintainability.
+
+**2026-03-25-318** — `apply_override` function ~90 lines with mixed concerns.
+> Recommendation: Extract serialization round-trip and field mutation into helpers.
+
+**2026-03-25-319** — Test suite: 1173 passed, 80 skipped, 0 failures. Duplicate zip entry warning in e2e test.
+> Note: All tests pass. Skipped tests are unrelated (MCP gateway, etc.).
+
+---
 
 ### 2026-03-25 — feature-root-install Validation
 

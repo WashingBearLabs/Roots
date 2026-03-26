@@ -717,3 +717,33 @@
 - Learnings: Storage create_run defaults to 'pending' status — must call update_run_status to set 'running' for active run tests; _manifest_from_process builds a RootManifest from process metadata + extract_agent_contracts for contract validation without needing the original archive; ProcessDefinition.description is Optional[str] — must use 'or ""' when passing to RootManifest which requires str; Verifier note: Clean implementation. tracker.py provides the core logic with proper dataclasses. CLI commands follow existing patterns (typer subgroup, asyncio.run wrapper, Rich console output). Roots class methods properly delegate to tracker functions. Tests are thorough with proper fixtures and cover both happy paths and edge cases. No regressions — full suite passes.
 - Committed: feat(root-install): US-005 - Installed Package Tracking
 
+### US-001: Default Agent Loading (Attempt 1) — PASS
+- Completed: 2026-03-26T00:28:59Z
+- Verified by: independent verifier session
+- Learnings: Roots.register_agent is async but defaults modules are synchronous — _SyncRegistrationProxy bridges this by calling _agent_registry.register_local directly; importlib.util.find_spec raises ModuleNotFoundError for missing parent packages rather than returning None — must catch and convert; _ensure_init_files is needed to create __init__.py files in extracted defaults directories for package imports to work; Verifier note: All 7 acceptance criteria are met. 9 tests pass. Implementation is clean with proper cleanup of sys.path and sys.modules, error handling for missing modules and missing register_agents function, and a sync proxy to bridge the async/sync gap.
+- Committed: feat(root-defaults): US-001 - Default Agent Loading
+
+### US-002: Default Agent Scaffolding (Attempt 1) — PASS
+- Completed: 2026-03-26T00:32:38Z
+- Verified by: independent verifier session
+- Learnings: extract_agent_contracts returns sorted contracts with no registry — schemas are None when no registry is provided, so scaffold stubs handle None schemas gracefully; The pack CLI command uses early-return pattern for --scaffold-defaults since it's a dev-time convenience that doesn't produce a .root archive; Verifier note: Clean implementation. 4 files changed, 500 lines added. Code is well-structured with clear separation between scaffolding logic and CLI integration. Tests are thorough with both integration tests (using process YAML files) and unit tests for individual functions.
+- Committed: feat(root-defaults): US-002 - Default Agent Scaffolding
+
+### US-003: Configuration Templates (Attempt 1) — PASS
+- Completed: 2026-03-26T00:36:37Z
+- Verified by: independent verifier session
+- Learnings: Config templates are stored in process.metadata['config_templates'] during install so CLI can access them without needing the original archive; apply_template reuses apply_override sequentially for each override in the template, getting constraint validation for free; Verifier note: Clean implementation. All six acceptance criteria are met. The ConfigTemplate model, CLI commands, inspect integration, installer metadata storage, and tests are all present and correct. 100 tests pass with no failures.
+- Committed: feat(root-defaults): US-003 - Configuration Templates
+
+### US-004: Package README Rendering (Attempt 1) — PASS
+- Completed: 2026-03-26T00:39:38Z
+- Verified by: independent verifier session
+- Learnings: README.md is already bundled into .root archives by create_archive when it exists alongside process.yaml; load_package returns archive contents dict which includes README.md bytes — used during install to store in metadata; rich.Markdown renders markdown content with terminal formatting for CLI display; Verifier note: Clean implementation. All 6 acceptance criteria are met. Both test_readme.py (8 passed) and test_installer.py (17 passed) run green. The code follows existing patterns in the CLI and installer modules.
+- Committed: feat(root-defaults): US-004 - Package README Rendering
+
+### US-005: End-to-End Pack → Install → Run (Attempt 1) — PASS
+- Completed: 2026-03-26T00:45:06Z
+- Verified by: independent verifier session
+- Learnings: pack_process sets defaults_module='defaults' (the top-level package name), so register_agents must be in defaults/__init__.py not a submodule; Deterministic decision nodes work well for e2e tests — no LLM needed, conditions evaluated via simpleeval; In-memory SQLite (':memory:') with async Roots context manager provides fast hermetic tests; Verifier note: All 6 acceptance criteria are met. Full test suite passes (1173 passed, 80 skipped, 0 failures). Minor note: there is a UserWarning about 'Duplicate name: defaults/__init__.py' in the zip archive — cosmetic, does not affect functionality.
+- Committed: feat(root-defaults): US-005 - End-to-End Pack → Install → Run
+
