@@ -505,6 +505,118 @@ def inspect(
         raise typer.Exit(code=1)
 
 
+@app.command()
+def install(
+    ctx: typer.Context,
+    package_path: str = typer.Argument(
+        ...,
+        help="Path to a .root package file.",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="Overwrite existing process if it already exists.",
+    ),
+    apply_defaults: bool = typer.Option(
+        False,
+        "--apply-defaults",
+        help="Load and register default agents from the package.",
+    ),
+) -> None:
+    """Install a .root package into the local environment."""
+    import asyncio
+    from pathlib import Path as _Path
+
+    from roots.packaging.installer import (
+        ContractReport,
+        install_package as _install_package,
+        load_package,
+    )
+    from roots.packaging.manifest import RootManifest
+
+    path = _Path(package_path)
+    if not path.is_file():
+        typer.echo(typer.style(f"File not found: {package_path}", fg=typer.colors.RED))
+        raise typer.Exit(code=1)
+
+    storage = ctx.obj["storage"]
+
+    try:
+        roots_instance = create_roots_from_options(storage)
+    except Exception as exc:
+        typer.echo(typer.style(f"Error initializing storage: {exc}", fg=typer.colors.RED))
+        raise typer.Exit(code=1)
+
+    try:
+        report = asyncio.run(
+            roots_instance.install_package(
+                archive_path=path,
+                force=force,
+                apply_defaults=apply_defaults,
+            )
+        )
+    except ValueError as exc:
+        typer.echo(typer.style(f"Error: {exc}", fg=typer.colors.RED))
+        raise typer.Exit(code=1)
+
+    # Re-load manifest for display info
+    manifest, process, _contents = load_package(path)
+
+    console = Console()
+    console.print(
+        f"\n[bold green]Installed:[/bold green] {manifest.name} v{manifest.package_version}"
+    )
+
+    # Agent Status section
+    console.print("\n[bold]Agent Status:[/bold]")
+    for match in report.satisfied:
+        agent_type = match.registration.get("agent_type", "local")
+        console.print(
+            f"  [green]✓[/green] {match.contract.name:<25} — Satisfied ({agent_type})"
+        )
+    for contract in report.missing:
+        desc = contract.description or "Required agent"
+        console.print(
+            f"  [red]✗[/red] {contract.name:<25} — MISSING — {desc}"
+        )
+    for contract in report.optional_missing:
+        console.print(
+            f"  [yellow]~[/yellow] {contract.name:<25} — Optional, not registered"
+        )
+    for mismatch in report.schema_mismatches:
+        console.print(
+            f"  [red]![/red] {mismatch.agent_name:<25} — Schema mismatch ({mismatch.direction}): {mismatch.details}"
+        )
+
+    # Configurable Parameters section
+    if manifest.config_overrides:
+        console.print("\n[bold]Configurable Parameters:[/bold]")
+        for override in manifest.config_overrides:
+            console.print(
+                f"  {override.path} = {override.default_value!r}  "
+                f"(override with roots config set ...)"
+            )
+
+    # Next steps section
+    missing_names = [c.name for c in report.missing]
+    console.print("\n[bold]Next steps:[/bold]")
+    step = 1
+    if missing_names:
+        console.print(
+            f"  {step}. Register missing agents: {', '.join(missing_names)}"
+        )
+        step += 1
+    if manifest.config_overrides:
+        console.print(
+            f"  {step}. Optionally configure parameters "
+            f"(see: roots config list {process.id})"
+        )
+        step += 1
+    console.print(
+        f"  {step}. Run: roots run {process.id} --work-item '{{...}}'"
+    )
+
+
 @agents_app.callback(invoke_without_command=True)
 def agents_list(
     ctx: typer.Context,

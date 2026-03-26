@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import zipfile
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
@@ -19,6 +20,7 @@ from roots.core.validator import (
     validate_structure,
 )
 from roots.packaging.manifest import AgentContract, RootManifest
+from roots.storage.base import StorageBackend
 
 
 class SchemaMismatch(BaseModel):
@@ -278,3 +280,41 @@ def load_package(
     process = parse_process_dict(process_data)
 
     return manifest, process, contents
+
+
+async def install_package(
+    archive_path: Path,
+    storage: StorageBackend,
+    registry: AgentRegistry,
+    force: bool = False,
+) -> tuple[RootManifest, ProcessDefinition, ContractReport]:
+    """Install a .root package: load, save process, and validate contracts.
+
+    Returns the manifest, process definition, and contract report.
+    Raises ValueError if validation fails or process already exists (without force).
+    """
+    manifest, process, _contents = load_package(archive_path)
+
+    # Check for existing process
+    existing = await storage.get_process(process.id)
+    if existing is not None and not force:
+        raise ValueError(
+            f"Process '{process.id}' already exists. "
+            f"Use --force to overwrite."
+        )
+
+    # Store package metadata on the process
+    process.metadata["package_id"] = manifest.package_id
+    process.metadata["package_version"] = manifest.package_version
+    process.metadata["installed_at"] = datetime.now(UTC).isoformat()
+    process.metadata["installed_from"] = archive_path.name
+
+    # Save (or overwrite) the process
+    if existing is not None and force:
+        await storage.delete_process(process.id)
+    await storage.save_process(process)
+
+    # Validate contracts against currently registered agents
+    report = validate_contracts(manifest, registry)
+
+    return manifest, process, report

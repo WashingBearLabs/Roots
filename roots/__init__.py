@@ -327,6 +327,34 @@ class Roots:
         except ResolutionError as exc:
             raise OrchestrationError(str(exc)) from exc
 
+    async def install_package(
+        self,
+        archive_path: str | Any,
+        force: bool = False,
+        apply_defaults: bool = False,
+    ) -> Any:
+        """Install a .root package: load, save process, and validate contracts.
+
+        Returns a ContractReport indicating which agents are satisfied/missing.
+        """
+        from pathlib import Path as _Path
+
+        from roots.packaging.installer import install_package as _install
+        from roots.packaging.installer import ContractReport
+
+        path = _Path(archive_path)
+        _manifest, _process, report = await _install(
+            archive_path=path,
+            storage=self.storage,
+            registry=self._agent_registry,
+            force=force,
+        )
+
+        # apply_defaults is a forward reference to feature-root-defaults
+        # When that feature exists, this would load and register default agents
+
+        return report
+
     def pack_process(
         self,
         process_path: str,
