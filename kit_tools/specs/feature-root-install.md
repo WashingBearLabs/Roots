@@ -85,13 +85,13 @@ The consumption side of Root packages. `roots install` loads a `.root` package, 
   - A simple heuristic for compatibility: all `required` properties in the contract schema exist in the registration schema with compatible types.
 
 **Acceptance Criteria:**
-- [ ] Registered agents matching contract name + schema → satisfied
-- [ ] Unregistered required agents → missing
-- [ ] Unregistered optional agents → optional_missing (not blocking)
-- [ ] Registered agent with incompatible schema → schema_mismatch
-- [ ] `ready` is True only when all required agents satisfied and no schema mismatches
-- [ ] Agents with no declared schema → soft pass (compatible by default)
-- [ ] Tests cover: all matched, some missing, schema mismatch, optional agents
+- [x] Registered agents matching contract name + schema → satisfied
+- [x] Unregistered required agents → missing
+- [x] Unregistered optional agents → optional_missing (not blocking)
+- [x] Registered agent with incompatible schema → schema_mismatch
+- [x] `ready` is True only when all required agents satisfied and no schema mismatches
+- [x] Agents with no declared schema → soft pass (compatible by default)
+- [x] Tests cover: all matched, some missing, schema mismatch, optional agents
 
 ### US-003: `roots install` CLI Command
 
