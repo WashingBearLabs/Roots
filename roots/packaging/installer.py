@@ -9,15 +9,151 @@ from pathlib import Path
 from typing import Any, cast
 
 import yaml
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
+from roots.agents.registry import AgentRegistry
 from roots.core.schema import ProcessDefinition
 from roots.core.validator import (
     format_validation_errors,
     parse_process_dict,
     validate_structure,
 )
-from roots.packaging.manifest import RootManifest
+from roots.packaging.manifest import AgentContract, RootManifest
+
+
+class SchemaMismatch(BaseModel):
+    """Describes a schema incompatibility between contract and registration."""
+
+    agent_name: str
+    direction: str  # "input" or "output"
+    expected: dict[str, Any] | None
+    actual: dict[str, Any] | None
+    details: str
+
+
+class ContractMatch(BaseModel):
+    """A contract successfully matched to a registration."""
+
+    contract: AgentContract
+    registration: dict[str, Any]
+    schema_compatible: bool
+
+
+class ContractReport(BaseModel):
+    """Result of validating agent contracts against a registry."""
+
+    satisfied: list[ContractMatch] = []
+    missing: list[AgentContract] = []
+    optional_missing: list[AgentContract] = []
+    schema_mismatches: list[SchemaMismatch] = []
+    ready: bool = True
+
+
+def _check_schema_compatibility(
+    agent_name: str,
+    direction: str,
+    contract_schema: dict[str, Any] | None,
+    registration_schema: dict[str, Any] | None,
+) -> SchemaMismatch | None:
+    """Check if a registration schema is compatible with a contract schema.
+
+    Returns a SchemaMismatch if incompatible, None if compatible.
+    If either side has no schema, it's a soft pass (compatible).
+    """
+    if contract_schema is None or registration_schema is None:
+        return None
+
+    # Check that all required properties in the contract exist in the registration
+    contract_props = contract_schema.get("properties", {})
+    contract_required = set(contract_schema.get("required", []))
+    reg_props = registration_schema.get("properties", {})
+
+    missing_props = []
+    type_mismatches = []
+
+    for prop_name in contract_required:
+        if prop_name not in reg_props:
+            missing_props.append(prop_name)
+        elif prop_name in contract_props and prop_name in reg_props:
+            expected_type = contract_props[prop_name].get("type")
+            actual_type = reg_props[prop_name].get("type")
+            if expected_type and actual_type and expected_type != actual_type:
+                type_mismatches.append(
+                    f"{prop_name}: expected type '{expected_type}', "
+                    f"got '{actual_type}'"
+                )
+
+    if missing_props or type_mismatches:
+        details_parts = []
+        if missing_props:
+            details_parts.append(
+                f"missing required properties: {', '.join(sorted(missing_props))}"
+            )
+        if type_mismatches:
+            details_parts.append(
+                f"type mismatches: {'; '.join(type_mismatches)}"
+            )
+        return SchemaMismatch(
+            agent_name=agent_name,
+            direction=direction,
+            expected=contract_schema,
+            actual=registration_schema,
+            details="; ".join(details_parts),
+        )
+
+    return None
+
+
+def validate_contracts(
+    manifest: RootManifest,
+    registry: AgentRegistry,
+) -> ContractReport:
+    """Validate agent contracts from a manifest against a registry."""
+    satisfied: list[ContractMatch] = []
+    missing: list[AgentContract] = []
+    optional_missing: list[AgentContract] = []
+    schema_mismatches: list[SchemaMismatch] = []
+
+    for contract in manifest.agent_contracts:
+        reg = registry.get(contract.name)
+        if reg is None:
+            if contract.required:
+                missing.append(contract)
+            else:
+                optional_missing.append(contract)
+            continue
+
+        reg_dict = reg.model_dump(mode="json", exclude={"callable"})
+
+        # Check input and output schema compatibility
+        input_mismatch = _check_schema_compatibility(
+            contract.name, "input", contract.input_schema, reg.input_schema
+        )
+        output_mismatch = _check_schema_compatibility(
+            contract.name, "output", contract.output_schema, reg.output_schema
+        )
+
+        mismatches = [m for m in (input_mismatch, output_mismatch) if m is not None]
+        schema_mismatches.extend(mismatches)
+
+        schema_compatible = len(mismatches) == 0
+        satisfied.append(
+            ContractMatch(
+                contract=contract,
+                registration=reg_dict,
+                schema_compatible=schema_compatible,
+            )
+        )
+
+    ready = len(missing) == 0 and len(schema_mismatches) == 0
+
+    return ContractReport(
+        satisfied=satisfied,
+        missing=missing,
+        optional_missing=optional_missing,
+        schema_mismatches=schema_mismatches,
+        ready=ready,
+    )
 
 
 def validate_package(archive_path: Path) -> list[str]:
