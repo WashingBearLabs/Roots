@@ -131,14 +131,14 @@ The consumption side of Root packages. `roots install` loads a `.root` package, 
 - Also add programmatic API: `Roots.install_package(archive_path, force=False, apply_defaults=False) -> ContractReport`
 
 **Acceptance Criteria:**
-- [ ] `roots install package.root` loads process into storage
-- [ ] Existing process ID blocked without --force
-- [ ] --force overwrites existing process
-- [ ] Package metadata stored on the process definition
-- [ ] Contract report shows satisfied/missing/optional status
-- [ ] Next steps printed with specific agent names to register
-- [ ] Programmatic API available on Roots class
-- [ ] Tests verify install flow with and without pre-registered agents
+- [x] `roots install package.root` loads process into storage
+- [x] Existing process ID blocked without --force
+- [x] --force overwrites existing process
+- [x] Package metadata stored on the process definition
+- [x] Contract report shows satisfied/missing/optional status
+- [x] Next steps printed with specific agent names to register
+- [x] Programmatic API available on Roots class
+- [x] Tests verify install flow with and without pre-registered agents
 
 ### US-004: Configuration Override Application
 
