@@ -41,15 +41,15 @@ Roots stores every decision made by AI decision nodes (selected edge, confidence
 - Check if an index exists on (process_id, node_id, created_at) in both backends; add one if missing for ORDER BY + LIMIT performance
 
 **Acceptance Criteria:**
-- [ ] StorageBackend.list_decisions abstract signature updated with optional keyword-only params: run_id (str | None), limit (int | None), mode (str | None)
-- [ ] list_decisions filters by run_id when provided (scopes to single run)
-- [ ] list_decisions applies LIMIT when provided (default None = no limit)
-- [ ] list_decisions filters by mode when provided (e.g., only ai_bounded decisions)
-- [ ] Results ordered by created_at DESC (most recent first)
-- [ ] Both SQLite and PostgreSQL backends implement the extended interface
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] StorageBackend.list_decisions abstract signature updated with optional keyword-only params: run_id (str | None), limit (int | None), mode (str | None)
+- [x] list_decisions filters by run_id when provided (scopes to single run)
+- [x] list_decisions applies LIMIT when provided (default None = no limit)
+- [x] list_decisions filters by mode when provided (e.g., only ai_bounded decisions)
+- [x] Results ordered by created_at DESC (most recent first)
+- [x] Both SQLite and PostgreSQL backends implement the extended interface
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-002: Add history_depth config and orchestrator fetch
 
