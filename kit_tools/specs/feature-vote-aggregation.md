@@ -40,16 +40,16 @@ Agent pool nodes currently support only `merge_all` aggregation (shallow dict me
 - See `NodeDefinition` model_validator at schema.py:178 for validation pattern
 
 **Acceptance Criteria:**
-- [ ] MAJORITY_VOTE, WEIGHTED_VOTE, UNANIMOUS values added to Aggregation enum; TieBreak enum added with FIRST_AGENT (config list order, not arrival order) and REJECT values
-- [ ] VoteConfig Pydantic model with: vote_key (str), threshold (float, 0.0-1.0, default 0.5), weights (dict[str, float] | None, default None), tie_break (TieBreak, default FIRST_AGENT)
-- [ ] vote_config: VoteConfig | None added to AgentPoolNodeConfig (default None)
-- [ ] Validation: vote_config required when aggregation is a vote type, rejected when MERGE_ALL
-- [ ] Validation: when weights provided, keys must be subset of agents list; weights required when aggregation is WEIGHTED_VOTE
-- [ ] Validation: vote aggregation types with execution_mode=FIRST_PASS rejected at schema time (model_validator, not runtime)
-- [ ] Existing MERGE_ALL processes validate without changes
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] MAJORITY_VOTE, WEIGHTED_VOTE, UNANIMOUS values added to Aggregation enum; TieBreak enum added with FIRST_AGENT (config list order, not arrival order) and REJECT values
+- [x] VoteConfig Pydantic model with: vote_key (str), threshold (float, 0.0-1.0, default 0.5), weights (dict[str, float] | None, default None), tie_break (TieBreak, default FIRST_AGENT)
+- [x] vote_config: VoteConfig | None added to AgentPoolNodeConfig (default None)
+- [x] Validation: vote_config required when aggregation is a vote type, rejected when MERGE_ALL
+- [x] Validation: when weights provided, keys must be subset of agents list; weights required when aggregation is WEIGHTED_VOTE
+- [x] Validation: vote aggregation types with execution_mode=FIRST_PASS rejected at schema time (model_validator, not runtime)
+- [x] Existing MERGE_ALL processes validate without changes
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-002: Implement vote tallying core
 
