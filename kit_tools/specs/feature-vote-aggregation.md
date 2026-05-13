@@ -84,14 +84,14 @@ Agent pool nodes currently support only `merge_all` aggregation (shallow dict me
 - Tie-breaking applies to all strategies: majority (multiple values at same count), weighted (equal weighted totals), unanimous (N/A — ties are agreements)
 
 **Acceptance Criteria:**
-- [ ] Result dict has winning_value at top level (directly accessible by downstream conditions as state[output_key]["winning_value"])
-- [ ] Result dict includes vote_counts (dict mapping vote values to count), strategy (str), and participating_agents (int)
-- [ ] TieBreak.FIRST_AGENT selects the value voted for by the first agent in config order that voted for a tied value
-- [ ] TieBreak.REJECT raises AggregationError when a tie occurs
-- [ ] Tests cover: 3-way tie with first_agent, 2-way tie with reject, all-abstain, single-voter
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] Result dict has winning_value at top level (directly accessible by downstream conditions as state[output_key]["winning_value"])
+- [x] Result dict includes vote_counts (dict mapping vote values to count), strategy (str), and participating_agents (int)
+- [x] TieBreak.FIRST_AGENT selects the value voted for by the first agent in config order that voted for a tied value
+- [x] TieBreak.REJECT raises AggregationError when a tie occurs
+- [x] Tests cover: 3-way tie with first_agent, 2-way tie with reject, all-abstain, single-voter
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-004: Wire vote aggregation into orchestrator
 
