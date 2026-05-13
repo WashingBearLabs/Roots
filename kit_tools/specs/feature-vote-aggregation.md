@@ -106,14 +106,14 @@ Agent pool nodes currently support only `merge_all` aggregation (shallow dict me
 - Note: _pool_parallel currently interleaves escalation checks with result assembly — will need refactoring to collect named results before dispatching to aggregate_votes
 
 **Acceptance Criteria:**
-- [ ] _handle_agent_pool routes to aggregate_votes when aggregation is a vote type
-- [ ] Vote aggregation works with parallel execution mode (all agents vote concurrently)
-- [ ] Vote aggregation works with sequential execution mode (agents vote in order)
-- [ ] AggregationError from vote tallying triggers run failure (same pattern as RetryExhaustedError)
-- [ ] MERGE_ALL behavior unchanged — existing agent pool tests still pass
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] _handle_agent_pool routes to aggregate_votes when aggregation is a vote type
+- [x] Vote aggregation works with parallel execution mode (all agents vote concurrently)
+- [x] Vote aggregation works with sequential execution mode (agents vote in order)
+- [x] AggregationError from vote tallying triggers run failure (same pattern as RetryExhaustedError)
+- [x] MERGE_ALL behavior unchanged — existing agent pool tests still pass
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ## Out of Scope
 
