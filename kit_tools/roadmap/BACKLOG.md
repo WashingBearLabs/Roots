@@ -1,6 +1,6 @@
 # BACKLOG.md
 
-> Last updated: 2026-03-26
+> Last updated: 2026-05-13
 > Updated by: Claude
 
 Future work items and ideas for the Roots framework.
@@ -17,6 +17,7 @@ Future work items and ideas for the Roots framework.
 | P2 | Process Composition | Feature | T3.3 | Not Started |
 | P2 | Vote Aggregation | Feature | T3.4 | Not Started |
 | P2 | Transform Node | Feature | T3.5 | Not Started |
+| P2 | Agent Node Error Key | Feature | T3.9 | Not Started |
 
 ---
 
@@ -51,6 +52,11 @@ Future work items and ideas for the Roots framework.
 **Priority:** P2
 **Effort:** Small
 **Description:** A new node type for data transformation between process steps. Applies mapping, filtering, or reshaping operations to process state without requiring an agent invocation.
+
+### Agent Node Error Key (T3.9)
+**Priority:** P2
+**Effort:** Small
+**Description:** Optional `error_key` config on agent nodes. After a handler returns, Roots checks if `state[error_key]` exists — if so, marks the node as failed instead of completed. Currently, handlers that write errors to state (e.g., `repo_error`) without raising exceptions are treated as successful completions, allowing entire workflows to "complete" with every step having failed silently. Discovered during Poppy integration where handlers don't raise by convention.
 
 ---
 

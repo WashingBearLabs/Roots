@@ -252,6 +252,53 @@ class ProcessRunner:
                 if output_key is not None:
                     state[output_key] = output
 
+            # Step 7b: Check error_key — agent returned OK but output
+            # contains an application-level error the handler didn't raise
+            error_key: str | None = getattr(node.config, "error_key", None)
+            if (
+                error_key is not None
+                and output is not None
+                and output.get(error_key)
+            ):
+                error_value = output[error_key]
+                await self._storage.append_history_event(
+                    self.run_id, "failed", node.id,
+                    {"error_key": error_key, "error": str(error_value)},
+                )
+                await self._storage.update_run_atomically(
+                    self.run_id,
+                    work_item_state=state,
+                    status=RunStatus.FAILED,
+                    current_node_id=node.id,
+                )
+                self._event_emitter.emit(
+                    create_event(
+                        EventType.NODE_FAILED,
+                        run_id=self.run_id,
+                        process_id=run.process_id,
+                        node_id=node.id,
+                        node_type=node.type.value,
+                        metadata={
+                            "error_key": error_key,
+                            "error": str(error_value),
+                            "reason": "error_key_detected",
+                        },
+                    )
+                )
+                self._event_emitter.emit(
+                    create_event(
+                        EventType.RUN_FAILED,
+                        run_id=self.run_id,
+                        process_id=run.process_id,
+                        node_id=node.id,
+                        metadata={
+                            "error_key": error_key,
+                            "reason": "error_key_detected",
+                        },
+                    )
+                )
+                return False
+
             # Step 8: Determine next node (or pause if escalated)
             if self._escalated:
                 next_node_id = run.current_node_id

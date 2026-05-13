@@ -80,6 +80,7 @@ class EndStatus(StrEnum):
 class AgentNodeConfig(BaseModel):
     agent: str
     output_key: str
+    error_key: str | None = None
 
 
 class AgentPoolNodeConfig(BaseModel):
