@@ -710,7 +710,27 @@ class ProcessRunner:
         self, node: NodeDefinition, state: dict[str, Any]
     ) -> dict[str, Any] | None:
         assert isinstance(node.config, DecisionNodeConfig)
-        result = await self._decision_engine.evaluate(node, state)
+
+        history: list[dict[str, Any]] | None = None
+        if node.config.history_depth is not None:
+            raw_records = await self._storage.list_decisions(
+                process_id=self._process_id or "",
+                node_id=node.id,
+                limit=node.config.history_depth,
+            )
+            history = [
+                {
+                    "selected_edge": r.decision.get("selected_edge"),
+                    "confidence": r.confidence,
+                    "reasoning": r.decision.get("reasoning") or (
+                        r.decision.get("ai_recommendation") or {}
+                    ).get("reasoning"),
+                    "mode": r.mode,
+                }
+                for r in raw_records
+            ]
+
+        result = await self._decision_engine.evaluate(node, state, history=history)
 
         # Record decision to storage
         record = result.to_decision_record(state)

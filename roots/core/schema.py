@@ -158,6 +158,7 @@ class DecisionNodeConfig(BaseModel):
     context_prompt: str | None = None
     checkpoint_prompt: str | None = None
     edges: list[DecisionEdge] = Field(min_length=1)
+    history_depth: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def validate_mode_constraints(self) -> Self:
