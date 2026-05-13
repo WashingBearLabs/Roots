@@ -103,6 +103,9 @@ CREATE TABLE IF NOT EXISTS decision_history (
     created_at TEXT
 );
 
+CREATE INDEX IF NOT EXISTS idx_decision_history_lookup
+    ON decision_history (process_id, node_id, created_at);
+
 CREATE TABLE IF NOT EXISTS retry_state (
     run_id TEXT,
     node_id TEXT,
@@ -564,14 +567,31 @@ class SqliteBackend(StorageBackend):
         await self.db.commit()
 
     async def list_decisions(
-        self, process_id: str, node_id: str
+        self,
+        process_id: str,
+        node_id: str,
+        *,
+        run_id: str | None = None,
+        limit: int | None = None,
+        mode: str | None = None,
     ) -> list[DecisionRecord]:
-        cursor = await self.db.execute(
+        query = (
             "SELECT id, run_id, process_id, node_id, mode, input_state_json, "
             "decision_json, confidence, created_at FROM decision_history "
-            "WHERE process_id = ? AND node_id = ?",
-            (process_id, node_id),
+            "WHERE process_id = ? AND node_id = ?"
         )
+        params: list[Any] = [process_id, node_id]
+        if run_id is not None:
+            query += " AND run_id = ?"
+            params.append(run_id)
+        if mode is not None:
+            query += " AND mode = ?"
+            params.append(mode)
+        query += " ORDER BY created_at DESC"
+        if limit is not None:
+            query += " LIMIT ?"
+            params.append(limit)
+        cursor = await self.db.execute(query, params)
         rows = await cursor.fetchall()
         return [
             DecisionRecord(

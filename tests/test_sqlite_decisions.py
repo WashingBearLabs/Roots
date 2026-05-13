@@ -24,15 +24,16 @@ async def test_append_and_list_decisions(sqlite_storage: StorageBackend) -> None
 
     decisions = await sqlite_storage.list_decisions("proc-1", "node-1")
     assert len(decisions) == 2
-    assert decisions[0].mode == "auto"
-    assert decisions[0].input_state == {"key": "val"}
-    assert decisions[0].decision == {"choice": "A"}
-    assert decisions[0].confidence == 0.95
+    # Results are ordered most-recent first; "manual" was appended second
+    assert decisions[0].mode == "manual"
+    assert decisions[0].input_state == {"key": "val2"}
+    assert decisions[0].decision == {"choice": "B"}
+    assert decisions[0].confidence == 0.80
     assert decisions[0].process_id == "proc-1"
     assert decisions[0].node_id == "node-1"
     assert decisions[0].run_id == run.id
-    assert decisions[1].mode == "manual"
-    assert decisions[1].confidence == 0.80
+    assert decisions[1].mode == "auto"
+    assert decisions[1].confidence == 0.95
 
 
 async def test_list_decisions_filters_by_process_and_node(
@@ -103,6 +104,138 @@ async def test_decision_records_across_runs(
     run_ids = {d.run_id for d in decisions}
     assert r1.id in run_ids
     assert r2.id in run_ids
+
+
+# --- Extended filter tests (US-001) ---
+
+
+async def test_list_decisions_ordered_most_recent_first(
+    sqlite_storage: StorageBackend,
+) -> None:
+    """Results are ordered by created_at DESC."""
+    run = await sqlite_storage.create_run("proc-1", {})
+    await sqlite_storage.append_decision(
+        run.id, "proc-1", "node-1", "auto", {}, {"seq": 1}, 0.9
+    )
+    await sqlite_storage.append_decision(
+        run.id, "proc-1", "node-1", "auto", {}, {"seq": 2}, 0.8
+    )
+    await sqlite_storage.append_decision(
+        run.id, "proc-1", "node-1", "auto", {}, {"seq": 3}, 0.7
+    )
+
+    decisions = await sqlite_storage.list_decisions("proc-1", "node-1")
+    assert len(decisions) == 3
+    # Most recent (seq 3) should be first
+    assert decisions[0].decision["seq"] == 3
+    assert decisions[-1].decision["seq"] == 1
+
+
+async def test_list_decisions_filter_by_run_id(
+    sqlite_storage: StorageBackend,
+) -> None:
+    """run_id filter scopes results to a single run."""
+    r1 = await sqlite_storage.create_run("proc-1", {})
+    r2 = await sqlite_storage.create_run("proc-1", {})
+
+    await sqlite_storage.append_decision(
+        r1.id, "proc-1", "node-1", "auto", {}, {"run": 1}, 0.9
+    )
+    await sqlite_storage.append_decision(
+        r2.id, "proc-1", "node-1", "auto", {}, {"run": 2}, 0.8
+    )
+
+    results = await sqlite_storage.list_decisions("proc-1", "node-1", run_id=r1.id)
+    assert len(results) == 1
+    assert results[0].decision == {"run": 1}
+    assert results[0].run_id == r1.id
+
+
+async def test_list_decisions_filter_by_mode(
+    sqlite_storage: StorageBackend,
+) -> None:
+    """mode filter returns only decisions with matching mode."""
+    run = await sqlite_storage.create_run("proc-1", {})
+    await sqlite_storage.append_decision(
+        run.id, "proc-1", "node-1", "ai_bounded", {}, {"m": "ai"}, 0.9
+    )
+    await sqlite_storage.append_decision(
+        run.id, "proc-1", "node-1", "manual", {}, {"m": "manual"}, 0.8
+    )
+    await sqlite_storage.append_decision(
+        run.id, "proc-1", "node-1", "ai_bounded", {}, {"m": "ai2"}, 0.7
+    )
+
+    ai_results = await sqlite_storage.list_decisions(
+        "proc-1", "node-1", mode="ai_bounded"
+    )
+    assert len(ai_results) == 2
+    modes = {d.mode for d in ai_results}
+    assert modes == {"ai_bounded"}
+
+    manual_results = await sqlite_storage.list_decisions(
+        "proc-1", "node-1", mode="manual"
+    )
+    assert len(manual_results) == 1
+    assert manual_results[0].decision == {"m": "manual"}
+
+
+async def test_list_decisions_limit(
+    sqlite_storage: StorageBackend,
+) -> None:
+    """limit restricts the number of results returned."""
+    run = await sqlite_storage.create_run("proc-1", {})
+    for i in range(5):
+        await sqlite_storage.append_decision(
+            run.id, "proc-1", "node-1", "auto", {}, {"i": i}, 0.9
+        )
+
+    results = await sqlite_storage.list_decisions("proc-1", "node-1", limit=2)
+    assert len(results) == 2
+    # With ORDER BY DESC the top 2 are the most recent (i=4 and i=3)
+    assert results[0].decision["i"] == 4
+    assert results[1].decision["i"] == 3
+
+
+async def test_list_decisions_combined_filters(
+    sqlite_storage: StorageBackend,
+) -> None:
+    """run_id, mode, and limit can be combined."""
+    r1 = await sqlite_storage.create_run("proc-1", {})
+    r2 = await sqlite_storage.create_run("proc-1", {})
+
+    for i in range(3):
+        await sqlite_storage.append_decision(
+            r1.id, "proc-1", "node-1", "ai_bounded", {}, {"r1_ai": i}, 0.9
+        )
+    await sqlite_storage.append_decision(
+        r1.id, "proc-1", "node-1", "manual", {}, {"r1_manual": 0}, 0.8
+    )
+    await sqlite_storage.append_decision(
+        r2.id, "proc-1", "node-1", "ai_bounded", {}, {"r2_ai": 0}, 0.7
+    )
+
+    results = await sqlite_storage.list_decisions(
+        "proc-1", "node-1", run_id=r1.id, mode="ai_bounded", limit=2
+    )
+    assert len(results) == 2
+    for d in results:
+        assert d.run_id == r1.id
+        assert d.mode == "ai_bounded"
+
+
+async def test_list_decisions_no_limit_returns_all(
+    sqlite_storage: StorageBackend,
+) -> None:
+    """Default limit=None returns all matching records."""
+    run = await sqlite_storage.create_run("proc-1", {})
+    for i in range(10):
+        await sqlite_storage.append_decision(
+            run.id, "proc-1", "node-1", "auto", {}, {"i": i}, 0.9
+        )
+
+    results = await sqlite_storage.list_decisions("proc-1", "node-1")
+    assert len(results) == 10
 
 
 # --- Retry State ---

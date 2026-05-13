@@ -103,6 +103,9 @@ CREATE TABLE IF NOT EXISTS decision_history (
     created_at TIMESTAMPTZ
 );
 
+CREATE INDEX IF NOT EXISTS idx_decision_history_lookup
+    ON decision_history (process_id, node_id, created_at);
+
 CREATE TABLE IF NOT EXISTS retry_state (
     run_id TEXT,
     node_id TEXT,
@@ -638,16 +641,35 @@ class PostgresBackend(StorageBackend):
             )
 
     async def list_decisions(
-        self, process_id: str, node_id: str
+        self,
+        process_id: str,
+        node_id: str,
+        *,
+        run_id: str | None = None,
+        limit: int | None = None,
+        mode: str | None = None,
     ) -> list[DecisionRecord]:
+        query = (
+            "SELECT id, run_id, process_id, node_id, mode, input_state_json, "
+            "decision_json, confidence, created_at FROM decision_history "
+            "WHERE process_id = $1 AND node_id = $2"
+        )
+        params: list[Any] = [process_id, node_id]
+        idx = 3
+        if run_id is not None:
+            query += f" AND run_id = ${idx}"
+            params.append(run_id)
+            idx += 1
+        if mode is not None:
+            query += f" AND mode = ${idx}"
+            params.append(mode)
+            idx += 1
+        query += " ORDER BY created_at DESC"
+        if limit is not None:
+            query += f" LIMIT ${idx}"
+            params.append(limit)
         async with self.pool.acquire() as conn:
-            rows = await conn.fetch(
-                "SELECT id, run_id, process_id, node_id, mode, input_state_json, "
-                "decision_json, confidence, created_at FROM decision_history "
-                "WHERE process_id = $1 AND node_id = $2",
-                process_id,
-                node_id,
-            )
+            rows = await conn.fetch(query, *params)
         result = []
         for r in rows:
             input_st = r["input_state_json"]

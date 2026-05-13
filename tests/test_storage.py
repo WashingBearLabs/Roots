@@ -199,11 +199,12 @@ async def test_append_and_list_decisions(storage: StorageBackend) -> None:
 
     decisions = await storage.list_decisions("proc-1", "node-1")
     assert len(decisions) == 2
-    assert decisions[0].mode == "auto"
-    assert decisions[0].input_state == {"key": "val"}
-    assert decisions[0].decision == {"choice": "A"}
-    assert decisions[0].confidence == 0.95
-    assert decisions[1].mode == "manual"
+    # Results are ordered most-recent first; "manual" was appended second
+    assert decisions[0].mode == "manual"
+    assert decisions[0].input_state == {"key": "val2"}
+    assert decisions[0].decision == {"choice": "B"}
+    assert decisions[0].confidence == 0.80
+    assert decisions[1].mode == "auto"
 
 
 async def test_list_decisions_filters_by_process_and_node(

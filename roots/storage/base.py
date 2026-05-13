@@ -243,7 +243,13 @@ class StorageBackend(abc.ABC):
 
     @abc.abstractmethod
     async def list_decisions(
-        self, process_id: str, node_id: str
+        self,
+        process_id: str,
+        node_id: str,
+        *,
+        run_id: str | None = None,
+        limit: int | None = None,
+        mode: str | None = None,
     ) -> list[DecisionRecord]: ...
 
     # --- Retry ---
