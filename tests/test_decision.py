@@ -1069,11 +1069,11 @@ class TestHistoryDepthConfig:
 class TestBuildDecisionMessagesHistory:
     def test_no_history_omits_section(self) -> None:
         messages = build_decision_messages(None, {"x": 1}, [DecisionEdge(target="a")])
-        assert "Recent Decision History" not in messages[1]["content"]
+        assert "Historical Decisions" not in messages[1]["content"]
 
     def test_empty_history_omits_section(self) -> None:
         messages = build_decision_messages(None, {"x": 1}, [DecisionEdge(target="a")], history=[])
-        assert "Recent Decision History" not in messages[1]["content"]
+        assert "Historical Decisions" not in messages[1]["content"]
 
     def test_history_with_reasoning_included(self) -> None:
         history = [
@@ -1081,7 +1081,7 @@ class TestBuildDecisionMessagesHistory:
         ]
         messages = build_decision_messages(None, {"x": 1}, [DecisionEdge(target="a")], history=history)
         content = messages[1]["content"]
-        assert "Recent Decision History" in content
+        assert "Historical Decisions" in content
         assert "node-a" in content
         assert "high severity" in content
         assert "0.9" in content
@@ -1093,16 +1093,30 @@ class TestBuildDecisionMessagesHistory:
         ]
         messages = build_decision_messages(None, {}, [DecisionEdge(target="b")], history=history)
         content = messages[1]["content"]
-        assert "Recent Decision History" in content
+        assert "Historical Decisions" in content
         assert "node-b" in content
 
-    def test_history_appears_before_current_state(self) -> None:
+    def test_history_appears_after_current_state(self) -> None:
         history = [{"selected_edge": "a", "confidence": 0.8, "reasoning": "ok", "mode": "ai_bounded"}]
         messages = build_decision_messages(None, {"x": 1}, [DecisionEdge(target="a")], history=history)
         content = messages[1]["content"]
-        history_pos = content.index("Recent Decision History")
+        history_pos = content.index("Historical Decisions")
         state_pos = content.index("Current State")
-        assert history_pos < state_pos
+        assert history_pos > state_pos
+
+    def test_reasoning_truncated_to_200_chars(self) -> None:
+        long_reasoning = "x" * 300
+        history = [{"selected_edge": "a", "confidence": 0.9, "reasoning": long_reasoning, "mode": "ai_bounded"}]
+        messages = build_decision_messages(None, {}, [DecisionEdge(target="a")], history=history)
+        content = messages[1]["content"]
+        assert "x" * 200 in content
+        assert "x" * 201 not in content
+
+    def test_reasoning_omitted_when_none(self) -> None:
+        history = [{"selected_edge": "a", "confidence": 1.0, "reasoning": None, "mode": "deterministic"}]
+        messages = build_decision_messages(None, {}, [DecisionEdge(target="a")], history=history)
+        content = messages[1]["content"]
+        assert "Reasoning" not in content
 
 
 class TestDecisionEngineHistoryInjection:
@@ -1119,7 +1133,7 @@ class TestDecisionEngineHistoryInjection:
         await engine.evaluate(node, {"x": 1}, history=history)
 
         messages = mock_llm.call_args.kwargs["messages"]
-        assert "Recent Decision History" in messages[1]["content"]
+        assert "Historical Decisions" in messages[1]["content"]
         assert "prior reason" in messages[1]["content"]
 
     @pytest.mark.asyncio
@@ -1134,7 +1148,7 @@ class TestDecisionEngineHistoryInjection:
         await engine.evaluate(node, {"x": 1}, history=None)
 
         messages = mock_llm.call_args.kwargs["messages"]
-        assert "Recent Decision History" not in messages[1]["content"]
+        assert "Historical Decisions" not in messages[1]["content"]
 
     @pytest.mark.asyncio
     async def test_history_ignored_for_deterministic(self) -> None:
@@ -1158,4 +1172,4 @@ class TestDecisionEngineHistoryInjection:
         await engine.evaluate(node, {"x": 1}, history=history)
 
         messages = mock_llm.call_args.kwargs["messages"]
-        assert "Recent Decision History" in messages[1]["content"]
+        assert "Historical Decisions" in messages[1]["content"]

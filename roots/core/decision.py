@@ -208,15 +208,16 @@ def build_decision_messages(
     user_parts: list[str] = []
     if context_prompt:
         user_parts.append(f"## Context\n{context_prompt}")
+    user_parts.append(f"## Current State\n```json\n{json.dumps(state, indent=2)}\n```")
     if history:
         history_lines = []
         for h in history:
-            line = f"- edge: {h.get('selected_edge')}, confidence: {h.get('confidence')}, mode: {h.get('mode')}"
-            if h.get("reasoning"):
-                line += f", reasoning: {h['reasoning']}"
+            line = f"- Edge: {h.get('selected_edge')}, Confidence: {h.get('confidence')}"
+            reasoning = h.get("reasoning")
+            if reasoning is not None:
+                line += f", Reasoning: {reasoning[:200]}"
             history_lines.append(line)
-        user_parts.append("## Recent Decision History\n" + "\n".join(history_lines))
-    user_parts.append(f"## Current State\n```json\n{json.dumps(state, indent=2)}\n```")
+        user_parts.append("## Historical Decisions\n" + "\n".join(history_lines))
     user_parts.append(f"## Available Edges\n" + "\n".join(edge_descriptions))
     user_parts.append(
         "Select the most appropriate next step by calling the make_decision tool."
