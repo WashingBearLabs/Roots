@@ -62,15 +62,15 @@ Roots stores every decision made by AI decision nodes (selected edge, confidence
 - Map DecisionRecord → dict with keys: selected_edge, confidence, reasoning, mode — done in the orchestrator, not the engine
 
 **Acceptance Criteria:**
-- [ ] history_depth: int | None = None added to DecisionNodeConfig (Field with ge=1 when not None)
-- [ ] Orchestrator fetches last N decisions via list_decisions(process_id, node_id, limit=history_depth) when history_depth is set
-- [ ] Orchestrator maps DecisionRecord to plain dicts with keys: selected_edge (from decision["selected_edge"]), confidence, reasoning (from decision.get("reasoning") or decision.get("ai_recommendation", {}).get("reasoning")), mode
-- [ ] Deterministic decisions (which have no reasoning field) are included with reasoning=None
-- [ ] History passed to DecisionEngine.evaluate as history: list[dict[str, Any]] | None = None
-- [ ] No fetch when history_depth is None (backward compatible, no storage call)
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] history_depth: int | None = None added to DecisionNodeConfig (Field with ge=1 when not None)
+- [x] Orchestrator fetches last N decisions via list_decisions(process_id, node_id, limit=history_depth) when history_depth is set
+- [x] Orchestrator maps DecisionRecord to plain dicts with keys: selected_edge (from decision["selected_edge"]), confidence, reasoning (from decision.get("reasoning") or decision.get("ai_recommendation", {}).get("reasoning")), mode
+- [x] Deterministic decisions (which have no reasoning field) are included with reasoning=None
+- [x] History passed to DecisionEngine.evaluate as history: list[dict[str, Any]] | None = None
+- [x] No fetch when history_depth is None (backward compatible, no storage call)
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-003: Render decision history in AI prompts
 
