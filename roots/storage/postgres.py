@@ -643,7 +643,7 @@ class PostgresBackend(StorageBackend):
     async def list_decisions(
         self,
         process_id: str,
-        node_id: str,
+        node_id: str | None = None,
         *,
         run_id: str | None = None,
         limit: int | None = None,
@@ -652,10 +652,14 @@ class PostgresBackend(StorageBackend):
         query = (
             "SELECT id, run_id, process_id, node_id, mode, input_state_json, "
             "decision_json, confidence, created_at FROM decision_history "
-            "WHERE process_id = $1 AND node_id = $2"
+            "WHERE process_id = $1"
         )
-        params: list[Any] = [process_id, node_id]
-        idx = 3
+        params: list[Any] = [process_id]
+        idx = 2
+        if node_id is not None:
+            query += f" AND node_id = ${idx}"
+            params.append(node_id)
+            idx += 1
         if run_id is not None:
             query += f" AND run_id = ${idx}"
             params.append(run_id)

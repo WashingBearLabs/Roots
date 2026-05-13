@@ -569,7 +569,7 @@ class SqliteBackend(StorageBackend):
     async def list_decisions(
         self,
         process_id: str,
-        node_id: str,
+        node_id: str | None = None,
         *,
         run_id: str | None = None,
         limit: int | None = None,
@@ -578,9 +578,12 @@ class SqliteBackend(StorageBackend):
         query = (
             "SELECT id, run_id, process_id, node_id, mode, input_state_json, "
             "decision_json, confidence, created_at FROM decision_history "
-            "WHERE process_id = ? AND node_id = ?"
+            "WHERE process_id = ?"
         )
-        params: list[Any] = [process_id, node_id]
+        params: list[Any] = [process_id]
+        if node_id is not None:
+            query += " AND node_id = ?"
+            params.append(node_id)
         if run_id is not None:
             query += " AND run_id = ?"
             params.append(run_id)

@@ -245,7 +245,7 @@ class StorageBackend(abc.ABC):
     async def list_decisions(
         self,
         process_id: str,
-        node_id: str,
+        node_id: str | None = None,
         *,
         run_id: str | None = None,
         limit: int | None = None,
