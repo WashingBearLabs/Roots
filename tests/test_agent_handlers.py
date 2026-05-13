@@ -11,6 +11,7 @@ from roots.agents.invoker import AgentInvoker
 from roots.core.decision import DecisionEngine
 from roots.core.orchestrator import OrchestrationError, ProcessRunner
 from roots.core.schema import (
+    Aggregation,
     AgentNodeConfig,
     AgentPoolNodeConfig,
     EdgeDefinition,
@@ -20,6 +21,7 @@ from roots.core.schema import (
     NodeDefinition,
     NodeType,
     ProcessDefinition,
+    VoteConfig,
 )
 from roots.core.state_machine import RunStatus
 from roots.events.emitter import EventEmitter
@@ -71,6 +73,18 @@ async def counter_agent(input: dict[str, Any]) -> dict[str, Any]:
     """Increments a counter in state, useful for sequential chaining tests."""
     count = input["work_item_state"].get("count", 0)
     return {"output": {"count": count + 1}, "escalate": False}
+
+
+async def vote_yes_agent(input: dict[str, Any]) -> dict[str, Any]:
+    return {"output": {"decision": "yes"}, "escalate": False}
+
+
+async def vote_no_agent(input: dict[str, Any]) -> dict[str, Any]:
+    return {"output": {"decision": "no"}, "escalate": False}
+
+
+async def abstain_agent(input: dict[str, Any]) -> dict[str, Any]:
+    return {"output": {}, "escalate": False}
 
 
 def make_agent_process(agent_name: str = "echo") -> ProcessDefinition:
@@ -149,6 +163,9 @@ def registry() -> AgentRegistry:
     reg.register_local("escalating", escalating_agent)
     reg.register_local("failing", failing_agent)
     reg.register_local("counter", counter_agent)
+    reg.register_local("vote_yes", vote_yes_agent)
+    reg.register_local("vote_no", vote_no_agent)
+    reg.register_local("abstain", abstain_agent)
     return reg
 
 
@@ -469,3 +486,211 @@ class TestAgentPoolFirstPass:
 
         with pytest.raises(OrchestrationError, match="All agents failed"):
             await runner.tick()
+
+
+# --- Vote Aggregation Tests ---
+
+
+def make_vote_pool_process(
+    agents: list[str],
+    execution_mode: ExecutionMode,
+    aggregation: Aggregation,
+    vote_config: VoteConfig,
+) -> ProcessDefinition:
+    return ProcessDefinition(
+        id="vote-pool-proc",
+        name="Vote Pool Process",
+        version="1.0.0",
+        nodes=[
+            NodeDefinition(
+                id="pool1",
+                type=NodeType.AGENT_POOL,
+                label="Pool 1",
+                config=AgentPoolNodeConfig(
+                    agents=agents,
+                    execution_mode=execution_mode,
+                    aggregation=aggregation,
+                    output_key="pool_result",
+                    vote_config=vote_config,
+                ),
+            ),
+            NodeDefinition(
+                id="done",
+                type=NodeType.END,
+                label="Done",
+                config=EndNodeConfig(status=EndStatus.COMPLETED),
+            ),
+        ],
+        edges=[EdgeDefinition(from_node="pool1", to_node="done")],
+        entry_point="pool1",
+    )
+
+
+class TestAgentPoolVoteAggregation:
+    async def test_parallel_majority_vote_wins(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        proc = make_vote_pool_process(
+            ["vote_yes", "vote_yes", "vote_no"],
+            ExecutionMode.PARALLEL,
+            Aggregation.MAJORITY_VOTE,
+            VoteConfig(vote_key="decision"),
+        )
+        run_id = await _setup_run(sqlite_storage, proc)
+        runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
+
+        await runner.run_to_completion()
+
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        assert run.status == "completed"
+        result = run.work_item_state["pool_result"]
+        assert result["winning_value"] == "yes"
+        assert result["strategy"] == "majority_vote"
+        assert result["participating_agents"] == 3
+
+    async def test_sequential_majority_vote_wins(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        proc = make_vote_pool_process(
+            ["vote_yes", "vote_yes", "vote_no"],
+            ExecutionMode.SEQUENTIAL,
+            Aggregation.MAJORITY_VOTE,
+            VoteConfig(vote_key="decision"),
+        )
+        run_id = await _setup_run(sqlite_storage, proc)
+        runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
+
+        await runner.run_to_completion()
+
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        assert run.status == "completed"
+        result = run.work_item_state["pool_result"]
+        assert result["winning_value"] == "yes"
+        assert result["strategy"] == "majority_vote"
+
+    async def test_parallel_unanimous_vote_wins(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        proc = make_vote_pool_process(
+            ["vote_yes", "vote_yes"],
+            ExecutionMode.PARALLEL,
+            Aggregation.UNANIMOUS,
+            VoteConfig(vote_key="decision"),
+        )
+        run_id = await _setup_run(sqlite_storage, proc)
+        runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
+
+        await runner.run_to_completion()
+
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        assert run.status == "completed"
+        assert run.work_item_state["pool_result"]["winning_value"] == "yes"
+
+    async def test_parallel_weighted_vote_wins(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        proc = make_vote_pool_process(
+            ["vote_yes", "vote_no"],
+            ExecutionMode.PARALLEL,
+            Aggregation.WEIGHTED_VOTE,
+            VoteConfig(vote_key="decision", weights={"vote_yes": 1.0, "vote_no": 3.0}),
+        )
+        run_id = await _setup_run(sqlite_storage, proc)
+        runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
+
+        await runner.run_to_completion()
+
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        assert run.status == "completed"
+        result = run.work_item_state["pool_result"]
+        assert result["winning_value"] == "no"
+        assert result["strategy"] == "weighted_vote"
+
+    async def test_aggregation_error_fails_run_all_abstain_parallel(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        proc = make_vote_pool_process(
+            ["abstain", "abstain"],
+            ExecutionMode.PARALLEL,
+            Aggregation.MAJORITY_VOTE,
+            VoteConfig(vote_key="decision"),
+        )
+        run_id = await _setup_run(sqlite_storage, proc)
+        runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
+
+        result = await runner.tick()
+
+        assert result is False
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        assert run.status == "failed"
+
+    async def test_aggregation_error_fails_run_unanimous_disagreement(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        proc = make_vote_pool_process(
+            ["vote_yes", "vote_no"],
+            ExecutionMode.PARALLEL,
+            Aggregation.UNANIMOUS,
+            VoteConfig(vote_key="decision"),
+        )
+        run_id = await _setup_run(sqlite_storage, proc)
+        runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
+
+        result = await runner.tick()
+
+        assert result is False
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        assert run.status == "failed"
+
+    async def test_aggregation_error_fails_run_all_abstain_sequential(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        proc = make_vote_pool_process(
+            ["abstain", "abstain"],
+            ExecutionMode.SEQUENTIAL,
+            Aggregation.MAJORITY_VOTE,
+            VoteConfig(vote_key="decision"),
+        )
+        run_id = await _setup_run(sqlite_storage, proc)
+        runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
+
+        result = await runner.tick()
+
+        assert result is False
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        assert run.status == "failed"
