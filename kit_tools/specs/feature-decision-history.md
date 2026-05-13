@@ -84,14 +84,14 @@ Roots stores every decision made by AI decision nodes (selected edge, confidence
 - Deterministic mode ignores history (expressions don't use it)
 
 **Acceptance Criteria:**
-- [ ] build_decision_messages accepts optional history: list[dict[str, Any]] | None parameter
-- [ ] When history is provided and non-empty, a "## Historical Decisions" section is added after ## Current State
-- [ ] Each entry shows: selected edge target, confidence score, and reasoning (truncated to 200 chars when present, omitted when None)
-- [ ] History section omitted when history is None or empty list (backward compatible)
-- [ ] Deterministic mode evaluate path does not pass history to prompt builder (no effect)
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] build_decision_messages accepts optional history: list[dict[str, Any]] | None parameter
+- [x] When history is provided and non-empty, a "## Historical Decisions" section is added after ## Current State
+- [x] Each entry shows: selected edge target, confidence score, and reasoning (truncated to 200 chars when present, omitted when None)
+- [x] History section omitted when history is None or empty list (backward compatible)
+- [x] Deterministic mode evaluate path does not pass history to prompt builder (no effect)
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-004: Decision history API endpoint
 
