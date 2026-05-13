@@ -752,3 +752,21 @@
 - Total attempts: 16
 - Total sessions: 35
 
+
+---
+
+## Epic: library-refinements — Run 1
+
+**Started:** 2026-05-13
+**Mode:** Guarded (max 3 retries, supervisor monitoring)
+**Branch:** epic/library-refinements
+**Models:** Sonnet (implementer), Opus (verifier/validator)
+**Completion:** Create PR
+
+### Specs (in order):
+1. feature-vote-aggregation.md (4 stories)
+2. feature-decision-history.md (4 stories)
+3. feature-process-versioning.md (3 stories)
+
+### Execution Log
+
