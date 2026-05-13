@@ -1,18 +1,43 @@
 # Milestones
 
-> Last updated: 2026-03-26
+> Last updated: 2026-05-13
 > Updated by: Claude
 
 Tracks major milestones for the Roots framework.
 
 ---
 
-## Current Target: Root Registry (T3.8)
+## Current Target: Library Refinements (v1.1)
+
+**Target:** 2026-05 (in progress)
+**Status:** Active — [epic-library-refinements.md](../specs/epic-library-refinements.md)
+**Stories:** 9 across 3 feature specs
+
+Internal library improvements:
+- Vote Aggregation (T3.4) — agent pool consensus mechanisms (4 stories)
+- Decision History Retrieval (T3.1) — query + auto-inject into AI prompts (4 stories)
+- Process Versioning (T3.2) — version history + run pinning (3 stories)
+
+---
+
+## Next: Process Composition (v1.2)
+
+**Target:** TBD (after library refinements)
+**Status:** Planned — [epic-process-composition.md](../specs/epic-process-composition.md)
+**Stories:** 8 across 2 feature specs
+
+Hierarchical process decomposition:
+- Subprocess Schema (T3.3) — node type, storage, validation (3 stories)
+- Subprocess Execution (T3.3) — orchestrator lifecycle, pause/fail cascading, API (5 stories)
+
+---
+
+## Future: Root Registry (T3.8)
 
 **Target:** TBD (not yet planned)
 **Status:** Not Started
 
-The next major milestone after the v1 release. Will enable publishing, discovering, and installing .root packages from a central registry.
+The next major milestone after library refinements. Will enable publishing, discovering, and installing .root packages from a central registry.
 
 ---
 
