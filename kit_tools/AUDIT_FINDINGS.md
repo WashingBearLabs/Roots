@@ -10,7 +10,7 @@
 > **TEMPLATE_INTENT:** Persistent record of code quality, security, and intent alignment findings from automated validation. Tracks findings across sessions with status tracking and archival.
 
 > Last updated: 2026-05-13
-> Updated by: Claude (validate-feature — feature-root-defaults)
+> Updated by: Claude (validate-implementation — feature-decision-history)
 
 ---
 
@@ -36,6 +36,57 @@
 
 <!-- Newest findings at top. Each entry has a unique ID: YYYY-MM-DD-NNN -->
 <!-- Findings are added by /kit-tools:validate-feature -->
+
+### 2026-05-13 — feature-decision-history Validation
+
+| ID | Category | Severity | File | Status |
+|----|----------|----------|------|--------|
+| 2026-05-13-013 | quality | warning | `roots/api/routers/decisions.py` | open |
+| 2026-05-13-014 | quality | warning | `roots/api/routers/decisions.py` | open |
+| 2026-05-13-015 | quality | warning | `roots/api/routers/decisions.py` | open |
+| 2026-05-13-016 | quality | info | `roots/core/orchestrator.py` | open |
+| 2026-05-13-017 | quality | info | `roots/core/decision.py` | open |
+| 2026-05-13-018 | quality | info | `roots/storage/sqlite.py`, `roots/storage/postgres.py` | open |
+| 2026-05-13-019 | security | warning | `roots/api/routers/decisions.py` | open |
+| 2026-05-13-020 | security | warning | `roots/core/decision.py` | open |
+| 2026-05-13-021 | security | info | `roots/api/routers/decisions.py` | open |
+| 2026-05-13-022 | security | info | `roots/api/routers/decisions.py` | open |
+| 2026-05-13-023 | testing | info | test suite | open |
+
+**2026-05-13-013** — `DecisionHistoryResponse` is defined inline at `roots/api/routers/decisions.py:17-25`. Every other API response/request model in the project lives in `roots/api/models.py` (ProcessCreateResponse, RunResponse, CheckpointResponse, HistoryEventResponse, etc.). Deviates from the established API module layout.
+> Recommendation: Move `DecisionHistoryResponse` into `roots/api/models.py` and import it from the router, matching the pattern used by every other router.
+
+**2026-05-13-014** — `limit` query param at `roots/api/routers/decisions.py:33` is typed `int | None = None` with no lower bound. Callers passing `limit=0` or `limit=-5` pass through to storage and produce `LIMIT 0` / `LIMIT -5` SQL. `DecisionNodeConfig.history_depth` uses `Field(default=None, ge=1)` — API/schema constraints are inconsistent.
+> Recommendation: Use `fastapi.Query(default=None, ge=1)` for `limit`. Matches schema validation on `history_depth` and produces a clean 422.
+
+**2026-05-13-015** — `mode` query param at `roots/api/routers/decisions.py:34` accepts any string and is passed straight to the WHERE clause. `DecisionMode` is a StrEnum with a fixed set of values. Unknown modes silently return `[]`; no validation.
+> Recommendation: Type the query param as `DecisionMode | None` so FastAPI validates against enum values and returns 422 on bad input.
+
+**2026-05-13-016** — `roots/core/orchestrator.py:721-731` builds the history payload with nested `.get(...)` chains and `or {}` fallback inline in `_handle_decision`. Reasoning resolution is non-obvious nested logic in an orchestration handler.
+> Recommendation: Extract a private helper (e.g., `_record_to_history_entry(record) -> dict`) at module scope, or add a method on `DecisionRecord` returning the canonical reasoning.
+
+**2026-05-13-017** — Magic number 200 at `roots/core/decision.py:218` for history reasoning truncation. Length is neither named nor documented.
+> Recommendation: Promote to module-level constant such as `HISTORY_REASONING_MAX_CHARS = 200` with a comment explaining the rationale (prompt-size budgeting).
+
+**2026-05-13-018** — `list_decisions` query-building logic duplicated between `roots/storage/sqlite.py:578-596` and `roots/storage/postgres.py:652-674` — same WHERE clauses, ORDER BY, LIMIT, and parameter sequencing. Drift risk as filters are added.
+> Recommendation: Optional — factor predicate-to-clauses logic into a helper returning `(clauses, params)`. Borderline acceptable for two backends today; flag for future filter additions.
+
+**2026-05-13-019** — `limit` at `roots/api/routers/decisions.py:36` has no upper bound and no default. A caller can request `limit=999999999` or omit it; storage returns every matching row (no LIMIT clause when `limit is None` — see `postgres.py:663-665` and `sqlite.py:585-587`). Unbounded-pagination DoS vector.
+> Recommendation: Apply `limit: int = Query(50, ge=1, le=500)` so omitted defaults to a safe page size and explicit values are clamped. Also enforce reasonable max lengths on `node_id`/`run_id`.
+
+**2026-05-13-020** — `build_decision_messages` at `roots/core/decision.py:211-217` injects historical `reasoning` text directly into the next LLM prompt under `## Historical Decisions`. Reasoning originates from prior AI calls whose inputs included attacker-controllable work-item state — a malicious work item can shape prior reasoning to contain prompt-injection payloads (fake section headers, tool-call markers, instructions). 200-char truncation does not strip control chars/markdown. Compounds across runs, especially concerning for `ai_autonomous` mode.
+> Recommendation: Sanitize history entries before rendering — strip/escape newlines (`\n` → space), remove leading `#` and code-fence markers, wrap reasoning in explicit `<untrusted_history>` tags with a system-prompt directive that historical reasoning is data, not instructions.
+
+**2026-05-13-021** — New `GET /processes/{process_id}/decisions` endpoint at `roots/api/routers/decisions.py:34` has no authentication, matching the rest of the framework (processes, runs, history, agents routers are all unauthenticated; `app.py:37` carries a TODO to restrict CORS before adding auth). Consistent with existing posture, but newly exposes decision history (AI reasoning, ai_recommendation payloads) which is more sensitive than run/process metadata.
+> Recommendation: When the planned auth layer arrives, include this endpoint in the protected set and consider a process-level authorization check (caller must own/be a member of `process_id`). No code change required today.
+
+**2026-05-13-022** — `process_id` is taken from the path at `roots/api/routers/decisions.py:34` with no existence check; unknown processes silently return `[]` (per `test_list_decisions_unknown_process_returns_empty`). Matches framework convention but allows a caller to confirm "this `process_id` has at least one decision" via response shape — a minor enumeration signal once auth is added.
+> Recommendation: No change needed today. When auth is added, decide whether to return 404 for processes the caller cannot see versus an empty list.
+
+**2026-05-13-023** — Test suite: 1275 passed, 80 skipped, 0 failures (25.75s). Decision-history tests included: `test_decision.py` (US-003), `test_decision_routes.py` (US-004), `test_schema.py` (US-002 history_depth), `test_sqlite_decisions.py` (US-001 filters), `test_storage.py`. Skipped tests are unrelated (MCP gateway, etc.).
+> Note: All tests pass.
+
+---
 
 ### 2026-05-13 — feature-vote-aggregation Validation
 
