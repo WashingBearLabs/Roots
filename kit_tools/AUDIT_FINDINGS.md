@@ -9,7 +9,7 @@
 
 > **TEMPLATE_INTENT:** Persistent record of code quality, security, and intent alignment findings from automated validation. Tracks findings across sessions with status tracking and archival.
 
-> Last updated: 2026-03-25
+> Last updated: 2026-05-13
 > Updated by: Claude (validate-feature — feature-root-defaults)
 
 ---
@@ -36,6 +36,61 @@
 
 <!-- Newest findings at top. Each entry has a unique ID: YYYY-MM-DD-NNN -->
 <!-- Findings are added by /kit-tools:validate-feature -->
+
+### 2026-05-13 — feature-vote-aggregation Validation
+
+| ID | Category | Severity | File | Status |
+|----|----------|----------|------|--------|
+| 2026-05-13-001 | quality | warning | `roots/core/orchestrator.py`, `roots/core/schema.py` | open |
+| 2026-05-13-002 | quality | warning | `roots/core/orchestrator.py` | open |
+| 2026-05-13-003 | quality | warning | `roots/core/aggregation.py` | open |
+| 2026-05-13-004 | quality | info | `roots/core/aggregation.py` | open |
+| 2026-05-13-005 | quality | info | `roots/core/aggregation.py` | open |
+| 2026-05-13-006 | quality | info | `roots/core/aggregation.py` | open |
+| 2026-05-13-007 | quality | info | `roots/core/orchestrator.py` | open |
+| 2026-05-13-008 | quality | info | `roots/core/orchestrator.py` | open |
+| 2026-05-13-009 | security | info | `roots/core/aggregation.py`, `roots/core/orchestrator.py` | open |
+| 2026-05-13-010 | security | info | `roots/core/orchestrator.py` | open |
+| 2026-05-13-011 | security | info | `roots/core/aggregation.py` | open |
+| 2026-05-13-012 | testing | info | test suite | open |
+
+**2026-05-13-001** — `_VOTE_AGGREGATIONS` set duplicated in `roots/core/orchestrator.py:42` and `roots/core/schema.py:88`. Adding a new vote strategy requires editing both modules.
+> Recommendation: Import the set from schema into orchestrator, or expose an `Aggregation.is_vote(value)` classmethod on the StrEnum.
+
+**2026-05-13-002** — New `AggregationError` handler at `roots/core/orchestrator.py:252-282` duplicates the failure-emission boilerplate already present in the `RetryExhaustedError` handler (lines 213-251) and the `error_key` branch (lines 290-335). Pattern is now triplicated.
+> Recommendation: Extract a `_fail_run(node, run, reason, error_message, extra_metadata=None)` helper that performs history append, atomic update, and dual event emission.
+
+**2026-05-13-003** — `_majority_vote` (aggregation.py:63-91) and `_weighted_vote` (aggregation.py:94-116) share near-identical tally / max / tie / tie-break structure; only the accumulator differs.
+> Recommendation: Extract a `_resolve_winner(tallies, first_position, tie_break, error_prefix)` helper that handles the max/tie/tie-break section.
+
+**2026-05-13-004** — `vote_counts` computed via second pass at `roots/core/aggregation.py:42-44`, then `_majority_vote` builds an essentially identical `counts` dict at lines 65-72.
+> Recommendation: Build the count dict once in `aggregate_votes` and pass it to `_majority_vote`. Low priority.
+
+**2026-05-13-005** — Tie detection in `_weighted_vote` at `roots/core/aggregation.py:106,112` uses exact float equality (`t == max_tally`). Non-integer weights (e.g., 0.1 + 0.2) can miss intended ties or report spurious ones.
+> Recommendation: Document that weights should be integer-valued, or switch to `math.isclose(t, max_tally)`.
+
+**2026-05-13-006** — `"strategy": str(strategy)` at `roots/core/aggregation.py:58` relies on `StrEnum.__str__` returning the enum value. Codebase convention elsewhere uses explicit `.value`.
+> Recommendation: Use `strategy.value` for consistency.
+
+**2026-05-13-007** — `_pool_sequential` at `roots/core/orchestrator.py:638-658` interleaves merge-vs-vote logic without visual separation; `current_state` is updated only when `not is_vote`, then a second `if is_vote` block picks the return path.
+> Recommendation: Split into `_pool_sequential_merge` / `_pool_sequential_vote` or add a clarifying comment.
+
+**2026-05-13-008** — `raw` variable at `roots/core/orchestrator.py:601` is non-descriptive (a list of `AgentOutput | BaseException` from `asyncio.gather`); prior version used clearer `results`.
+> Recommendation: Rename `raw` to `results` or `gathered_results`.
+
+**2026-05-13-009** — `AggregationError` messages embed agent-returned vote values via `repr`/`!r` (aggregation.py:78-79, 89, 114, 124) and propagate into run history (orchestrator.py:164) and event metadata (orchestrator.py:179, 188). If agent outputs ever contain sensitive content, it would be persisted verbatim.
+> Recommendation: If event consumers are less trusted than agents, redact/truncate vote values in error messages or scrub agent-supplied values at the emitter boundary. Defense-in-depth.
+
+**2026-05-13-010** — Vote aggregation paths use `assert isinstance(node.config, AgentPoolNodeConfig)` and `assert config.vote_config is not None` (orchestrator.py:600, 633, 646). Asserts are stripped under `python -O`; an inconsistent config would surface as `AttributeError` instead of `OrchestrationError`. Pydantic provides the actual integrity guarantee, so defense-in-depth only.
+> Recommendation: If the project ever runs with `-O`, replace asserts with explicit checks that raise `OrchestrationError`. No action otherwise.
+
+**2026-05-13-011** — `aggregate_votes` (aggregation.py:42-44) uses agent-returned values as dict keys. Unhashable values (list/dict/set) raise `TypeError` rather than the documented `AggregationError`.
+> Recommendation: Catch `TypeError` and re-raise as `AggregationError` naming the offending agent, or coerce values to a hashable form.
+
+**2026-05-13-012** — Test suite: 1245 passed, 80 skipped, 0 failures (25.35s). Feature-specific tests: 175 passed (0.54s). Skipped tests are unrelated (MCP gateway, etc.).
+> Note: All tests pass.
+
+---
 
 ### 2026-03-25 — feature-root-defaults Validation
 
