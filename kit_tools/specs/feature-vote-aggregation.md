@@ -64,15 +64,15 @@ Agent pool nodes currently support only `merge_all` aggregation (shallow dict me
 - "First agent" tie-breaking means first in the config agents list, not first to respond (parallel execution has nondeterministic arrival order)
 
 **Acceptance Criteria:**
-- [ ] aggregate_votes function in roots/core/aggregation.py accepts list of (agent_name, output_dict) pairs, Aggregation strategy, and VoteConfig
-- [ ] Majority vote: most common value wins if proportion >= threshold (denominator = voting agents, not pool size); AggregationError if no value meets threshold
-- [ ] Weighted vote: per-agent weights multiply vote count, highest weighted total wins; tie-breaking via TieBreak config
-- [ ] Unanimous: all voting agents must return same value; AggregationError on disagreement
-- [ ] Agents whose output lacks vote_key treated as abstentions (excluded from denominator)
-- [ ] AggregationError raised if all agents abstain (zero votes cast)
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] aggregate_votes function in roots/core/aggregation.py accepts list of (agent_name, output_dict) pairs, Aggregation strategy, and VoteConfig
+- [x] Majority vote: most common value wins if proportion >= threshold (denominator = voting agents, not pool size); AggregationError if no value meets threshold
+- [x] Weighted vote: per-agent weights multiply vote count, highest weighted total wins; tie-breaking via TieBreak config
+- [x] Unanimous: all voting agents must return same value; AggregationError on disagreement
+- [x] Agents whose output lacks vote_key treated as abstentions (excluded from denominator)
+- [x] AggregationError raised if all agents abstain (zero votes cast)
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-003: Vote result structure and edge cases
 
