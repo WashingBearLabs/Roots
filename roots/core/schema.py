@@ -58,6 +58,14 @@ class ExecutionMode(StrEnum):
 
 class Aggregation(StrEnum):
     MERGE_ALL = "merge_all"
+    MAJORITY_VOTE = "majority_vote"
+    WEIGHTED_VOTE = "weighted_vote"
+    UNANIMOUS = "unanimous"
+
+
+class TieBreak(StrEnum):
+    FIRST_AGENT = "first_agent"
+    REJECT = "reject"
 
 
 class DecisionMode(StrEnum):
@@ -77,10 +85,24 @@ class EndStatus(StrEnum):
     FAILED = "failed"
 
 
+_VOTE_AGGREGATIONS = {
+    Aggregation.MAJORITY_VOTE,
+    Aggregation.WEIGHTED_VOTE,
+    Aggregation.UNANIMOUS,
+}
+
+
 class AgentNodeConfig(BaseModel):
     agent: str
     output_key: str
     error_key: str | None = None
+
+
+class VoteConfig(BaseModel):
+    vote_key: str
+    threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+    weights: dict[str, float] | None = None
+    tie_break: TieBreak = TieBreak.FIRST_AGENT
 
 
 class AgentPoolNodeConfig(BaseModel):
@@ -88,6 +110,38 @@ class AgentPoolNodeConfig(BaseModel):
     execution_mode: ExecutionMode
     aggregation: Aggregation = Aggregation.MERGE_ALL
     output_key: str
+    vote_config: VoteConfig | None = None
+
+    @model_validator(mode="after")
+    def validate_vote_config(self) -> Self:
+        is_vote = self.aggregation in _VOTE_AGGREGATIONS
+        if is_vote and self.vote_config is None:
+            raise ValueError(
+                "vote_config is required when aggregation is a vote type"
+            )
+        if not is_vote and self.vote_config is not None:
+            raise ValueError(
+                "vote_config is not allowed when aggregation is 'merge_all'"
+            )
+        if is_vote and self.execution_mode == ExecutionMode.FIRST_PASS:
+            raise ValueError(
+                "vote aggregation is not compatible with execution_mode 'first_pass'"
+            )
+        if self.vote_config is not None:
+            if self.vote_config.weights is not None:
+                invalid_keys = set(self.vote_config.weights) - set(self.agents)
+                if invalid_keys:
+                    raise ValueError(
+                        f"vote_config weight keys {invalid_keys!r} are not in the agents list"
+                    )
+            if (
+                self.aggregation == Aggregation.WEIGHTED_VOTE
+                and self.vote_config.weights is None
+            ):
+                raise ValueError(
+                    "weights are required when aggregation is 'weighted_vote'"
+                )
+        return self
 
 
 class DecisionEdge(BaseModel):
