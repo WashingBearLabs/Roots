@@ -104,14 +104,14 @@ Roots stores every decision made by AI decision nodes (selected edge, confidence
 - DecisionRecord dataclass at `roots/storage/base.py:73-83` — map to response model in the route handler
 
 **Acceptance Criteria:**
-- [ ] GET /processes/{process_id}/decisions endpoint in new decisions router
-- [ ] Accepts optional query params: node_id, run_id, limit, mode
-- [ ] DecisionHistoryResponse Pydantic model with all fields (id, run_id, process_id, node_id, mode, decision, confidence, created_at)
-- [ ] Router registered in app factory
-- [ ] Returns empty list (not 404) when no decisions match filters
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] GET /processes/{process_id}/decisions endpoint in new decisions router
+- [x] Accepts optional query params: node_id, run_id, limit, mode
+- [x] DecisionHistoryResponse Pydantic model with all fields (id, run_id, process_id, node_id, mode, decision, confidence, created_at)
+- [x] Router registered in app factory
+- [x] Returns empty list (not 404) when no decisions match filters
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ## Out of Scope
 
