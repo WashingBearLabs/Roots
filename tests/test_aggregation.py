@@ -1,4 +1,4 @@
-"""Tests for vote aggregation module (US-002)."""
+"""Tests for vote aggregation module (US-002, US-003)."""
 
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ class TestAbstention:
             ("c", {"other_key": "x"}),  # abstain
         ]
         result = aggregate_votes(agents, Aggregation.MAJORITY_VOTE, make_vote_config())
-        assert result == "approve"
+        assert result["winning_value"] == "approve"
 
     def test_partial_abstention_threshold_uses_voters_not_pool(self) -> None:
         # 1 votes "approve" out of 3 agents (1 abstains, 1 votes "reject")
@@ -64,7 +64,7 @@ class TestAbstention:
         ]
         # With threshold=0.5, neither wins (50% each, tie → FIRST_AGENT picks "approve")
         result = aggregate_votes(agents, Aggregation.MAJORITY_VOTE, make_vote_config(threshold=0.5))
-        assert result == "approve"
+        assert result["winning_value"] == "approve"
 
 
 # --- MAJORITY_VOTE ---
@@ -77,7 +77,7 @@ class TestMajorityVote:
             Aggregation.MAJORITY_VOTE,
             make_vote_config(),
         )
-        assert result == "yes"
+        assert result["winning_value"] == "yes"
 
     def test_threshold_not_met_raises(self) -> None:
         # 1/3 ≈ 33% < 0.5
@@ -96,7 +96,7 @@ class TestMajorityVote:
             make_vote_config(threshold=0.5),
         )
         # Tie — FIRST_AGENT picks "yes" (first occurrence)
-        assert result == "yes"
+        assert result["winning_value"] == "yes"
 
     def test_threshold_zero_any_value_wins(self) -> None:
         result = aggregate_votes(
@@ -104,7 +104,7 @@ class TestMajorityVote:
             Aggregation.MAJORITY_VOTE,
             make_vote_config(threshold=0.0),
         )
-        assert result == "no"  # "no" has 2/3, "yes" has 1/3 — "no" wins
+        assert result["winning_value"] == "no"  # "no" has 2/3, "yes" has 1/3 — "no" wins
 
     def test_tie_first_agent_picks_earliest(self) -> None:
         # "approve" appears first in the list
@@ -113,7 +113,7 @@ class TestMajorityVote:
             Aggregation.MAJORITY_VOTE,
             make_vote_config(threshold=0.5, tie_break=TieBreak.FIRST_AGENT),
         )
-        assert result == "approve"
+        assert result["winning_value"] == "approve"
 
     def test_tie_first_agent_respects_config_order(self) -> None:
         # "reject" appears first in the list
@@ -122,7 +122,7 @@ class TestMajorityVote:
             Aggregation.MAJORITY_VOTE,
             make_vote_config(threshold=0.5, tie_break=TieBreak.FIRST_AGENT),
         )
-        assert result == "reject"
+        assert result["winning_value"] == "reject"
 
     def test_tie_reject_raises(self) -> None:
         with pytest.raises(AggregationError, match="tie"):
@@ -138,7 +138,7 @@ class TestMajorityVote:
             Aggregation.MAJORITY_VOTE,
             make_vote_config(threshold=1.0),
         )
-        assert result == "approve"
+        assert result["winning_value"] == "approve"
 
     def test_unanimous_threshold_requires_all_agree(self) -> None:
         with pytest.raises(AggregationError, match="threshold"):
@@ -154,7 +154,7 @@ class TestMajorityVote:
             Aggregation.MAJORITY_VOTE,
             make_vote_config(),
         )
-        assert result == 1
+        assert result["winning_value"] == 1
 
 
 # --- WEIGHTED_VOTE ---
@@ -168,7 +168,7 @@ class TestWeightedVote:
             Aggregation.WEIGHTED_VOTE,
             make_vote_config(weights={"a": 10.0, "b": 1.0, "c": 1.0}),
         )
-        assert result == "yes"
+        assert result["winning_value"] == "yes"
 
     def test_equal_weight_majority_wins(self) -> None:
         result = aggregate_votes(
@@ -176,7 +176,7 @@ class TestWeightedVote:
             Aggregation.WEIGHTED_VOTE,
             make_vote_config(weights={"a": 1.0, "b": 1.0, "c": 1.0}),
         )
-        assert result == "yes"
+        assert result["winning_value"] == "yes"
 
     def test_weighted_tie_first_agent_wins(self) -> None:
         # "approve": agent a weight 2.0, "reject": agent b weight 2.0
@@ -188,7 +188,7 @@ class TestWeightedVote:
                 tie_break=TieBreak.FIRST_AGENT,
             ),
         )
-        assert result == "approve"
+        assert result["winning_value"] == "approve"
 
     def test_weighted_tie_reject_raises(self) -> None:
         with pytest.raises(AggregationError, match="tie"):
@@ -209,7 +209,7 @@ class TestWeightedVote:
             Aggregation.WEIGHTED_VOTE,
             make_vote_config(weights={"b": 5.0}),
         )
-        assert result == "no"
+        assert result["winning_value"] == "no"
 
     def test_abstaining_agent_with_weight_excluded(self) -> None:
         # agent "b" abstains; "yes" wins with just agent "a"
@@ -222,7 +222,7 @@ class TestWeightedVote:
             Aggregation.WEIGHTED_VOTE,
             make_vote_config(weights={"a": 1.0, "b": 10.0}),
         )
-        assert result == "yes"
+        assert result["winning_value"] == "yes"
 
 
 # --- UNANIMOUS ---
@@ -235,7 +235,7 @@ class TestUnanimousVote:
             Aggregation.UNANIMOUS,
             make_vote_config(),
         )
-        assert result == "approve"
+        assert result["winning_value"] == "approve"
 
     def test_disagreement_raises(self) -> None:
         with pytest.raises(AggregationError, match="Unanimous vote failed"):
@@ -251,7 +251,7 @@ class TestUnanimousVote:
             Aggregation.UNANIMOUS,
             make_vote_config(),
         )
-        assert result == "yes"
+        assert result["winning_value"] == "yes"
 
     def test_abstentions_excluded_and_remaining_agree(self) -> None:
         agents: list[tuple[str, dict[str, Any]]] = [
@@ -260,7 +260,7 @@ class TestUnanimousVote:
             ("c", {"decision": "approve"}),
         ]
         result = aggregate_votes(agents, Aggregation.UNANIMOUS, make_vote_config())
-        assert result == "approve"
+        assert result["winning_value"] == "approve"
 
     def test_abstentions_excluded_and_remaining_disagree(self) -> None:
         agents: list[tuple[str, dict[str, Any]]] = [
@@ -270,3 +270,97 @@ class TestUnanimousVote:
         ]
         with pytest.raises(AggregationError, match="Unanimous vote failed"):
             aggregate_votes(agents, Aggregation.UNANIMOUS, make_vote_config())
+
+
+# --- US-003: Result structure and edge cases ---
+
+
+class TestResultStructure:
+    def test_result_fields_present(self) -> None:
+        result = aggregate_votes(
+            outputs([("a", "yes"), ("b", "yes"), ("c", "no")]),
+            Aggregation.MAJORITY_VOTE,
+            make_vote_config(),
+        )
+        assert result["winning_value"] == "yes"
+        assert result["vote_counts"] == {"yes": 2, "no": 1}
+        assert result["strategy"] == "majority_vote"
+        assert result["participating_agents"] == 3
+
+    def test_participating_agents_excludes_abstentions(self) -> None:
+        agents: list[tuple[str, dict[str, Any]]] = [
+            ("a", {"decision": "yes"}),
+            ("b", {"decision": "yes"}),
+            ("c", {}),  # abstain
+        ]
+        result = aggregate_votes(agents, Aggregation.MAJORITY_VOTE, make_vote_config())
+        assert result["participating_agents"] == 2
+
+    def test_strategy_field_reflects_strategy(self) -> None:
+        result = aggregate_votes(
+            outputs([("a", "yes"), ("b", "yes")]),
+            Aggregation.WEIGHTED_VOTE,
+            make_vote_config(weights={"a": 1.0, "b": 1.0}),
+        )
+        assert result["strategy"] == "weighted_vote"
+
+    def test_three_way_tie_first_agent_wins(self) -> None:
+        # Three agents each vote for a different value — 3-way tie at 1 each
+        # FIRST_AGENT picks "alpha" (first in config order)
+        result = aggregate_votes(
+            outputs([("a", "alpha"), ("b", "beta"), ("c", "gamma")]),
+            Aggregation.MAJORITY_VOTE,
+            make_vote_config(threshold=0.0, tie_break=TieBreak.FIRST_AGENT),
+        )
+        assert result["winning_value"] == "alpha"
+        assert result["vote_counts"] == {"alpha": 1, "beta": 1, "gamma": 1}
+        assert result["participating_agents"] == 3
+
+    def test_two_way_tie_reject_raises(self) -> None:
+        with pytest.raises(AggregationError, match="tie"):
+            aggregate_votes(
+                outputs([("a", "yes"), ("b", "no")]),
+                Aggregation.MAJORITY_VOTE,
+                make_vote_config(threshold=0.5, tie_break=TieBreak.REJECT),
+            )
+
+    def test_all_abstain_raises(self) -> None:
+        agents: list[tuple[str, dict[str, Any]]] = [
+            ("a", {}),
+            ("b", {}),
+        ]
+        with pytest.raises(AggregationError, match="abstained"):
+            aggregate_votes(agents, Aggregation.MAJORITY_VOTE, make_vote_config())
+
+    def test_single_voter_result_structure(self) -> None:
+        result = aggregate_votes(
+            outputs([("a", "approve")]),
+            Aggregation.MAJORITY_VOTE,
+            make_vote_config(threshold=1.0),
+        )
+        assert result["winning_value"] == "approve"
+        assert result["vote_counts"] == {"approve": 1}
+        assert result["strategy"] == "majority_vote"
+        assert result["participating_agents"] == 1
+
+    def test_weighted_vote_result_structure(self) -> None:
+        result = aggregate_votes(
+            outputs([("a", "yes"), ("b", "no"), ("c", "no")]),
+            Aggregation.WEIGHTED_VOTE,
+            make_vote_config(weights={"a": 10.0, "b": 1.0, "c": 1.0}),
+        )
+        assert result["winning_value"] == "yes"
+        assert result["vote_counts"] == {"yes": 1, "no": 2}
+        assert result["strategy"] == "weighted_vote"
+        assert result["participating_agents"] == 3
+
+    def test_unanimous_result_structure(self) -> None:
+        result = aggregate_votes(
+            outputs([("a", "approve"), ("b", "approve")]),
+            Aggregation.UNANIMOUS,
+            make_vote_config(),
+        )
+        assert result["winning_value"] == "approve"
+        assert result["vote_counts"] == {"approve": 2}
+        assert result["strategy"] == "unanimous"
+        assert result["participating_agents"] == 2

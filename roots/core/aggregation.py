@@ -15,7 +15,7 @@ def aggregate_votes(
     agents_outputs: list[tuple[str, dict[str, Any]]],
     strategy: Aggregation,
     vote_config: VoteConfig,
-) -> Any:
+) -> dict[str, Any]:
     """Aggregate votes from agent outputs using the given strategy.
 
     Agents whose output lacks vote_key are treated as abstentions and excluded
@@ -28,7 +28,7 @@ def aggregate_votes(
         vote_config: Vote configuration (vote_key, threshold, weights, tie_break).
 
     Returns:
-        The winning vote value.
+        Dict with winning_value, vote_counts, strategy, and participating_agents.
     """
     votes: list[tuple[str, Any]] = [
         (name, output[vote_config.vote_key])
@@ -39,14 +39,25 @@ def aggregate_votes(
     if not votes:
         raise AggregationError("All agents abstained — no votes cast")
 
-    if strategy == Aggregation.MAJORITY_VOTE:
-        return _majority_vote(votes, vote_config)
-    if strategy == Aggregation.WEIGHTED_VOTE:
-        return _weighted_vote(votes, vote_config)
-    if strategy == Aggregation.UNANIMOUS:
-        return _unanimous_vote(votes)
+    vote_counts: dict[Any, int] = {}
+    for _, value in votes:
+        vote_counts[value] = vote_counts.get(value, 0) + 1
 
-    raise AggregationError(f"Unsupported aggregation strategy: {strategy!r}")
+    if strategy == Aggregation.MAJORITY_VOTE:
+        winning_value = _majority_vote(votes, vote_config)
+    elif strategy == Aggregation.WEIGHTED_VOTE:
+        winning_value = _weighted_vote(votes, vote_config)
+    elif strategy == Aggregation.UNANIMOUS:
+        winning_value = _unanimous_vote(votes)
+    else:
+        raise AggregationError(f"Unsupported aggregation strategy: {strategy!r}")
+
+    return {
+        "winning_value": winning_value,
+        "vote_counts": vote_counts,
+        "strategy": str(strategy),
+        "participating_agents": len(votes),
+    }
 
 
 def _majority_vote(votes: list[tuple[str, Any]], vote_config: VoteConfig) -> Any:
