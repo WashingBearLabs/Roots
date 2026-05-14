@@ -42,6 +42,7 @@ async def test_initialize_creates_tables(sqlite_storage: StorageBackend) -> None
         "checkpoints",
         "decision_history",
         "escalations",
+        "process_versions",
         "processes",
         "retry_state",
         "run_history",

@@ -19,6 +19,7 @@ from roots.storage.base import (
     DecisionRecord,
     EscalationRecord,
     HistoryEvent,
+    ProcessVersionRecord,
     RetryState,
     RunRecord,
     StorageBackend,
@@ -35,6 +36,14 @@ CREATE TABLE IF NOT EXISTS processes (
     definition_json JSONB,
     created_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS process_versions (
+    id TEXT,
+    version TEXT,
+    definition_json JSONB,
+    created_at TIMESTAMPTZ,
+    PRIMARY KEY (id, version)
 );
 
 CREATE TABLE IF NOT EXISTS agents (
@@ -184,21 +193,33 @@ class PostgresBackend(StorageBackend):
         now = utcnow()
         definition_json = _serialize_process(process)
         async with self.pool.acquire() as conn:
-            await conn.execute(
-                """INSERT INTO processes
-                   (id, name, version, description, definition_json, created_at, updated_at)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7)
-                   ON CONFLICT (id) DO UPDATE SET
-                   name = $2, version = $3, description = $4,
-                   definition_json = $5, updated_at = $7""",
-                process.id,
-                process.name,
-                process.version,
-                process.description,
-                definition_json,
-                now,
-                now,
-            )
+            async with conn.transaction():
+                await conn.execute(
+                    """INSERT INTO processes
+                       (id, name, version, description, definition_json, created_at, updated_at)
+                       VALUES ($1, $2, $3, $4, $5, $6, $7)
+                       ON CONFLICT (id) DO UPDATE SET
+                       name = $2, version = $3, description = $4,
+                       definition_json = $5, updated_at = $7""",
+                    process.id,
+                    process.name,
+                    process.version,
+                    process.description,
+                    definition_json,
+                    now,
+                    now,
+                )
+                await conn.execute(
+                    """INSERT INTO process_versions
+                       (id, version, definition_json, created_at)
+                       VALUES ($1, $2, $3, $4)
+                       ON CONFLICT (id, version) DO UPDATE SET
+                       definition_json = $3, created_at = $4""",
+                    process.id,
+                    process.version,
+                    definition_json,
+                    now,
+                )
 
     async def get_process(self, id: str) -> ProcessDefinition | None:
         async with self.pool.acquire() as conn:
@@ -225,10 +246,47 @@ class PostgresBackend(StorageBackend):
 
     async def delete_process(self, id: str) -> bool:
         async with self.pool.acquire() as conn:
-            result = await conn.execute(
-                "DELETE FROM processes WHERE id = $1", id
-            )
+            async with conn.transaction():
+                await conn.execute(
+                    "DELETE FROM process_versions WHERE id = $1", id
+                )
+                result = await conn.execute(
+                    "DELETE FROM processes WHERE id = $1", id
+                )
         return result == "DELETE 1"
+
+    async def get_process_version(
+        self, id: str, version: str
+    ) -> ProcessDefinition | None:
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT definition_json FROM process_versions "
+                "WHERE id = $1 AND version = $2",
+                id,
+                version,
+            )
+        if row is None:
+            return None
+        data = row["definition_json"]
+        if isinstance(data, str):
+            data = json.loads(data)
+        return ProcessDefinition.model_validate(data)
+
+    async def list_process_versions(self, id: str) -> list[ProcessVersionRecord]:
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT id, version, created_at FROM process_versions "
+                "WHERE id = $1 ORDER BY created_at DESC",
+                id,
+            )
+        return [
+            ProcessVersionRecord(
+                id=r["id"],
+                version=r["version"],
+                created_at=r["created_at"],
+            )
+            for r in rows
+        ]
 
     # --- Agent ---
 

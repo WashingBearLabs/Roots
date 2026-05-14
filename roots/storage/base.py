@@ -83,6 +83,13 @@ class DecisionRecord:
 
 
 @dataclass
+class ProcessVersionRecord:
+    id: str
+    version: str
+    created_at: datetime
+
+
+@dataclass
 class RetryState:
     run_id: str
     node_id: str
@@ -126,6 +133,16 @@ class StorageBackend(abc.ABC):
 
     @abc.abstractmethod
     async def delete_process(self, id: str) -> bool: ...
+
+    @abc.abstractmethod
+    async def get_process_version(
+        self, id: str, version: str
+    ) -> ProcessDefinition | None: ...
+
+    @abc.abstractmethod
+    async def list_process_versions(
+        self, id: str
+    ) -> list[ProcessVersionRecord]: ...
 
     # --- Agent ---
 

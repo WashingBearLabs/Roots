@@ -37,8 +37,8 @@ async def pg_storage() -> AsyncIterator[StorageBackend]:
     # Clean tables before each test
     async with backend.pool.acquire() as conn:
         await conn.execute(
-            "TRUNCATE processes, agents, runs, run_history, checkpoints, "
-            "escalations, decision_history, retry_state, webhooks, "
+            "TRUNCATE process_versions, processes, agents, runs, run_history, "
+            "checkpoints, escalations, decision_history, retry_state, webhooks, "
             "run_locks CASCADE"
         )
     yield backend
@@ -94,6 +94,7 @@ async def test_initialize_creates_tables(pg_storage: StorageBackend) -> None:
         "checkpoints",
         "decision_history",
         "escalations",
+        "process_versions",
         "processes",
         "retry_state",
         "run_history",

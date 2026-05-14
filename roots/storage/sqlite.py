@@ -19,6 +19,7 @@ from roots.storage.base import (
     DecisionRecord,
     EscalationRecord,
     HistoryEvent,
+    ProcessVersionRecord,
     RetryState,
     RunRecord,
     StorageBackend,
@@ -35,6 +36,14 @@ CREATE TABLE IF NOT EXISTS processes (
     definition_json TEXT,
     created_at TEXT,
     updated_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS process_versions (
+    id TEXT,
+    version TEXT,
+    definition_json TEXT,
+    created_at TEXT,
+    PRIMARY KEY (id, version)
 );
 
 CREATE TABLE IF NOT EXISTS agents (
@@ -177,6 +186,12 @@ class SqliteBackend(StorageBackend):
                 now,
             ),
         )
+        await self.db.execute(
+            """INSERT OR REPLACE INTO process_versions
+               (id, version, definition_json, created_at)
+               VALUES (?, ?, ?, ?)""",
+            (process.id, process.version, definition_json, now),
+        )
         await self.db.commit()
 
     async def get_process(self, id: str) -> ProcessDefinition | None:
@@ -196,11 +211,42 @@ class SqliteBackend(StorageBackend):
         ]
 
     async def delete_process(self, id: str) -> bool:
+        await self.db.execute(
+            "DELETE FROM process_versions WHERE id = ?", (id,)
+        )
         cursor = await self.db.execute(
             "DELETE FROM processes WHERE id = ?", (id,)
         )
         await self.db.commit()
         return cursor.rowcount > 0
+
+    async def get_process_version(
+        self, id: str, version: str
+    ) -> ProcessDefinition | None:
+        cursor = await self.db.execute(
+            "SELECT definition_json FROM process_versions WHERE id = ? AND version = ?",
+            (id, version),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        return ProcessDefinition.model_validate(json.loads(row[0]))
+
+    async def list_process_versions(self, id: str) -> list[ProcessVersionRecord]:
+        cursor = await self.db.execute(
+            "SELECT id, version, created_at FROM process_versions "
+            "WHERE id = ? ORDER BY created_at DESC",
+            (id,),
+        )
+        rows = await cursor.fetchall()
+        return [
+            ProcessVersionRecord(
+                id=r[0],
+                version=r[1],
+                created_at=datetime.fromisoformat(r[2]),
+            )
+            for r in rows
+        ]
 
     # --- Agent ---
 
