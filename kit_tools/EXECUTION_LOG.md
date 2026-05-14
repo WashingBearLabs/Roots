@@ -843,3 +843,8 @@
 - Learnings: ProcessVersionSummary response model (id, version, created_at) mirrors ProcessVersionRecord from storage — no mapping needed beyond field assignment.; Version sub-routes added to existing processes router follow the same pattern as /validate: fixed string after {process_id} avoids conflicts with dynamic routes.; GET /processes/{id}/versions checks process existence via get_process() before listing — returns 404 for unknown process IDs rather than empty list.; GET /processes/{id}/versions/{version} delegates 404 detection entirely to get_process_version() returning None (covers both unknown process and unknown version).; Adding process_version to RunResponse with default=None is backward-compatible — existing tests continue to pass; new test asserts the field is populated when orchestrator pins version at run creation.; Verifier note: Clean, minimal implementation. New routes follow the same pattern as existing process routes (get_process, validate_process): consistent dependency injection (Depends(get_roots)), HTTPException with 404 + descriptive detail, and reuse of existing ProcessDetail/_node_to_dict/_edge_to_dict helpers. The list endpoint correctly does a fresh existence check (calls get_process first) so it can distinguish '404 unknown process' from '200 empty list'. The get_process_version endpoint reuses storage.get_process_version (added in US-001) and properly serializes nodes/edges via the existing helpers. RunResponse change is one line and the runs.py serializer was correctly updated to populate the field.
 - Committed: feat(process-versioning): US-003 - Process version management API
 
+### Execution Complete — 2026-05-14T00:38:12Z
+- Stories: 11/11 completed
+- Total attempts: 11
+- Total sessions: 25
+
