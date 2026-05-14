@@ -87,13 +87,13 @@ Currently, saving a process definition overwrites the previous version — there
 - Register new routes in existing processes router (no new router needed)
 
 **Acceptance Criteria:**
-- [ ] GET /processes/{id}/versions returns all versions (version string + created_at); version sub-routes added to existing processes router
-- [ ] GET /processes/{id}/versions/{version} returns full process definition for that version (version passed as path param, URL-encoded if needed)
-- [ ] Returns 404 when process ID or version not found
-- [ ] Run API responses include process_version field (ProcessRunResponse or equivalent updated)
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] GET /processes/{id}/versions returns all versions (version string + created_at); version sub-routes added to existing processes router
+- [x] GET /processes/{id}/versions/{version} returns full process definition for that version (version passed as path param, URL-encoded if needed)
+- [x] Returns 404 when process ID or version not found
+- [x] Run API responses include process_version field (ProcessRunResponse or equivalent updated)
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ## Out of Scope
 
