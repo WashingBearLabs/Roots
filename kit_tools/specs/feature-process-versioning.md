@@ -65,16 +65,16 @@ Currently, saving a process definition overwrites the previous version — there
 - Orchestrator.start_run at `roots/core/orchestrator.py:1075-1094` — process is already fetched here, version available
 
 **Acceptance Criteria:**
-- [ ] process_version TEXT column added to runs table in both backends (nullable for existing runs); initialize() adds column via ALTER TABLE IF NOT EXISTS for databases created before this feature
-- [ ] RunRecord dataclass includes process_version: str | None field
-- [ ] create_run stores ProcessDefinition.version as the run's process_version (create_run abstract signature updated to accept process version)
-- [ ] Orchestrator tick loads process via get_process_version(process_id, run.process_version) when pinned version exists
-- [ ] Falls back to get_process(process_id) for runs with process_version=None (backward compat with pre-existing runs)
-- [ ] If a pinned version is not found in process_versions (deleted), orchestrator falls back to get_process and logs a warning
-- [ ] Test: create run, update process definition, tick run — run uses original definition, not updated one
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] process_version TEXT column added to runs table in both backends (nullable for existing runs); initialize() adds column via ALTER TABLE IF NOT EXISTS for databases created before this feature
+- [x] RunRecord dataclass includes process_version: str | None field
+- [x] create_run stores ProcessDefinition.version as the run's process_version (create_run abstract signature updated to accept process version)
+- [x] Orchestrator tick loads process via get_process_version(process_id, run.process_version) when pinned version exists
+- [x] Falls back to get_process(process_id) for runs with process_version=None (backward compat with pre-existing runs)
+- [x] If a pinned version is not found in process_versions (deleted), orchestrator falls back to get_process and logs a warning
+- [x] Test: create run, update process definition, tick run — run uses original definition, not updated one
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-003: Process version management API
 
