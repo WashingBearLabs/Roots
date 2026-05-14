@@ -29,6 +29,7 @@ class RunRecord:
     work_item_state: dict[str, Any]
     created_at: datetime
     updated_at: datetime
+    process_version: str | None = None
 
 
 @dataclass
@@ -162,7 +163,10 @@ class StorageBackend(abc.ABC):
 
     @abc.abstractmethod
     async def create_run(
-        self, process_id: str, work_item_state: dict[str, Any]
+        self,
+        process_id: str,
+        work_item_state: dict[str, Any],
+        process_version: str | None = None,
     ) -> RunRecord: ...
 
     @abc.abstractmethod

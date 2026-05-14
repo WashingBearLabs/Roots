@@ -222,3 +222,83 @@ async def test_list_processes_unaffected_by_versioning(
     processes = await sqlite_storage.list_processes()
     assert len(processes) == 1
     assert processes[0].id == sample_process.id
+
+
+# --- US-002: Run version pinning ---
+
+
+async def test_create_run_stores_process_version(
+    sqlite_storage: StorageBackend, sample_process: ProcessDefinition
+) -> None:
+    """create_run with a version stores it on the RunRecord."""
+    await sqlite_storage.save_process(sample_process)
+    run = await sqlite_storage.create_run(
+        sample_process.id, {}, process_version="1.0.0"
+    )
+    assert run.process_version == "1.0.0"
+
+
+async def test_create_run_without_version_is_none(
+    sqlite_storage: StorageBackend,
+) -> None:
+    """create_run without a version stores None (backward compat)."""
+    run = await sqlite_storage.create_run("proc-1", {})
+    assert run.process_version is None
+
+
+async def test_get_run_returns_process_version(
+    sqlite_storage: StorageBackend, sample_process: ProcessDefinition
+) -> None:
+    """get_run round-trips process_version from storage."""
+    await sqlite_storage.save_process(sample_process)
+    run = await sqlite_storage.create_run(
+        sample_process.id, {}, process_version="1.0.0"
+    )
+    loaded = await sqlite_storage.get_run(run.id)
+    assert loaded is not None
+    assert loaded.process_version == "1.0.0"
+
+
+async def test_list_runs_returns_process_version(
+    sqlite_storage: StorageBackend, sample_process: ProcessDefinition
+) -> None:
+    """list_runs includes process_version on each RunRecord."""
+    await sqlite_storage.save_process(sample_process)
+    await sqlite_storage.create_run(sample_process.id, {}, process_version="1.0.0")
+    await sqlite_storage.create_run(sample_process.id, {})
+
+    runs = await sqlite_storage.list_runs(process_id=sample_process.id)
+    versions = {r.process_version for r in runs}
+    assert versions == {"1.0.0", None}
+
+
+async def test_run_pinned_to_original_version(
+    sqlite_storage: StorageBackend, sample_process: ProcessDefinition
+) -> None:
+    """A run created at v1 retrieves v1 definition even after process updated to v2."""
+    await sqlite_storage.save_process(sample_process)
+    run = await sqlite_storage.create_run(
+        sample_process.id, {}, process_version="1.0.0"
+    )
+
+    # Update process to v2
+    v2 = sample_process.model_copy(update={"version": "2.0.0", "description": "V2"})
+    await sqlite_storage.save_process(v2)
+
+    # Run still has its pinned version
+    loaded = await sqlite_storage.get_run(run.id)
+    assert loaded is not None
+    assert loaded.process_version == "1.0.0"
+
+    # And the pinned version retrieves the original definition
+    pinned = await sqlite_storage.get_process_version(
+        loaded.process_id, loaded.process_version  # type: ignore[arg-type]
+    )
+    assert pinned is not None
+    assert pinned.version == "1.0.0"
+    assert pinned.description == sample_process.description
+
+    # While the latest is v2
+    latest = await sqlite_storage.get_process(sample_process.id)
+    assert latest is not None
+    assert latest.version == "2.0.0"

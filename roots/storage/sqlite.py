@@ -62,7 +62,8 @@ CREATE TABLE IF NOT EXISTS runs (
     created_at TEXT,
     updated_at TEXT,
     locked_by TEXT,
-    locked_at TEXT
+    locked_at TEXT,
+    process_version TEXT
 );
 
 CREATE TABLE IF NOT EXISTS run_history (
@@ -161,6 +162,13 @@ class SqliteBackend(StorageBackend):
         self._db = await aiosqlite.connect(self._path)
         await self._db.executescript(_SCHEMA_SQL)
         await self._db.commit()
+        try:
+            await self._db.execute(
+                "ALTER TABLE runs ADD COLUMN process_version TEXT"
+            )
+            await self._db.commit()
+        except Exception:
+            pass  # Column already exists
 
     async def close(self) -> None:
         if self._db is not None:
@@ -287,15 +295,18 @@ class SqliteBackend(StorageBackend):
     # --- Run ---
 
     async def create_run(
-        self, process_id: str, work_item_state: dict[str, Any]
+        self,
+        process_id: str,
+        work_item_state: dict[str, Any],
+        process_version: str | None = None,
     ) -> RunRecord:
         run_id = f"run-{uuid4()}"
         now = utcnow()
         await self.db.execute(
             """INSERT INTO runs
                (id, process_id, status, current_node_id, work_item_state_json,
-                created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                created_at, updated_at, process_version)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 run_id,
                 process_id,
@@ -304,6 +315,7 @@ class SqliteBackend(StorageBackend):
                 json.dumps(work_item_state),
                 now.isoformat(),
                 now.isoformat(),
+                process_version,
             ),
         )
         await self.db.commit()
@@ -315,12 +327,13 @@ class SqliteBackend(StorageBackend):
             work_item_state=work_item_state,
             created_at=now,
             updated_at=now,
+            process_version=process_version,
         )
 
     async def get_run(self, run_id: str) -> RunRecord | None:
         cursor = await self.db.execute(
             "SELECT id, process_id, status, current_node_id, work_item_state_json, "
-            "created_at, updated_at FROM runs WHERE id = ?",
+            "created_at, updated_at, process_version FROM runs WHERE id = ?",
             (run_id,),
         )
         row = await cursor.fetchone()
@@ -334,6 +347,7 @@ class SqliteBackend(StorageBackend):
             work_item_state=json.loads(row[4]),
             created_at=datetime.fromisoformat(row[5]),
             updated_at=datetime.fromisoformat(row[6]),
+            process_version=row[7],
         )
 
     async def update_run_status(
@@ -361,7 +375,7 @@ class SqliteBackend(StorageBackend):
     ) -> list[RunRecord]:
         query = (
             "SELECT id, process_id, status, current_node_id, "
-            "work_item_state_json, created_at, updated_at FROM runs"
+            "work_item_state_json, created_at, updated_at, process_version FROM runs"
         )
         params: list[str] = []
         clauses: list[str] = []
@@ -384,6 +398,7 @@ class SqliteBackend(StorageBackend):
                 work_item_state=json.loads(r[4]),
                 created_at=datetime.fromisoformat(r[5]),
                 updated_at=datetime.fromisoformat(r[6]),
+                process_version=r[7],
             )
             for r in rows
         ]

@@ -62,7 +62,8 @@ CREATE TABLE IF NOT EXISTS runs (
     created_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ,
     locked_by TEXT,
-    locked_at TIMESTAMPTZ
+    locked_at TIMESTAMPTZ,
+    process_version TEXT
 );
 
 CREATE TABLE IF NOT EXISTS run_history (
@@ -168,6 +169,9 @@ class PostgresBackend(StorageBackend):
         self._pool = await asyncpg.create_pool(self._dsn)
         async with self.pool.acquire() as conn:
             await conn.execute(_SCHEMA_SQL)
+            await conn.execute(
+                "ALTER TABLE runs ADD COLUMN IF NOT EXISTS process_version TEXT"
+            )
 
     async def close(self) -> None:
         # Release advisory locks and clean up tracking table before closing
@@ -340,7 +344,10 @@ class PostgresBackend(StorageBackend):
     # --- Run ---
 
     async def create_run(
-        self, process_id: str, work_item_state: dict[str, Any]
+        self,
+        process_id: str,
+        work_item_state: dict[str, Any],
+        process_version: str | None = None,
     ) -> RunRecord:
         run_id = f"run-{uuid4()}"
         now = utcnow()
@@ -348,8 +355,8 @@ class PostgresBackend(StorageBackend):
             await conn.execute(
                 """INSERT INTO runs
                    (id, process_id, status, current_node_id, work_item_state_json,
-                    created_at, updated_at)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7)""",
+                    created_at, updated_at, process_version)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8)""",
                 run_id,
                 process_id,
                 "pending",
@@ -357,6 +364,7 @@ class PostgresBackend(StorageBackend):
                 json.dumps(work_item_state),
                 now,
                 now,
+                process_version,
             )
         return RunRecord(
             id=run_id,
@@ -366,13 +374,14 @@ class PostgresBackend(StorageBackend):
             work_item_state=work_item_state,
             created_at=now,
             updated_at=now,
+            process_version=process_version,
         )
 
     async def get_run(self, run_id: str) -> RunRecord | None:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 "SELECT id, process_id, status, current_node_id, work_item_state_json, "
-                "created_at, updated_at FROM runs WHERE id = $1",
+                "created_at, updated_at, process_version FROM runs WHERE id = $1",
                 run_id,
             )
         if row is None:
@@ -388,6 +397,7 @@ class PostgresBackend(StorageBackend):
             work_item_state=wis,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
+            process_version=row["process_version"],
         )
 
     async def update_run_status(
@@ -418,7 +428,7 @@ class PostgresBackend(StorageBackend):
     ) -> list[RunRecord]:
         query = (
             "SELECT id, process_id, status, current_node_id, "
-            "work_item_state_json, created_at, updated_at FROM runs"
+            "work_item_state_json, created_at, updated_at, process_version FROM runs"
         )
         params: list[Any] = []
         clauses: list[str] = []
@@ -446,6 +456,7 @@ class PostgresBackend(StorageBackend):
                     work_item_state=wis,
                     created_at=r["created_at"],
                     updated_at=r["updated_at"],
+                    process_version=r["process_version"],
                 )
             )
         return result

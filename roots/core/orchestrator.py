@@ -145,7 +145,19 @@ class ProcessRunner:
                 return False
 
             # Step 3: Load process definition
-            process = await self._storage.get_process(run.process_id)
+            if run.process_version is not None:
+                process = await self._storage.get_process_version(
+                    run.process_id, run.process_version
+                )
+                if process is None:
+                    logger.warning(
+                        "Pinned version %s for process %s not found; falling back to latest",
+                        run.process_version,
+                        run.process_id,
+                    )
+                    process = await self._storage.get_process(run.process_id)
+            else:
+                process = await self._storage.get_process(run.process_id)
             if process is None:
                 await self._storage.release_run_lock(self.run_id, self._owner_id)
                 return False
@@ -1153,7 +1165,7 @@ class Orchestrator:
             raise OrchestrationError(
                 f"Process '{process_id}' not found"
             )
-        run = await self._storage.create_run(process_id, work_item)
+        run = await self._storage.create_run(process_id, work_item, process.version)
         await self._storage.update_run_status(
             run.id, RunStatus.PENDING, process.entry_point
         )
