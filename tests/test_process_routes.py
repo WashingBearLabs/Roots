@@ -273,3 +273,77 @@ async def test_full_crud_lifecycle(client):
     # List should be empty
     resp = await client.get("/processes")
     assert resp.json() == []
+
+
+# --- Version routes ---
+
+
+@pytest.mark.asyncio
+async def test_list_versions_returns_all_versions(client):
+    """GET /processes/{id}/versions returns all saved versions."""
+    await client.post("/processes", json={"definition": VALID_PROCESS_DEF})
+    updated_def = {**VALID_PROCESS_DEF, "version": "2.0.0"}
+    await client.put("/processes/proc-1", json={"definition": updated_def})
+
+    resp = await client.get("/processes/proc-1/versions")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 2
+    versions = {v["version"] for v in data}
+    assert versions == {"1.0.0", "2.0.0"}
+    assert all("id" in v and "created_at" in v for v in data)
+
+
+@pytest.mark.asyncio
+async def test_list_versions_not_found(client):
+    """GET /processes/{id}/versions returns 404 for unknown process."""
+    resp = await client.get("/processes/does-not-exist/versions")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_version_returns_full_definition(client):
+    """GET /processes/{id}/versions/{version} returns full process definition."""
+    await client.post("/processes", json={"definition": VALID_PROCESS_DEF})
+
+    resp = await client.get("/processes/proc-1/versions/1.0.0")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["id"] == "proc-1"
+    assert data["version"] == "1.0.0"
+    assert data["entry_point"] == "start"
+    assert len(data["nodes"]) == 2
+    assert len(data["edges"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_get_version_returns_correct_historical_version(client):
+    """GET /processes/{id}/versions/{version} returns the pinned definition."""
+    await client.post("/processes", json={"definition": VALID_PROCESS_DEF})
+    updated_def = {**VALID_PROCESS_DEF, "version": "2.0.0", "description": "V2"}
+    await client.put("/processes/proc-1", json={"definition": updated_def})
+
+    resp = await client.get("/processes/proc-1/versions/1.0.0")
+    assert resp.status_code == 200
+    assert resp.json()["version"] == "1.0.0"
+    assert resp.json()["description"] == "A simple test process"
+
+    resp2 = await client.get("/processes/proc-1/versions/2.0.0")
+    assert resp2.status_code == 200
+    assert resp2.json()["version"] == "2.0.0"
+    assert resp2.json()["description"] == "V2"
+
+
+@pytest.mark.asyncio
+async def test_get_version_not_found_version(client):
+    """GET /processes/{id}/versions/{version} returns 404 for unknown version."""
+    await client.post("/processes", json={"definition": VALID_PROCESS_DEF})
+    resp = await client.get("/processes/proc-1/versions/99.0.0")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_version_not_found_process(client):
+    """GET /processes/{id}/versions/{version} returns 404 for unknown process."""
+    resp = await client.get("/processes/does-not-exist/versions/1.0.0")
+    assert resp.status_code == 404
