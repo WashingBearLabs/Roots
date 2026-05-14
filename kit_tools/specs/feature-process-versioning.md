@@ -42,16 +42,16 @@ Currently, saving a process definition overwrites the previous version — there
 - Follow existing pattern: abstract method in base.py, implement in sqlite.py and postgres.py
 
 **Acceptance Criteria:**
-- [ ] New process_versions table in both SQLite and PostgreSQL (columns: id TEXT, version TEXT, definition_json TEXT, created_at TEXT/TIMESTAMPTZ, PRIMARY KEY (id, version))
-- [ ] save_process wraps both the processes upsert and process_versions insert in a single explicit transaction (crash between writes must not lose version history)
-- [ ] Duplicate (id, version) saves use INSERT OR REPLACE on process_versions (last write wins, matches processes table upsert behavior)
-- [ ] get_process_version(id, version) abstract method on StorageBackend; implemented in both backends
-- [ ] list_process_versions(id) abstract method returns all versions ordered by created_at DESC; implemented in both backends
-- [ ] delete_process also deletes all version history rows for that process ID
-- [ ] Existing save_process/get_process behavior unchanged (backward compatible)
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] New process_versions table in both SQLite and PostgreSQL (columns: id TEXT, version TEXT, definition_json TEXT, created_at TEXT/TIMESTAMPTZ, PRIMARY KEY (id, version))
+- [x] save_process wraps both the processes upsert and process_versions insert in a single explicit transaction (crash between writes must not lose version history)
+- [x] Duplicate (id, version) saves use INSERT OR REPLACE on process_versions (last write wins, matches processes table upsert behavior)
+- [x] get_process_version(id, version) abstract method on StorageBackend; implemented in both backends
+- [x] list_process_versions(id) abstract method returns all versions ordered by created_at DESC; implemented in both backends
+- [x] delete_process also deletes all version history rows for that process ID
+- [x] Existing save_process/get_process behavior unchanged (backward compatible)
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-002: Pin runs to process version at creation
 
