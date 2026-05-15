@@ -110,13 +110,13 @@ With the SUBPROCESS node type and storage foundation in place (feature-subproces
 - The circular reference validator (schema spec US-003) catches static cycles; depth limit catches dynamic/runtime depth
 
 **Acceptance Criteria:**
-- [ ] Current subprocess depth tracked (via state metadata or runner context)
-- [ ] Depth checked at handler entry before creating child run
-- [ ] Depth >= max_depth → node fails with clear error message ("Subprocess depth limit exceeded: {depth}/{max_depth}")
-- [ ] Default depth limit (5) prevents unbounded nesting in tests
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] Current subprocess depth tracked (via state metadata or runner context)
+- [x] Depth checked at handler entry before creating child run
+- [x] Depth >= max_depth → node fails with clear error message ("Subprocess depth limit exceeded: {depth}/{max_depth}")
+- [x] Default depth limit (5) prevents unbounded nesting in tests
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-005: API visibility for subprocess runs
 
