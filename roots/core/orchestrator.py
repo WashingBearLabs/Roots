@@ -66,6 +66,17 @@ class OrchestrationError(Exception):
     """Raised when an orchestration operation fails."""
 
 
+class SubprocessFailedError(Exception):
+    """Raised when a subprocess child run ends in FAILED or CANCELLED status."""
+
+    def __init__(self, child_run_id: str, child_status: str) -> None:
+        self.child_run_id = child_run_id
+        self.child_status = child_status
+        super().__init__(
+            f"Subprocess child run '{child_run_id}' ended with status '{child_status}'"
+        )
+
+
 class ProcessRunner:
     """Executes one tick per call — load state, execute node, write state.
 
@@ -291,6 +302,49 @@ class ProcessRunner:
                         process_id=run.process_id,
                         node_id=node.id,
                         metadata={"error": str(exc), "reason": "aggregation_failed"},
+                    )
+                )
+                return False
+            except SubprocessFailedError as exc:
+                await self._storage.append_history_event(
+                    self.run_id, "failed", node.id,
+                    {
+                        "reason": "subprocess_failed",
+                        "child_run_id": exc.child_run_id,
+                        "child_status": exc.child_status,
+                    },
+                )
+                await self._storage.update_run_atomically(
+                    self.run_id,
+                    work_item_state=state,
+                    status=RunStatus.FAILED,
+                    current_node_id=node.id,
+                )
+                self._event_emitter.emit(
+                    create_event(
+                        EventType.NODE_FAILED,
+                        run_id=self.run_id,
+                        process_id=run.process_id,
+                        node_id=node.id,
+                        node_type=node.type.value,
+                        metadata={
+                            "reason": "subprocess_failed",
+                            "child_run_id": exc.child_run_id,
+                            "child_status": exc.child_status,
+                        },
+                    )
+                )
+                self._event_emitter.emit(
+                    create_event(
+                        EventType.RUN_FAILED,
+                        run_id=self.run_id,
+                        process_id=run.process_id,
+                        node_id=node.id,
+                        metadata={
+                            "reason": "subprocess_failed",
+                            "child_run_id": exc.child_run_id,
+                            "child_status": exc.child_status,
+                        },
                     )
                 )
                 return False
@@ -1229,6 +1283,22 @@ class ProcessRunner:
                     EscalationTrigger.SUBPROCESS_PAUSED,
                 )
                 return None
+
+        # Child failed or was externally cancelled — propagate failure to parent
+        if child_run.status in (RunStatus.FAILED, RunStatus.CANCELLED):
+            self._event_emitter.emit(
+                create_event(
+                    EventType.SUBPROCESS_FAILED,
+                    run_id=self.run_id,
+                    process_id=self._process_id or "",
+                    node_id=node.id,
+                    metadata={
+                        "child_run_id": child_run.id,
+                        "child_status": child_run.status,
+                    },
+                )
+            )
+            raise SubprocessFailedError(child_run.id, child_run.status)
 
         # Map output from child final state; missing keys produce None
         result: dict[str, Any] = {}

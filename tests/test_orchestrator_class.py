@@ -685,3 +685,117 @@ class TestSubprocessHandler:
 
         with pytest.raises(OrchestrationError, match="not found in storage"):
             await orchestrator.execute_run(run.id)
+
+    # --- US-003: Subprocess failure propagation ---
+
+    async def test_subprocess_child_failed_propagates_to_parent(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+        sink: CollectorSink,
+    ) -> None:
+        """Child run FAILED → parent node fails; SUBPROCESS_FAILED, NODE_FAILED, RUN_FAILED emitted."""
+        await sqlite_storage.save_process(self._make_pausing_child_process())
+        await sqlite_storage.save_process(self._make_pausing_parent_process())
+
+        run = await orchestrator.start_run("pausing-parent-proc", {})
+        await orchestrator.execute_run(run.id)
+
+        parent = await sqlite_storage.get_run(run.id)
+        assert parent is not None
+        assert parent.status == RunStatus.PAUSED
+        child_run_id: str = parent.work_item_state["_subprocess_run_sub"]
+
+        # Simulate child run failing
+        await sqlite_storage.update_run_status(child_run_id, RunStatus.FAILED)
+
+        # Resume parent — should detect child FAILED and fail itself
+        assert parent.current_node_id is not None
+        await sqlite_storage.update_run_status(
+            run.id, RunStatus.RUNNING, parent.current_node_id
+        )
+        await orchestrator.execute_run(run.id)
+
+        parent_after = await sqlite_storage.get_run(run.id)
+        assert parent_after is not None
+        assert parent_after.status == RunStatus.FAILED
+
+        event_types = [e.event for e in sink.events]
+        assert EventType.SUBPROCESS_FAILED in event_types
+        assert EventType.NODE_FAILED in event_types
+        assert EventType.RUN_FAILED in event_types
+
+        subprocess_failed_evt = next(
+            e for e in sink.events if e.event == EventType.SUBPROCESS_FAILED
+        )
+        assert subprocess_failed_evt.metadata.get("child_run_id") == child_run_id
+        assert subprocess_failed_evt.metadata.get("child_status") == RunStatus.FAILED
+
+    async def test_subprocess_child_cancelled_propagates_to_parent(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+    ) -> None:
+        """Child run CANCELLED → parent node fails (same behavior as FAILED)."""
+        await sqlite_storage.save_process(self._make_pausing_child_process())
+        await sqlite_storage.save_process(self._make_pausing_parent_process())
+
+        run = await orchestrator.start_run("pausing-parent-proc", {})
+        await orchestrator.execute_run(run.id)
+
+        parent = await sqlite_storage.get_run(run.id)
+        assert parent is not None
+        assert parent.status == RunStatus.PAUSED
+        child_run_id: str = parent.work_item_state["_subprocess_run_sub"]
+
+        await sqlite_storage.update_run_status(child_run_id, RunStatus.CANCELLED)
+
+        assert parent.current_node_id is not None
+        await sqlite_storage.update_run_status(
+            run.id, RunStatus.RUNNING, parent.current_node_id
+        )
+        await orchestrator.execute_run(run.id)
+
+        parent_after = await sqlite_storage.get_run(run.id)
+        assert parent_after is not None
+        assert parent_after.status == RunStatus.FAILED
+
+    async def test_subprocess_failure_metadata_has_child_context(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+        sink: CollectorSink,
+    ) -> None:
+        """NODE_FAILED and RUN_FAILED metadata include child_run_id and child_status."""
+        await sqlite_storage.save_process(self._make_pausing_child_process())
+        await sqlite_storage.save_process(self._make_pausing_parent_process())
+
+        run = await orchestrator.start_run("pausing-parent-proc", {})
+        await orchestrator.execute_run(run.id)
+
+        parent = await sqlite_storage.get_run(run.id)
+        assert parent is not None
+        child_run_id: str = parent.work_item_state["_subprocess_run_sub"]
+
+        await sqlite_storage.update_run_status(child_run_id, RunStatus.FAILED)
+
+        assert parent.current_node_id is not None
+        await sqlite_storage.update_run_status(
+            run.id, RunStatus.RUNNING, parent.current_node_id
+        )
+        await orchestrator.execute_run(run.id)
+
+        node_failed_evt = next(
+            e for e in sink.events
+            if e.event == EventType.NODE_FAILED
+            and e.metadata.get("reason") == "subprocess_failed"
+        )
+        run_failed_evt = next(
+            e for e in sink.events
+            if e.event == EventType.RUN_FAILED
+            and e.metadata.get("reason") == "subprocess_failed"
+        )
+        assert node_failed_evt.metadata.get("child_run_id") == child_run_id
+        assert node_failed_evt.metadata.get("child_status") == RunStatus.FAILED
+        assert run_failed_evt.metadata.get("child_run_id") == child_run_id
+        assert run_failed_evt.metadata.get("child_status") == RunStatus.FAILED
