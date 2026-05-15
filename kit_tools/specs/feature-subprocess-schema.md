@@ -81,15 +81,15 @@ This spec adds the foundational types and storage support for process compositio
 - Add index on parent_run_id in both backends for efficient child run queries
 
 **Acceptance Criteria:**
-- [ ] parent_run_id (str | None) and parent_node_id (str | None) added to RunRecord dataclass
-- [ ] parent_run_id and parent_node_id TEXT columns added to runs table in both backends (nullable); index on parent_run_id
-- [ ] initialize() adds columns via ALTER TABLE for existing databases (SQLite: try/except OperationalError; PostgreSQL: ADD COLUMN IF NOT EXISTS)
-- [ ] create_run abstract signature updated with optional keyword-only parent_run_id and parent_node_id; both backends and existing callers updated
-- [ ] get_child_runs(parent_run_id) abstract method returns list of child RunRecords; implemented in both backends
-- [ ] Test: initialize() on a database without parent_run_id column successfully adds it (migration test)
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] parent_run_id (str | None) and parent_node_id (str | None) added to RunRecord dataclass
+- [x] parent_run_id and parent_node_id TEXT columns added to runs table in both backends (nullable); index on parent_run_id
+- [x] initialize() adds columns via ALTER TABLE for existing databases (SQLite: try/except OperationalError; PostgreSQL: ADD COLUMN IF NOT EXISTS)
+- [x] create_run abstract signature updated with optional keyword-only parent_run_id and parent_node_id; both backends and existing callers updated
+- [x] get_child_runs(parent_run_id) abstract method returns list of child RunRecords; implemented in both backends
+- [x] Test: initialize() on a database without parent_run_id column successfully adds it (migration test)
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-004: Validate subprocess references
 
