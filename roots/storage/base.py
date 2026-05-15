@@ -30,6 +30,8 @@ class RunRecord:
     created_at: datetime
     updated_at: datetime
     process_version: str | None = None
+    parent_run_id: str | None = None
+    parent_node_id: str | None = None
 
 
 @dataclass
@@ -167,7 +169,13 @@ class StorageBackend(abc.ABC):
         process_id: str,
         work_item_state: dict[str, Any],
         process_version: str | None = None,
+        *,
+        parent_run_id: str | None = None,
+        parent_node_id: str | None = None,
     ) -> RunRecord: ...
+
+    @abc.abstractmethod
+    async def get_child_runs(self, parent_run_id: str) -> list[RunRecord]: ...
 
     @abc.abstractmethod
     async def get_run(self, run_id: str) -> RunRecord | None: ...

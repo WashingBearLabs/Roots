@@ -63,7 +63,9 @@ CREATE TABLE IF NOT EXISTS runs (
     updated_at TEXT,
     locked_by TEXT,
     locked_at TEXT,
-    process_version TEXT
+    process_version TEXT,
+    parent_run_id TEXT,
+    parent_node_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS run_history (
@@ -169,6 +171,24 @@ class SqliteBackend(StorageBackend):
             await self._db.commit()
         except aiosqlite.OperationalError:
             pass  # Column already exists
+        try:
+            await self._db.execute(
+                "ALTER TABLE runs ADD COLUMN parent_run_id TEXT"
+            )
+            await self._db.commit()
+        except aiosqlite.OperationalError:
+            pass  # Column already exists
+        try:
+            await self._db.execute(
+                "ALTER TABLE runs ADD COLUMN parent_node_id TEXT"
+            )
+            await self._db.commit()
+        except aiosqlite.OperationalError:
+            pass  # Column already exists
+        await self._db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_runs_parent_run_id ON runs (parent_run_id)"
+        )
+        await self._db.commit()
 
     async def close(self) -> None:
         if self._db is not None:
@@ -299,14 +319,17 @@ class SqliteBackend(StorageBackend):
         process_id: str,
         work_item_state: dict[str, Any],
         process_version: str | None = None,
+        *,
+        parent_run_id: str | None = None,
+        parent_node_id: str | None = None,
     ) -> RunRecord:
         run_id = f"run-{uuid4()}"
         now = utcnow()
         await self.db.execute(
             """INSERT INTO runs
                (id, process_id, status, current_node_id, work_item_state_json,
-                created_at, updated_at, process_version)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                created_at, updated_at, process_version, parent_run_id, parent_node_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 run_id,
                 process_id,
@@ -316,6 +339,8 @@ class SqliteBackend(StorageBackend):
                 now.isoformat(),
                 now.isoformat(),
                 process_version,
+                parent_run_id,
+                parent_node_id,
             ),
         )
         await self.db.commit()
@@ -328,12 +353,15 @@ class SqliteBackend(StorageBackend):
             created_at=now,
             updated_at=now,
             process_version=process_version,
+            parent_run_id=parent_run_id,
+            parent_node_id=parent_node_id,
         )
 
     async def get_run(self, run_id: str) -> RunRecord | None:
         cursor = await self.db.execute(
             "SELECT id, process_id, status, current_node_id, work_item_state_json, "
-            "created_at, updated_at, process_version FROM runs WHERE id = ?",
+            "created_at, updated_at, process_version, parent_run_id, parent_node_id "
+            "FROM runs WHERE id = ?",
             (run_id,),
         )
         row = await cursor.fetchone()
@@ -348,6 +376,8 @@ class SqliteBackend(StorageBackend):
             created_at=datetime.fromisoformat(row[5]),
             updated_at=datetime.fromisoformat(row[6]),
             process_version=row[7],
+            parent_run_id=row[8],
+            parent_node_id=row[9],
         )
 
     async def update_run_status(
@@ -375,7 +405,8 @@ class SqliteBackend(StorageBackend):
     ) -> list[RunRecord]:
         query = (
             "SELECT id, process_id, status, current_node_id, "
-            "work_item_state_json, created_at, updated_at, process_version FROM runs"
+            "work_item_state_json, created_at, updated_at, process_version, "
+            "parent_run_id, parent_node_id FROM runs"
         )
         params: list[str] = []
         clauses: list[str] = []
@@ -399,6 +430,32 @@ class SqliteBackend(StorageBackend):
                 created_at=datetime.fromisoformat(r[5]),
                 updated_at=datetime.fromisoformat(r[6]),
                 process_version=r[7],
+                parent_run_id=r[8],
+                parent_node_id=r[9],
+            )
+            for r in rows
+        ]
+
+    async def get_child_runs(self, parent_run_id: str) -> list[RunRecord]:
+        cursor = await self.db.execute(
+            "SELECT id, process_id, status, current_node_id, work_item_state_json, "
+            "created_at, updated_at, process_version, parent_run_id, parent_node_id "
+            "FROM runs WHERE parent_run_id = ?",
+            (parent_run_id,),
+        )
+        rows = await cursor.fetchall()
+        return [
+            RunRecord(
+                id=r[0],
+                process_id=r[1],
+                status=r[2],
+                current_node_id=r[3],
+                work_item_state=json.loads(r[4]),
+                created_at=datetime.fromisoformat(r[5]),
+                updated_at=datetime.fromisoformat(r[6]),
+                process_version=r[7],
+                parent_run_id=r[8],
+                parent_node_id=r[9],
             )
             for r in rows
         ]

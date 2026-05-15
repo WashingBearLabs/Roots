@@ -63,7 +63,9 @@ CREATE TABLE IF NOT EXISTS runs (
     updated_at TIMESTAMPTZ,
     locked_by TEXT,
     locked_at TIMESTAMPTZ,
-    process_version TEXT
+    process_version TEXT,
+    parent_run_id TEXT,
+    parent_node_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS run_history (
@@ -171,6 +173,15 @@ class PostgresBackend(StorageBackend):
             await conn.execute(_SCHEMA_SQL)
             await conn.execute(
                 "ALTER TABLE runs ADD COLUMN IF NOT EXISTS process_version TEXT"
+            )
+            await conn.execute(
+                "ALTER TABLE runs ADD COLUMN IF NOT EXISTS parent_run_id TEXT"
+            )
+            await conn.execute(
+                "ALTER TABLE runs ADD COLUMN IF NOT EXISTS parent_node_id TEXT"
+            )
+            await conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_runs_parent_run_id ON runs (parent_run_id)"
             )
 
     async def close(self) -> None:
@@ -348,6 +359,9 @@ class PostgresBackend(StorageBackend):
         process_id: str,
         work_item_state: dict[str, Any],
         process_version: str | None = None,
+        *,
+        parent_run_id: str | None = None,
+        parent_node_id: str | None = None,
     ) -> RunRecord:
         run_id = f"run-{uuid4()}"
         now = utcnow()
@@ -355,8 +369,8 @@ class PostgresBackend(StorageBackend):
             await conn.execute(
                 """INSERT INTO runs
                    (id, process_id, status, current_node_id, work_item_state_json,
-                    created_at, updated_at, process_version)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8)""",
+                    created_at, updated_at, process_version, parent_run_id, parent_node_id)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)""",
                 run_id,
                 process_id,
                 "pending",
@@ -365,6 +379,8 @@ class PostgresBackend(StorageBackend):
                 now,
                 now,
                 process_version,
+                parent_run_id,
+                parent_node_id,
             )
         return RunRecord(
             id=run_id,
@@ -375,13 +391,16 @@ class PostgresBackend(StorageBackend):
             created_at=now,
             updated_at=now,
             process_version=process_version,
+            parent_run_id=parent_run_id,
+            parent_node_id=parent_node_id,
         )
 
     async def get_run(self, run_id: str) -> RunRecord | None:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 "SELECT id, process_id, status, current_node_id, work_item_state_json, "
-                "created_at, updated_at, process_version FROM runs WHERE id = $1",
+                "created_at, updated_at, process_version, parent_run_id, parent_node_id "
+                "FROM runs WHERE id = $1",
                 run_id,
             )
         if row is None:
@@ -398,6 +417,8 @@ class PostgresBackend(StorageBackend):
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             process_version=row["process_version"],
+            parent_run_id=row["parent_run_id"],
+            parent_node_id=row["parent_node_id"],
         )
 
     async def update_run_status(
@@ -428,7 +449,8 @@ class PostgresBackend(StorageBackend):
     ) -> list[RunRecord]:
         query = (
             "SELECT id, process_id, status, current_node_id, "
-            "work_item_state_json, created_at, updated_at, process_version FROM runs"
+            "work_item_state_json, created_at, updated_at, process_version, "
+            "parent_run_id, parent_node_id FROM runs"
         )
         params: list[Any] = []
         clauses: list[str] = []
@@ -457,6 +479,37 @@ class PostgresBackend(StorageBackend):
                     created_at=r["created_at"],
                     updated_at=r["updated_at"],
                     process_version=r["process_version"],
+                    parent_run_id=r["parent_run_id"],
+                    parent_node_id=r["parent_node_id"],
+                )
+            )
+        return result
+
+    async def get_child_runs(self, parent_run_id: str) -> list[RunRecord]:
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT id, process_id, status, current_node_id, work_item_state_json, "
+                "created_at, updated_at, process_version, parent_run_id, parent_node_id "
+                "FROM runs WHERE parent_run_id = $1",
+                parent_run_id,
+            )
+        result = []
+        for r in rows:
+            wis = r["work_item_state_json"]
+            if isinstance(wis, str):
+                wis = json.loads(wis)
+            result.append(
+                RunRecord(
+                    id=r["id"],
+                    process_id=r["process_id"],
+                    status=r["status"],
+                    current_node_id=r["current_node_id"],
+                    work_item_state=wis,
+                    created_at=r["created_at"],
+                    updated_at=r["updated_at"],
+                    process_version=r["process_version"],
+                    parent_run_id=r["parent_run_id"],
+                    parent_node_id=r["parent_node_id"],
                 )
             )
         return result
