@@ -9,7 +9,7 @@
 
 > **TEMPLATE_INTENT:** Persistent record of code quality, security, and intent alignment findings from automated validation. Tracks findings across sessions with status tracking and archival.
 
-> Last updated: 2026-05-13
+> Last updated: 2026-05-15
 > Updated by: Claude (validate-implementation — feature-decision-history)
 
 ---
@@ -36,6 +36,49 @@
 
 <!-- Newest findings at top. Each entry has a unique ID: YYYY-MM-DD-NNN -->
 <!-- Findings are added by /kit-tools:validate-feature -->
+
+### 2026-05-15 — feature-subprocess-schema Validation
+
+| ID | Category | Severity | File | Status |
+|----|----------|----------|------|--------|
+| 2026-05-15-001 | testing | resolved | `tests/test_handlers.py` | resolved |
+| 2026-05-15-002 | security | warning | `roots/core/validator.py` | open |
+| 2026-05-15-003 | quality | warning | `tests/test_storage.py` | open |
+| 2026-05-15-004 | quality | info | `roots/core/orchestrator.py` | open |
+| 2026-05-15-005 | quality | info | `roots/storage/sqlite.py` | open |
+| 2026-05-15-006 | quality | info | `tests/test_storage.py` | open |
+| 2026-05-15-007 | security | info | `roots/core/schema.py` | open |
+| 2026-05-15-008 | security | info | `roots/storage/sqlite.py` | open |
+| 2026-05-15-009 | testing | info | test suite | open |
+
+**2026-05-15-001** — `tests/test_handlers.py::TestDispatchDict::test_all_node_types_have_handlers` failed: the test's local dispatch dict did not include `NodeType.SUBPROCESS`, but the new type was added to `NodeType` enum in US-001. Test iterates all `NodeType` values and asserts each has a handler.
+> Resolution: Added `NodeType.SUBPROCESS: runner._handle_subprocess` to the test dispatch dict at `tests/test_handlers.py:552`. Test now passes; full suite 1332 passed, 87 skipped.
+
+**2026-05-15-002** — `validate_subprocess_references` in `roots/core/validator.py:214-252` recurses without a depth bound and does not memoize successful subtrees. `SubProcessNodeConfig.max_depth` is defined (ge=1, le=20) but never consulted during static validation. A deep or fan-out subprocess graph can issue O(B^N) `storage.get_process()` calls and hit Python's recursion limit. Cycles within a chain ARE caught via `if ref_id in new_path`, so the risk is non-cyclic deep/fan-out DAGs, not infinite recursion.
+> Recommendation: Enforce a hard ceiling on traversal depth in `_check` (compare `len(new_path)` against a global ceiling like 20 or the originating node's `max_depth`). Memoize already-validated process ids per call (e.g., `validated: set[str]`) so the same subtree isn't walked across siblings. Cycle detection still tracks `path` separately.
+
+**2026-05-15-003** — `tests/test_storage.py:595` annotates `tmp_path` as `pytest.TempPathFactory`. The `tmp_path` pytest fixture returns a `pathlib.Path` (`TempPathFactory` is the type of `tmp_path_factory`, a different fixture). The wrong annotation is why line 599 needs `# type: ignore[operator]` to silence pyright. Every other usage in the codebase (e.g., `tests/test_install.py:72, 114, ...`) correctly types this as `Path`.
+> Recommendation: Change signature to `async def test_migration_adds_parent_columns(tmp_path: Path) -> None:` and remove the `# type: ignore[operator]` workaround on line 599.
+
+**2026-05-15-004** — `from roots.core.validator import validate_subprocess_references` at `roots/core/orchestrator.py:18-20` is inserted between `roots.core.escalation` and `roots.core.schema`, breaking the alphabetical ordering already established for `roots.core.*` imports.
+> Recommendation: Move the import after the `from roots.core.schema import (...)` block to preserve alphabetical order within the local-imports section.
+
+**2026-05-15-005** — `CREATE INDEX IF NOT EXISTS idx_runs_parent_run_id` is executed inside `initialize()` at `roots/storage/sqlite.py:188-191` rather than included in the `_SCHEMA_SQL` module-level constant where other indexes (e.g., `idx_decision_history_lookup`) live. Makes the schema harder to read at a glance and inconsistent with existing convention.
+> Recommendation: Move the index creation into `_SCHEMA_SQL` next to the runs table; ALTER TABLE calls for the new columns must remain in `initialize()` for migration of existing databases.
+
+**2026-05-15-006** — Function-scoped imports of `aiosqlite` and `SqliteBackend` at `tests/test_storage.py:596-597` are inconsistent with the rest of the test suite, which imports these at module level.
+> Recommendation: Hoist to module-level imports for consistency unless there's a deliberate reason (e.g., avoiding cost when test is skipped) to keep them local.
+
+**2026-05-15-007** — `process_id` and `output_key` in `SubProcessNodeConfig` (`roots/core/schema.py:215-220`) are typed as plain `str` with no length cap. Risk is low (parameterized queries prevent injection) but unbounded strings could cause index bloat or log spam. Other config models follow the same pattern, so this is consistent.
+> Recommendation: Optional defense-in-depth — add `Field(min_length=1, max_length=255)` to `process_id` and `output_key`. Not blocking.
+
+**2026-05-15-008** — SQLite migration in `roots/storage/sqlite.py:171-188` catches `aiosqlite.OperationalError` broadly around each `ALTER TABLE ADD COLUMN`. Pattern matches existing `process_version` migration but would also silently swallow non-"duplicate column" errors (locked DB, disk full, schema corruption), leaving the backend in an inconsistent state.
+> Recommendation: Optional — inspect exception message to confirm it is the expected "duplicate column" case, and re-raise otherwise. Not blocking — matches existing pattern.
+
+**2026-05-15-009** — Test suite: 1332 passed, 87 skipped, 0 failures (27.98s) after fixing 2026-05-15-001. New tests cover US-001 schema (TestSubProcessNodeConfig, test_subprocess_node_in_process_parses_correctly), US-002 stub handler (TestSubprocessStubHandler), US-003 storage (parent/child fields, get_child_runs, migration test), US-004 validation (self-reference, A→B→A and A→B→C→A cycles, missing process, cycle path message).
+> Note: All tests pass.
+
+---
 
 ### 2026-05-13 — feature-decision-history Validation
 
