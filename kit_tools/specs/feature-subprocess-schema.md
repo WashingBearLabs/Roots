@@ -61,12 +61,12 @@ This spec adds the foundational types and storage support for process compositio
 - A stub handler (`_handle_subprocess` that raises `OrchestrationError("Subprocess execution not yet implemented")`) should be added to the dispatch table at `roots/core/orchestrator.py:369-388` so that subprocess nodes produce a clear error instead of "No handler for node type 'subprocess'"
 
 **Acceptance Criteria:**
-- [ ] EscalationTrigger.SUBPROCESS_PAUSED added to escalation trigger enum
-- [ ] EventType entries added: SUBPROCESS_STARTED, SUBPROCESS_COMPLETED, SUBPROCESS_FAILED
-- [ ] Stub handler added to orchestrator dispatch table that raises OrchestrationError with clear "not yet implemented" message
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] EscalationTrigger.SUBPROCESS_PAUSED added to escalation trigger enum
+- [x] EventType entries added: SUBPROCESS_STARTED, SUBPROCESS_COMPLETED, SUBPROCESS_FAILED
+- [x] Stub handler added to orchestrator dispatch table that raises OrchestrationError with clear "not yet implemented" message
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-003: Add parent/child run relationship to storage
 
