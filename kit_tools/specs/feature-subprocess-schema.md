@@ -103,14 +103,14 @@ This spec adds the foundational types and storage support for process compositio
 - Test circular refs at depth 2 (A→B→A) and depth 3 (A→B→C→A) to verify transitive detection
 
 **Acceptance Criteria:**
-- [ ] Static validation in validate_structure(): subprocess node with process_id matching current process.id produces validation error
-- [ ] Async function validate_subprocess_references(process, storage) detects circular references transitively (tests: A→B→A and A→B→C→A)
-- [ ] Circular reference validation returns clear error messages naming the cycle path
-- [ ] Validation handles missing referenced processes gracefully (error message, not crash)
-- [ ] validate_subprocess_references called from Orchestrator.start_run() before creating the run (mandatory, not opt-in)
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] Static validation in validate_structure(): subprocess node with process_id matching current process.id produces validation error
+- [x] Async function validate_subprocess_references(process, storage) detects circular references transitively (tests: A→B→A and A→B→C→A)
+- [x] Circular reference validation returns clear error messages naming the cycle path
+- [x] Validation handles missing referenced processes gracefully (error message, not crash)
+- [x] validate_subprocess_references called from Orchestrator.start_run() before creating the run (mandatory, not opt-in)
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ## Out of Scope
 
