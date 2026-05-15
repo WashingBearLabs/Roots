@@ -799,3 +799,90 @@ class TestSubprocessHandler:
         assert node_failed_evt.metadata.get("child_status") == RunStatus.FAILED
         assert run_failed_evt.metadata.get("child_run_id") == child_run_id
         assert run_failed_evt.metadata.get("child_status") == RunStatus.FAILED
+
+    # --- US-004: Subprocess depth limit ---
+
+    def _make_depth_limited_parent(self, max_depth: int = 5) -> ProcessDefinition:
+        """Parent: SUBPROCESS(child-proc, max_depth=N) -> END."""
+        return ProcessDefinition(
+            id="depth-parent-proc",
+            name="Depth Parent",
+            version="1.0.0",
+            nodes=[
+                NodeDefinition(
+                    id="sub-node",
+                    type=NodeType.SUBPROCESS,
+                    label="Sub",
+                    config=SubProcessNodeConfig(
+                        process_id="child-proc",
+                        output_key="child_result",
+                        max_depth=max_depth,
+                    ),
+                ),
+                NodeDefinition(
+                    id="done",
+                    type=NodeType.END,
+                    label="Done",
+                    config=EndNodeConfig(status=EndStatus.COMPLETED),
+                ),
+            ],
+            edges=[EdgeDefinition(from_node="sub-node", to_node="done")],
+            entry_point="sub-node",
+        )
+
+    async def test_subprocess_depth_limit_exceeded_raises(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+    ) -> None:
+        """OrchestrationError raised when _subprocess_depth >= max_depth."""
+        await sqlite_storage.save_process(self._make_child_process())
+        await sqlite_storage.save_process(self._make_depth_limited_parent(max_depth=2))
+
+        # Pre-inject depth at the limit to simulate being 2 levels deep already
+        run = await orchestrator.start_run("depth-parent-proc", {"_subprocess_depth": 2})
+        with pytest.raises(OrchestrationError, match="Subprocess depth limit exceeded: 2/2"):
+            await orchestrator.execute_run(run.id)
+
+    async def test_subprocess_depth_error_message_format(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+    ) -> None:
+        """Error message includes current depth and max_depth."""
+        await sqlite_storage.save_process(self._make_child_process())
+        await sqlite_storage.save_process(self._make_depth_limited_parent(max_depth=3))
+
+        run = await orchestrator.start_run("depth-parent-proc", {"_subprocess_depth": 5})
+        with pytest.raises(OrchestrationError, match="Subprocess depth limit exceeded: 5/3"):
+            await orchestrator.execute_run(run.id)
+
+    async def test_subprocess_default_depth_limit_blocks_at_five(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+    ) -> None:
+        """Default max_depth=5 prevents execution when depth reaches 5."""
+        await sqlite_storage.save_process(self._make_child_process())
+        await sqlite_storage.save_process(self._make_depth_limited_parent())  # default max_depth=5
+
+        run = await orchestrator.start_run("depth-parent-proc", {"_subprocess_depth": 5})
+        with pytest.raises(OrchestrationError, match="Subprocess depth limit exceeded: 5/5"):
+            await orchestrator.execute_run(run.id)
+
+    async def test_subprocess_depth_below_limit_succeeds(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+    ) -> None:
+        """Subprocess executes normally when depth is below max_depth."""
+        await sqlite_storage.save_process(self._make_child_process())
+        await sqlite_storage.save_process(self._make_depth_limited_parent(max_depth=3))
+
+        # Depth 2 is below max_depth=3, so subprocess should succeed
+        run = await orchestrator.start_run("depth-parent-proc", {"_subprocess_depth": 2})
+        await orchestrator.execute_run(run.id)
+
+        parent = await sqlite_storage.get_run(run.id)
+        assert parent is not None
+        assert parent.status == RunStatus.COMPLETED
