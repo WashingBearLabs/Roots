@@ -10,3 +10,4 @@ roots.db
 kit_tools/specs/.execution-config.json
 kit_tools/specs/.execution-state.json
 kit_tools/.validate_epic_*.json
+.claude/
