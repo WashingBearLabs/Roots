@@ -69,15 +69,15 @@ With the SUBPROCESS node type and storage foundation in place (feature-subproces
 - If child run ID found but child no longer exists, fail gracefully
 
 **Acceptance Criteria:**
-- [ ] Initial child pause: _trigger_escalation called with SUBPROCESS_PAUSED, creates escalation record with child_run_id
-- [ ] Child_run_id stored in parent work_item_state before parent pauses
-- [ ] Parent resume: handler detects existing child run from state, checks its status instead of creating new child
-- [ ] If child completed: output extracted and returned normally (no duplicate child runs)
-- [ ] If child still paused: parent re-pauses by setting self._escalated = True directly (no duplicate escalation record — distinct from initial pause path)
-- [ ] If stored child_run_id not found in storage: parent node fails with clear error
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] Initial child pause: _trigger_escalation called with SUBPROCESS_PAUSED, creates escalation record with child_run_id
+- [x] Child_run_id stored in parent work_item_state before parent pauses
+- [x] Parent resume: handler detects existing child run from state, checks its status instead of creating new child
+- [x] If child completed: output extracted and returned normally (no duplicate child runs)
+- [x] If child still paused: parent re-pauses by setting self._escalated = True directly (no duplicate escalation record — distinct from initial pause path)
+- [x] If stored child_run_id not found in storage: parent node fails with clear error
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-003: Handle subprocess failure propagation
 
