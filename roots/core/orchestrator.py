@@ -16,6 +16,7 @@ from roots.agents.types import AgentInput, AgentOutput
 from roots.core.aggregation import AggregationError, aggregate_votes
 from roots.core.decision import DecisionEngine
 from roots.core.escalation import EscalationTrigger, create_escalation_from_error
+from roots.core.validator import validate_subprocess_references
 from roots.core.schema import (
     VOTE_AGGREGATIONS,
     AgentNodeConfig,
@@ -1172,6 +1173,12 @@ class Orchestrator:
         if process is None:
             raise OrchestrationError(
                 f"Process '{process_id}' not found"
+            )
+        ref_errors = await validate_subprocess_references(process, self._storage)
+        if ref_errors:
+            raise OrchestrationError(
+                "Subprocess reference validation failed:\n"
+                + "\n".join(f"  - {e}" for e in ref_errors)
             )
         run = await self._storage.create_run(process_id, work_item, process.version)
         await self._storage.update_run_status(

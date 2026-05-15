@@ -293,6 +293,23 @@ class TestSubprocessStubHandler:
         orchestrator: Orchestrator,
     ) -> None:
         """Subprocess nodes raise OrchestrationError with a clear not-yet-implemented message."""
+        child_proc = ProcessDefinition(
+            id="child-proc",
+            name="Child Process",
+            version="1.0.0",
+            nodes=[
+                NodeDefinition(
+                    id="done",
+                    type=NodeType.END,
+                    label="Done",
+                    config=EndNodeConfig(status=EndStatus.COMPLETED),
+                ),
+            ],
+            edges=[],
+            entry_point="done",
+        )
+        await sqlite_storage.save_process(child_proc)
+
         proc = ProcessDefinition(
             id="subprocess-proc",
             name="Subprocess Process",

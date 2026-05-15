@@ -5,7 +5,7 @@ from __future__ import annotations
 import warnings
 from collections import deque
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import yaml
 from pydantic import ValidationError
@@ -15,7 +15,11 @@ from roots.core.schema import (
     NodeType,
     OnExhaustion,
     ProcessDefinition,
+    SubProcessNodeConfig,
 )
+
+if TYPE_CHECKING:
+    from roots.storage.base import StorageBackend
 
 
 class ProcessValidationError(Exception):
@@ -193,6 +197,58 @@ def validate_structure(process: ProcessDefinition) -> list[str]:
                     f"a valid node"
                 )
 
+    # Subprocess self-reference check (static)
+    for node in process.nodes:
+        if (
+            node.type == NodeType.SUBPROCESS
+            and isinstance(node.config, SubProcessNodeConfig)
+            and node.config.process_id == process.id
+        ):
+            errors.append(
+                f"Subprocess node '{node.id}' references its own process '{process.id}'"
+            )
+
+    return errors
+
+
+async def validate_subprocess_references(
+    process: ProcessDefinition,
+    storage: StorageBackend,
+) -> list[str]:
+    """Detect circular subprocess references transitively.
+
+    Loads referenced processes from storage and traces all subprocess chains.
+    Returns a list of error strings; empty list means no errors.
+    """
+    errors: list[str] = []
+    missing_reported: set[str] = set()
+
+    async def _check(current: ProcessDefinition, path: list[str]) -> None:
+        new_path = path + [current.id]
+        for node in current.nodes:
+            if (
+                node.type == NodeType.SUBPROCESS
+                and isinstance(node.config, SubProcessNodeConfig)
+            ):
+                ref_id = node.config.process_id
+                if ref_id in new_path:
+                    cycle = new_path[new_path.index(ref_id):] + [ref_id]
+                    errors.append(
+                        f"Circular subprocess reference detected: {' → '.join(cycle)}"
+                    )
+                    continue
+                if ref_id in missing_reported:
+                    continue
+                ref_process = await storage.get_process(ref_id)
+                if ref_process is None:
+                    errors.append(
+                        f"Subprocess references unknown process '{ref_id}'"
+                    )
+                    missing_reported.add(ref_id)
+                    continue
+                await _check(ref_process, new_path)
+
+    await _check(process, [])
     return errors
 
 
