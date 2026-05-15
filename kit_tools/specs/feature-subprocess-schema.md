@@ -41,14 +41,14 @@ This spec adds the foundational types and storage support for process compositio
 - output_key stores the mapped output dict; output_mapping selects which child state keys to include. The result stored at state[output_key] is `{parent_key: child_state[child_key] for child_key, parent_key in output_mapping.items()}`
 
 **Acceptance Criteria:**
-- [ ] SUBPROCESS added to NodeType enum
-- [ ] SubProcessNodeConfig Pydantic model with: process_id (str), input_mapping (dict[str, str], maps parent state keys → child input keys), output_mapping (dict[str, str], maps child state keys → parent output keys), output_key (str), max_depth (int, default 5, Field with ge=1, le=20)
-- [ ] SubProcessNodeConfig added to CONFIG_MAP; NodeDefinition validator accepts it
-- [ ] NodeDefinition validator rejects retry config on SUBPROCESS nodes (same as checkpoint/fork/join)
-- [ ] YAML process definitions with subprocess nodes parse and validate correctly
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] SUBPROCESS added to NodeType enum
+- [x] SubProcessNodeConfig Pydantic model with: process_id (str), input_mapping (dict[str, str], maps parent state keys → child input keys), output_mapping (dict[str, str], maps child state keys → parent output keys), output_key (str), max_depth (int, default 5, Field with ge=1, le=20)
+- [x] SubProcessNodeConfig added to CONFIG_MAP; NodeDefinition validator accepts it
+- [x] NodeDefinition validator rejects retry config on SUBPROCESS nodes (same as checkpoint/fork/join)
+- [x] YAML process definitions with subprocess nodes parse and validate correctly
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-002: Add subprocess event types and escalation trigger
 
