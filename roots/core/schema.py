@@ -21,6 +21,7 @@ class NodeType(StrEnum):
     JOIN = "join"
     EMIT = "emit"
     END = "end"
+    SUBPROCESS = "subprocess"
 
 
 class BackoffStrategy(StrEnum):
@@ -211,6 +212,14 @@ class EndNodeConfig(BaseModel):
     status: EndStatus
 
 
+class SubProcessNodeConfig(BaseModel):
+    process_id: str
+    input_mapping: dict[str, str] = Field(default_factory=dict)
+    output_mapping: dict[str, str] = Field(default_factory=dict)
+    output_key: str
+    max_depth: int = Field(default=5, ge=1, le=20)
+
+
 CONFIG_MAP: dict[NodeType, type[BaseModel]] = {
     NodeType.AGENT: AgentNodeConfig,
     NodeType.AGENT_POOL: AgentPoolNodeConfig,
@@ -220,6 +229,7 @@ CONFIG_MAP: dict[NodeType, type[BaseModel]] = {
     NodeType.JOIN: JoinNodeConfig,
     NodeType.EMIT: EmitNodeConfig,
     NodeType.END: EndNodeConfig,
+    NodeType.SUBPROCESS: SubProcessNodeConfig,
 }
 
 
