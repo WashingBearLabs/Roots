@@ -27,6 +27,7 @@ def _run_to_response(run: Any) -> RunResponse:
         work_item_state=run.work_item_state,
         created_at=run.created_at,
         updated_at=run.updated_at,
+        process_version=run.process_version,
     )
 
 

@@ -16,6 +16,7 @@ from roots.api.models import (
     ProcessDetail,
     ProcessSummary,
     ProcessValidationResponse,
+    ProcessVersionSummary,
 )
 from roots.core.validator import (
     format_validation_errors,
@@ -169,6 +170,59 @@ async def validate_process(
         )
     errors = validate_structure(process)
     return ProcessValidationResponse(valid=len(errors) == 0, errors=errors)
+
+
+@router.get(
+    "/{process_id}/versions",
+    response_model=list[ProcessVersionSummary],
+)
+async def list_process_versions(
+    process_id: str,
+    roots: Roots = Depends(get_roots),
+) -> list[ProcessVersionSummary]:
+    """List all versions for a process."""
+    process = await roots.storage.get_process(process_id)
+    if process is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Process '{process_id}' not found",
+        )
+    versions = await roots.storage.list_process_versions(process_id)
+    return [
+        ProcessVersionSummary(
+            id=v.id,
+            version=v.version,
+            created_at=v.created_at,
+        )
+        for v in versions
+    ]
+
+
+@router.get(
+    "/{process_id}/versions/{version}",
+    response_model=ProcessDetail,
+)
+async def get_process_version(
+    process_id: str,
+    version: str,
+    roots: Roots = Depends(get_roots),
+) -> ProcessDetail:
+    """Get a specific version of a process."""
+    process = await roots.storage.get_process_version(process_id, version)
+    if process is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Process '{process_id}' version '{version}' not found",
+        )
+    return ProcessDetail(
+        id=process.id,
+        name=process.name,
+        version=process.version,
+        description=process.description,
+        entry_point=process.entry_point,
+        nodes=[_node_to_dict(n) for n in process.nodes],
+        edges=[_edge_to_dict(e) for e in process.edges],
+    )
 
 
 # --- Helpers ---

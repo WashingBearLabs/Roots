@@ -230,3 +230,19 @@ async def test_cancel_completed_run_returns_409(client):
     resp = await client.delete(f"/runs/{run_id}")
     assert resp.status_code == 409
     assert "Cannot cancel" in resp.json()["detail"]
+
+
+# --- process_version in response ---
+
+
+@pytest.mark.asyncio
+async def test_run_response_includes_process_version(client):
+    """RunResponse includes process_version field (pinned at run creation)."""
+    await _create_process(client)
+    resp = await client.post(
+        "/runs", json={"process_id": "proc-1", "work_item": {"x": 1}}
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert "process_version" in data
+    assert data["process_version"] == "1.0.0"

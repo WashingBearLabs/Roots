@@ -1028,3 +1028,148 @@ class TestDecisionResultToDecisionRecord:
         )
         record = result.to_decision_record({"x": 1})
         assert "ai_recommendation" not in record
+
+
+# --- history_depth config and history injection (US-002) ---
+
+
+class TestHistoryDepthConfig:
+    def test_history_depth_default_none(self) -> None:
+        config = DecisionNodeConfig(
+            mode=DecisionMode.DETERMINISTIC,
+            edges=[DecisionEdge(target="a", condition="x == 1")],
+        )
+        assert config.history_depth is None
+
+    def test_history_depth_valid(self) -> None:
+        config = DecisionNodeConfig(
+            mode=DecisionMode.DETERMINISTIC,
+            edges=[DecisionEdge(target="a", condition="x == 1")],
+            history_depth=5,
+        )
+        assert config.history_depth == 5
+
+    def test_history_depth_zero_rejected(self) -> None:
+        with pytest.raises(Exception):
+            DecisionNodeConfig(
+                mode=DecisionMode.DETERMINISTIC,
+                edges=[DecisionEdge(target="a", condition="x == 1")],
+                history_depth=0,
+            )
+
+    def test_history_depth_negative_rejected(self) -> None:
+        with pytest.raises(Exception):
+            DecisionNodeConfig(
+                mode=DecisionMode.DETERMINISTIC,
+                edges=[DecisionEdge(target="a", condition="x == 1")],
+                history_depth=-1,
+            )
+
+
+class TestBuildDecisionMessagesHistory:
+    def test_no_history_omits_section(self) -> None:
+        messages = build_decision_messages(None, {"x": 1}, [DecisionEdge(target="a")])
+        assert "Historical Decisions" not in messages[1]["content"]
+
+    def test_empty_history_omits_section(self) -> None:
+        messages = build_decision_messages(None, {"x": 1}, [DecisionEdge(target="a")], history=[])
+        assert "Historical Decisions" not in messages[1]["content"]
+
+    def test_history_with_reasoning_included(self) -> None:
+        history = [
+            {"selected_edge": "node-a", "confidence": 0.9, "reasoning": "high severity", "mode": "ai_bounded"},
+        ]
+        messages = build_decision_messages(None, {"x": 1}, [DecisionEdge(target="a")], history=history)
+        content = messages[1]["content"]
+        assert "Historical Decisions" in content
+        assert "node-a" in content
+        assert "high severity" in content
+        assert "0.9" in content
+
+    def test_history_without_reasoning_included(self) -> None:
+        """Deterministic decisions have no reasoning (None)."""
+        history = [
+            {"selected_edge": "node-b", "confidence": 1.0, "reasoning": None, "mode": "deterministic"},
+        ]
+        messages = build_decision_messages(None, {}, [DecisionEdge(target="b")], history=history)
+        content = messages[1]["content"]
+        assert "Historical Decisions" in content
+        assert "node-b" in content
+
+    def test_history_appears_after_current_state(self) -> None:
+        history = [{"selected_edge": "a", "confidence": 0.8, "reasoning": "ok", "mode": "ai_bounded"}]
+        messages = build_decision_messages(None, {"x": 1}, [DecisionEdge(target="a")], history=history)
+        content = messages[1]["content"]
+        history_pos = content.index("Historical Decisions")
+        state_pos = content.index("Current State")
+        assert history_pos > state_pos
+
+    def test_reasoning_truncated_to_200_chars(self) -> None:
+        long_reasoning = "x" * 300
+        history = [{"selected_edge": "a", "confidence": 0.9, "reasoning": long_reasoning, "mode": "ai_bounded"}]
+        messages = build_decision_messages(None, {}, [DecisionEdge(target="a")], history=history)
+        content = messages[1]["content"]
+        assert "x" * 200 in content
+        assert "x" * 201 not in content
+
+    def test_reasoning_omitted_when_none(self) -> None:
+        history = [{"selected_edge": "a", "confidence": 1.0, "reasoning": None, "mode": "deterministic"}]
+        messages = build_decision_messages(None, {}, [DecisionEdge(target="a")], history=history)
+        content = messages[1]["content"]
+        assert "Reasoning" not in content
+
+
+class TestDecisionEngineHistoryInjection:
+    @pytest.mark.asyncio
+    async def test_history_passed_to_llm_messages(self) -> None:
+        """When history is provided, it appears in the LLM messages."""
+        mock_llm = AsyncMock(return_value=_fake_llm_response("node-a", 0.9, "OK"))
+        engine = DecisionEngine(default_model="test-model", llm_callable=mock_llm)
+        node = _make_ai_decision_node(
+            mode=DecisionMode.AI_BOUNDED,
+            edges=[DecisionEdge(target="node-a")],
+        )
+        history = [{"selected_edge": "node-a", "confidence": 0.85, "reasoning": "prior reason", "mode": "ai_bounded"}]
+        await engine.evaluate(node, {"x": 1}, history=history)
+
+        messages = mock_llm.call_args.kwargs["messages"]
+        assert "Historical Decisions" in messages[1]["content"]
+        assert "prior reason" in messages[1]["content"]
+
+    @pytest.mark.asyncio
+    async def test_no_history_not_in_messages(self) -> None:
+        """When history=None, the section is absent from LLM messages."""
+        mock_llm = AsyncMock(return_value=_fake_llm_response("node-a", 0.9, "OK"))
+        engine = DecisionEngine(default_model="test-model", llm_callable=mock_llm)
+        node = _make_ai_decision_node(
+            mode=DecisionMode.AI_BOUNDED,
+            edges=[DecisionEdge(target="node-a")],
+        )
+        await engine.evaluate(node, {"x": 1}, history=None)
+
+        messages = mock_llm.call_args.kwargs["messages"]
+        assert "Historical Decisions" not in messages[1]["content"]
+
+    @pytest.mark.asyncio
+    async def test_history_ignored_for_deterministic(self) -> None:
+        """Deterministic mode does not use the LLM, so history is irrelevant."""
+        engine = DecisionEngine(default_model="test-model")
+        node = _make_decision_node([DecisionEdge(target="node-a", condition="x == 1")])
+        history = [{"selected_edge": "node-a", "confidence": 1.0, "reasoning": None, "mode": "deterministic"}]
+        result = await engine.evaluate(node, {"x": 1}, history=history)
+        assert result.selected_edge == "node-a"
+
+    @pytest.mark.asyncio
+    async def test_history_with_none_reasoning_included(self) -> None:
+        """Deterministic history entries (reasoning=None) are included without error."""
+        mock_llm = AsyncMock(return_value=_fake_llm_response("node-a", 0.9, "OK"))
+        engine = DecisionEngine(default_model="test-model", llm_callable=mock_llm)
+        node = _make_ai_decision_node(
+            mode=DecisionMode.AI_BOUNDED,
+            edges=[DecisionEdge(target="node-a")],
+        )
+        history = [{"selected_edge": "node-a", "confidence": 1.0, "reasoning": None, "mode": "deterministic"}]
+        await engine.evaluate(node, {"x": 1}, history=history)
+
+        messages = mock_llm.call_args.kwargs["messages"]
+        assert "Historical Decisions" in messages[1]["content"]

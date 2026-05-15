@@ -752,3 +752,99 @@
 - Total attempts: 16
 - Total sessions: 35
 
+
+---
+
+## Epic: library-refinements — Run 1
+
+**Started:** 2026-05-13
+**Mode:** Guarded (max 3 retries, supervisor monitoring)
+**Branch:** epic/library-refinements
+**Models:** Sonnet (implementer), Opus (verifier/validator)
+**Completion:** Create PR
+
+### Specs (in order):
+1. feature-vote-aggregation.md (4 stories)
+2. feature-decision-history.md (4 stories)
+3. feature-process-versioning.md (3 stories)
+
+### Execution Log
+
+
+## Run: epic/library-refinements — 2026-05-13
+- **Epic:** library-refinements
+- **Branch:** epic/library-refinements
+- **Mode:** guarded (max 3 retries)
+- **Feature Specs:** 3 total
+
+### US-001: Extend schema with vote aggregation types (Attempt 1) — PASS
+- Completed: 2026-05-13T22:52:53Z
+- Verified by: independent verifier session
+- Learnings: Self type under TYPE_CHECKING is safe with from __future__ import annotations — annotations are strings at runtime, so model_validator return type annotations work correctly; _VOTE_AGGREGATIONS module-level set constant used to avoid repeating the three vote enum values across multiple validation branches; AgentPoolNodeConfig validator ordering matters: first_pass + vote check must come before vote_config weight validation to give clearer errors; Verifier note: Implementation is clean and complete. All ten acceptance criteria are functionally met. The validation logic in AgentPoolNodeConfig.validate_vote_config (schema.py:115-144) cleanly separates the vote/non-vote split via the _VOTE_AGGREGATIONS module-level set, mirrors the existing model_validator pattern (RetryConfig, JoinNodeConfig, DecisionNodeConfig), and uses the conventional StrEnum + Pydantic v2 idioms. Minor maintainability note (not a defect): the error message at schema.py:124 hardcodes 'merge_all' in the text, which is accurate today since MERGE_ALL is the only non-vote aggregation, but would need updating if another non-vote aggregation (e.g., COLLECT) is later added — flagged for awareness, not as a blocker. The 'FIRST_AGENT means config list order, not arrival order' semantic is a runtime concern that belongs to US-002/US-003; schema-level only needs the enum value, which is correct here.
+- Committed: feat(vote-aggregation): US-001 - Extend schema with vote aggregation types
+
+### US-002: Implement vote tallying core (Attempt 1) — PASS
+- Completed: 2026-05-13T22:58:25Z
+- Verified by: independent verifier session
+- Learnings: FIRST_AGENT tie-break implemented using first_position dict tracking earliest index in agents_outputs — caller must pass agents in config list order for this to be correct (asyncio.gather preserves order, so parallel results come back in config order); Weighted vote does not use threshold — only majority vote checks threshold; this matches the acceptance criteria which only mentions threshold for majority; Default weight of 1.0 applied when agent has no explicit weight entry in vote_config.weights, making partial weight configs work naturally; Abstention detection is a simple `vote_key in output` membership test — no special sentinel needed; Verifier note: Clean implementation matching spec intent exactly. Custom AggregationError exception follows OrchestrationError pattern. First-agent tie-break correctly uses first occurrence in the votes list (which preserves config order from agents_outputs input). The 'first agent' semantics — first in config list, not first to respond — is satisfied by the caller's responsibility to pass agents_outputs in config order; the aggregation module itself just preserves input ordering. Threshold check uses strict less-than (`< threshold`), so values exactly at threshold pass (e.g., 0.5 == 0.5 threshold succeeds), matching test_exactly_at_threshold_wins. Pyright clean under strict mode. No scope creep — module is focused solely on vote aggregation, leaving orchestrator integration for a later story.
+- Committed: feat(vote-aggregation): US-002 - Implement vote tallying core
+
+### US-003: Vote result structure and edge cases (Attempt 1) — PASS
+- Completed: 2026-05-13T23:02:58Z
+- Verified by: independent verifier session
+- Learnings: aggregate_votes now returns dict[str, Any] with winning_value, vote_counts, strategy, and participating_agents instead of bare winning value; vote_counts uses raw agent counts (int), not weighted totals — consistent across all strategies; strategy field is str(strategy) which works because Aggregation is a StrEnum (e.g. 'majority_vote'); participating_agents is len(votes) after abstention filtering — correctly excludes abstentions; All 17 existing tests updated to use result['winning_value'] instead of direct equality; 9 new TestResultStructure tests added covering all AC edge cases; Verifier note: Implementation is clean and complete. The return type was correctly tightened from Any to dict[str, Any]. No external callers of aggregate_votes exist yet (only tests and the function itself reference it), so the API contract change is non-breaking. vote_counts is computed once in aggregate_votes from the raw (unweighted) votes — this is the correct interpretation: per-value vote counts, independent of weights. Minor non-blocking note: _majority_vote internally rebuilds the same counts dict; could share it with the outer scope in a future refactor, but no impact on correctness.
+- Committed: feat(vote-aggregation): US-003 - Vote result structure and edge cases
+
+### US-004: Wire vote aggregation into orchestrator (Attempt 1) — PASS
+- Completed: 2026-05-13T23:23:07Z
+- Verified by: independent verifier session
+- Learnings: asyncio.gather preserves result order matching the input coroutine list, so zip(agents, raw) correctly pairs names with results in _pool_parallel; Sequential vote mode should NOT update current_state between agents (agents vote independently on original state); non-vote sequential still updates state for pipeline chaining; AggregationError caught at tick-loop level (same level as RetryExhaustedError), not inside _handle_agent_pool, so the run failure pattern is consistent; _VOTE_AGGREGATIONS set duplicated at orchestrator module level rather than importing the private constant from schema.py; aggregate_votes returns dict[str, Any] with winning_value/vote_counts/strategy/participating_agents — this maps directly to state[output_key] via the existing Step 7 mechanism; Verifier note: Clean, focused implementation. Refactor of _pool_parallel correctly preserves config-order naming via zip(agents, raw) — important because asyncio.gather preserves order but escape hatch from output ordering is preserved deterministically. Sequential mode correctly suppresses inter-agent state threading in vote mode (prevents an agent's vote-key output from leaking into next agent's input). Constants set _VOTE_AGGREGATIONS at module level is a nice touch. The new AggregationError except block is well-placed alongside RetryExhaustedError. New pyright errors in tests are the same EdgeDefinition alias false-positive used throughout the existing test code — not a regression.
+- Committed: feat(vote-aggregation): US-004 - Wire vote aggregation into orchestrator
+
+### US-001: Extend decision history query capabilities (Attempt 1) — PASS
+- Completed: 2026-05-13T23:33:28Z
+- Verified by: independent verifier session
+- Learnings: SQLite uses positional ? params while PostgreSQL uses numbered $1/$2/... params — dynamic query building requires separate param-index tracking for PG; Existing tests that checked decisions[0].mode assumed insertion order; ORDER BY created_at DESC changes the expected ordering, requiring test updates; Both backends' schema CREATE TABLE blocks are inline SQL strings — indexes are added to the same string via CREATE INDEX IF NOT EXISTS after the table definition; asyncpg's conn.fetch() accepts *args spread, not a list, so params must be unpacked: conn.fetch(query, *params); Verifier note: Clean implementation matching the implementation hints. Both backends parameterize the SQL safely (no string interpolation of user values), keyword-only params prevent accidental positional misuse, and the (process_id, node_id, created_at) index supports the new ORDER BY + LIMIT pattern. The shared schema's `CREATE INDEX IF NOT EXISTS` will install the index on next initialize() for both new and existing databases. Parameterized `test_storage.py` fixture provides coverage for both backends.
+- Committed: feat(decision-history): US-001 - Extend decision history query capabilities
+
+### US-002: Add history_depth config and orchestrator fetch (Attempt 1) — PASS
+- Completed: 2026-05-13T23:38:06Z
+- Verified by: independent verifier session
+- Learnings: history_depth: int | None = Field(default=None, ge=1) on DecisionNodeConfig correctly rejects 0 and negative values via pydantic Field ge=1 constraint; history is threaded through evaluate → _evaluate_ai/_evaluate_ai_checkpoint → _call_ai_decision → build_decision_messages; deterministic mode ignores it (no LLM call); build_decision_messages uses an if history: guard (not if history is not None) to skip empty lists, which is the correct behavior per AC; Orchestrator maps DecisionRecord to plain dicts using r.decision.get('reasoning') or r.decision.get('ai_recommendation', {}).get('reasoning') to handle both AI and deterministic records; history section is inserted between context_prompt and current state in the LLM messages for natural reading order; Verifier note: Clean implementation. History is fetched only when configured (backward compatible), mapped to a storage-agnostic dict shape in the orchestrator, and plumbed through evaluate → _evaluate_ai/_evaluate_ai_checkpoint → _call_ai_decision → build_decision_messages with optional kwargs. Deterministic mode bypasses the LLM and ignores history (verified by test_history_ignored_for_deterministic). The orchestrator map uses `r.confidence` and `r.mode` (top-level DecisionRecord attributes) rather than reading those keys from `r.decision`, but the values are identical because to_decision_record writes them both ways — semantically equivalent to the criterion text. No security, scope, or regression concerns observed.
+- Committed: feat(decision-history): US-002 - Add history_depth config and orchestrator fetch
+
+### US-003: Render decision history in AI prompts (Attempt 1) — PASS
+- Completed: 2026-05-13T23:42:59Z
+- Verified by: independent verifier session
+- Learnings: build_decision_messages: history section placed AFTER ## Current State per AC (keeps primary reasoning target adjacent to instruction); Section header is '## Historical Decisions' (not '## Recent Decision History' from prior attempt); Entry format: '- Edge: {selected_edge}, Confidence: {confidence}' with optional ', Reasoning: {reasoning[:200]}' when reasoning is not None; Reasoning truncated to 200 chars per AC; omitted entirely when None (not just when falsy — uses 'is not None' check); Deterministic mode ignores history — no LLM call path, so history parameter is never forwarded; All pre-existing pyright warnings in decision.py come from simpleeval's missing type stubs — 0 errors; Verifier note: Implementation matches the hints precisely. Section ordering changed from 'before' to 'after' Current State per the new spec. Entry format updated to capitalized 'Edge'/'Confidence'/'Reasoning' (was lowercase + included 'mode' before). All US-002 history-threading wiring already feeds through `_evaluate_ai` and `_evaluate_ai_checkpoint`. The `history_lines = []` inside the function body is implicitly typed as `list[str]` from later append usage; pyright surfaces this as a warning, not an error.
+- Committed: feat(decision-history): US-003 - Render decision history in AI prompts
+
+### US-004: Decision history API endpoint (Attempt 1) — PASS
+- Completed: 2026-05-13T23:47:22Z
+- Verified by: independent verifier session
+- Learnings: list_decisions required node_id as a positional arg at the storage layer; making it optional (node_id: str | None = None) required updating base.py abstract signature plus both SQLite and Postgres implementations to conditionally add the AND node_id clause; The decisions router reuses the /processes prefix so the URL becomes GET /processes/{process_id}/decisions — it must NOT use a standalone /decisions prefix or the path would be wrong; Postgres param index tracking (idx) must start at 2 when node_id is optional and might be skipped, not hardcoded to 3; Verifier note: Implementation cleanly follows the runs.py router pattern. The storage-layer change (node_id positional -> optional keyword) is backward-compatible: all existing callers in orchestrator.py and tests pass node_id positionally, which remains valid. SQLite and Postgres implementations of list_decisions both correctly drop the AND node_id clause when None. Response model mirrors DecisionRecord exactly minus input_state (intentionally excluded — not in acceptance criteria's field list, and input_state may contain large state payloads not suitable for a list endpoint).
+- Committed: feat(decision-history): US-004 - Decision history API endpoint
+
+### US-001: Add process version history storage (Attempt 1) — PASS
+- Completed: 2026-05-14T00:11:24Z
+- Verified by: independent verifier session
+- Learnings: aiosqlite async with self.db: is for creating connections, not transaction management on an open connection — use two execute() calls + one commit() for atomic multi-statement transactions instead; Python sqlite3 with default isolation_level automatically wraps consecutive DML in the same implicit transaction before commit(), so two execute() + one commit() is atomic without explicit BEGIN; asyncpg conn.transaction() as async context manager is the correct pattern for explicit transactions in Postgres backend; ProcessVersionRecord returned by list_process_versions carries only id/version/created_at (lightweight) — full definition retrieved via get_process_version; TRUNCATE in Postgres test fixtures must list process_versions before processes (or include CASCADE) to avoid FK-like ordering issues; Verifier note: Implementation is faithful to the implementation hints. Schemas mirror cleanly, abstract methods are added in base, and both backends implement the new methods. Postgres uses an explicit transaction in save_process and delete_process; SQLite achieves equivalent atomicity through driver-implicit transaction semantics but does not BEGIN explicitly. Tests are comprehensive on the SQLite side. The pre-existing ruff F401 in test_sqlite.py and pyright reportCallIssue warnings on EdgeDefinition aliasing are unchanged from prior commits.
+- Committed: feat(process-versioning): US-001 - Add process version history storage
+
+### US-002: Pin runs to process version at creation (Attempt 1) — PASS
+- Completed: 2026-05-14T00:17:05Z
+- Verified by: independent verifier session
+- Learnings: SQLite ALTER TABLE ADD COLUMN does not support IF NOT EXISTS — use try/except aiosqlite.OperationalError (or bare except) to handle pre-existing columns gracefully.; PostgreSQL supports ALTER TABLE runs ADD COLUMN IF NOT EXISTS, making backward compat straightforward.; RunRecord dataclass field with default (process_version: str | None = None) must come after all non-default fields to avoid dataclass ordering errors.; Orchestrator start_run already fetches the process before calling create_run, so process.version is available at no extra cost.; The tick() Step 3 fallback path (get_process_version -> warning + get_process) correctly handles deleted versions without crashing in-flight runs.; Verifier note: Implementation cleanly threads process_version through the storage layer and orchestrator. The abstract base class is updated with a backward-compatible default, both backends are kept in sync, the runs table gets the new column via both CREATE TABLE and ALTER TABLE migration paths, and the orchestrator tick handles the three relevant cases (pinned version exists, pinned version missing, no pin). Tests are well-targeted and pass cleanly.
+- Committed: feat(process-versioning): US-002 - Pin runs to process version at creation
+
+### US-003: Process version management API (Attempt 1) — PASS
+- Completed: 2026-05-14T00:23:11Z
+- Verified by: independent verifier session
+- Learnings: ProcessVersionSummary response model (id, version, created_at) mirrors ProcessVersionRecord from storage — no mapping needed beyond field assignment.; Version sub-routes added to existing processes router follow the same pattern as /validate: fixed string after {process_id} avoids conflicts with dynamic routes.; GET /processes/{id}/versions checks process existence via get_process() before listing — returns 404 for unknown process IDs rather than empty list.; GET /processes/{id}/versions/{version} delegates 404 detection entirely to get_process_version() returning None (covers both unknown process and unknown version).; Adding process_version to RunResponse with default=None is backward-compatible — existing tests continue to pass; new test asserts the field is populated when orchestrator pins version at run creation.; Verifier note: Clean, minimal implementation. New routes follow the same pattern as existing process routes (get_process, validate_process): consistent dependency injection (Depends(get_roots)), HTTPException with 404 + descriptive detail, and reuse of existing ProcessDetail/_node_to_dict/_edge_to_dict helpers. The list endpoint correctly does a fresh existence check (calls get_process first) so it can distinguish '404 unknown process' from '200 empty list'. The get_process_version endpoint reuses storage.get_process_version (added in US-001) and properly serializes nodes/edges via the existing helpers. RunResponse change is one line and the runs.py serializer was correctly updated to populate the field.
+- Committed: feat(process-versioning): US-003 - Process version management API
+
+### Execution Complete — 2026-05-14T00:38:12Z
+- Stories: 11/11 completed
+- Total attempts: 11
+- Total sessions: 25
+

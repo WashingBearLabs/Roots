@@ -193,6 +193,7 @@ def build_decision_messages(
     context_prompt: str | None,
     state: dict[str, Any],
     edges: list[DecisionEdge],
+    history: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, str]]:
     """Build the message list for an AI decision LLM call."""
     edge_descriptions = []
@@ -208,6 +209,16 @@ def build_decision_messages(
     if context_prompt:
         user_parts.append(f"## Context\n{context_prompt}")
     user_parts.append(f"## Current State\n```json\n{json.dumps(state, indent=2)}\n```")
+    if history:
+        history_lines = []
+        for h in history:
+            line = f"- Edge: {h.get('selected_edge')}, Confidence: {h.get('confidence')}"
+            reasoning = h.get("reasoning")
+            if reasoning is not None:
+                sanitized = reasoning[:200].replace("\n", " ").replace("```", "")
+                line += f", Reasoning: {sanitized}"
+            history_lines.append(line)
+        user_parts.append("## Historical Decisions\n" + "\n".join(history_lines))
     user_parts.append(f"## Available Edges\n" + "\n".join(edge_descriptions))
     user_parts.append(
         "Select the most appropriate next step by calling the make_decision tool."
@@ -293,13 +304,17 @@ class DecisionEngine:
             self._llm_callable = _default_llm
 
     async def evaluate(
-        self, node: NodeDefinition, work_item_state: dict[str, Any]
+        self,
+        node: NodeDefinition,
+        work_item_state: dict[str, Any],
+        history: list[dict[str, Any]] | None = None,
     ) -> DecisionResult:
         """Evaluate a decision node against work item state.
 
         Args:
             node: The decision node to evaluate.
             work_item_state: Current work item state dict.
+            history: Optional list of recent decision dicts to inject into AI prompts.
 
         Returns:
             DecisionResult with the selected edge target.
@@ -313,10 +328,10 @@ class DecisionEngine:
             return self._evaluate_deterministic(node, work_item_state)
 
         if node.config.mode in (DecisionMode.AI_BOUNDED, DecisionMode.AI_AUTONOMOUS):
-            return await self._evaluate_ai(node, work_item_state)
+            return await self._evaluate_ai(node, work_item_state, history=history)
 
         if node.config.mode == DecisionMode.AI_CHECKPOINT:
-            return await self._evaluate_ai_checkpoint(node, work_item_state)
+            return await self._evaluate_ai_checkpoint(node, work_item_state, history=history)
 
         raise NotImplementedError(
             f"Decision mode '{node.config.mode}' is not yet implemented"
@@ -354,7 +369,10 @@ class DecisionEngine:
         )
 
     async def _call_ai_decision(
-        self, node: NodeDefinition, work_item_state: dict[str, Any]
+        self,
+        node: NodeDefinition,
+        work_item_state: dict[str, Any],
+        history: list[dict[str, Any]] | None = None,
     ) -> AIDecisionResponse:
         """Call the LLM and parse the AI response.
 
@@ -368,6 +386,7 @@ class DecisionEngine:
             node.config.context_prompt,
             work_item_state,
             node.config.edges,
+            history=history,
         )
         response = await self._llm_callable(
             model=model,
@@ -381,10 +400,11 @@ class DecisionEngine:
         self,
         node: NodeDefinition,
         work_item_state: dict[str, Any],
+        history: list[dict[str, Any]] | None = None,
     ) -> DecisionResult:
         """Evaluate an AI decision node (ai_bounded or ai_autonomous)."""
         assert isinstance(node.config, DecisionNodeConfig)
-        ai_response = await self._call_ai_decision(node, work_item_state)
+        ai_response = await self._call_ai_decision(node, work_item_state, history=history)
 
         # Validate edge target — escalate instead of crashing
         valid_targets = {edge.target for edge in node.config.edges}
@@ -426,13 +446,14 @@ class DecisionEngine:
         self,
         node: NodeDefinition,
         work_item_state: dict[str, Any],
+        history: list[dict[str, Any]] | None = None,
     ) -> DecisionResult:
         """Evaluate an AI checkpoint decision node.
 
         Same as AI bounded/autonomous but always escalates for human confirmation.
         """
         assert isinstance(node.config, DecisionNodeConfig)
-        ai_response = await self._call_ai_decision(node, work_item_state)
+        ai_response = await self._call_ai_decision(node, work_item_state, history=history)
 
         # Validate edge target — escalate instead of crashing
         valid_targets = {edge.target for edge in node.config.edges}

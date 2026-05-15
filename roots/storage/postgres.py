@@ -19,6 +19,7 @@ from roots.storage.base import (
     DecisionRecord,
     EscalationRecord,
     HistoryEvent,
+    ProcessVersionRecord,
     RetryState,
     RunRecord,
     StorageBackend,
@@ -37,6 +38,14 @@ CREATE TABLE IF NOT EXISTS processes (
     updated_at TIMESTAMPTZ
 );
 
+CREATE TABLE IF NOT EXISTS process_versions (
+    id TEXT,
+    version TEXT,
+    definition_json JSONB,
+    created_at TIMESTAMPTZ,
+    PRIMARY KEY (id, version)
+);
+
 CREATE TABLE IF NOT EXISTS agents (
     name TEXT PRIMARY KEY,
     type TEXT,
@@ -53,7 +62,8 @@ CREATE TABLE IF NOT EXISTS runs (
     created_at TIMESTAMPTZ,
     updated_at TIMESTAMPTZ,
     locked_by TEXT,
-    locked_at TIMESTAMPTZ
+    locked_at TIMESTAMPTZ,
+    process_version TEXT
 );
 
 CREATE TABLE IF NOT EXISTS run_history (
@@ -102,6 +112,9 @@ CREATE TABLE IF NOT EXISTS decision_history (
     confidence DOUBLE PRECISION,
     created_at TIMESTAMPTZ
 );
+
+CREATE INDEX IF NOT EXISTS idx_decision_history_lookup
+    ON decision_history (process_id, node_id, created_at);
 
 CREATE TABLE IF NOT EXISTS retry_state (
     run_id TEXT,
@@ -156,6 +169,9 @@ class PostgresBackend(StorageBackend):
         self._pool = await asyncpg.create_pool(self._dsn)
         async with self.pool.acquire() as conn:
             await conn.execute(_SCHEMA_SQL)
+            await conn.execute(
+                "ALTER TABLE runs ADD COLUMN IF NOT EXISTS process_version TEXT"
+            )
 
     async def close(self) -> None:
         # Release advisory locks and clean up tracking table before closing
@@ -181,21 +197,33 @@ class PostgresBackend(StorageBackend):
         now = utcnow()
         definition_json = _serialize_process(process)
         async with self.pool.acquire() as conn:
-            await conn.execute(
-                """INSERT INTO processes
-                   (id, name, version, description, definition_json, created_at, updated_at)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7)
-                   ON CONFLICT (id) DO UPDATE SET
-                   name = $2, version = $3, description = $4,
-                   definition_json = $5, updated_at = $7""",
-                process.id,
-                process.name,
-                process.version,
-                process.description,
-                definition_json,
-                now,
-                now,
-            )
+            async with conn.transaction():
+                await conn.execute(
+                    """INSERT INTO processes
+                       (id, name, version, description, definition_json, created_at, updated_at)
+                       VALUES ($1, $2, $3, $4, $5, $6, $7)
+                       ON CONFLICT (id) DO UPDATE SET
+                       name = $2, version = $3, description = $4,
+                       definition_json = $5, updated_at = $7""",
+                    process.id,
+                    process.name,
+                    process.version,
+                    process.description,
+                    definition_json,
+                    now,
+                    now,
+                )
+                await conn.execute(
+                    """INSERT INTO process_versions
+                       (id, version, definition_json, created_at)
+                       VALUES ($1, $2, $3, $4)
+                       ON CONFLICT (id, version) DO UPDATE SET
+                       definition_json = $3, created_at = $4""",
+                    process.id,
+                    process.version,
+                    definition_json,
+                    now,
+                )
 
     async def get_process(self, id: str) -> ProcessDefinition | None:
         async with self.pool.acquire() as conn:
@@ -222,10 +250,47 @@ class PostgresBackend(StorageBackend):
 
     async def delete_process(self, id: str) -> bool:
         async with self.pool.acquire() as conn:
-            result = await conn.execute(
-                "DELETE FROM processes WHERE id = $1", id
-            )
+            async with conn.transaction():
+                await conn.execute(
+                    "DELETE FROM process_versions WHERE id = $1", id
+                )
+                result = await conn.execute(
+                    "DELETE FROM processes WHERE id = $1", id
+                )
         return result == "DELETE 1"
+
+    async def get_process_version(
+        self, id: str, version: str
+    ) -> ProcessDefinition | None:
+        async with self.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT definition_json FROM process_versions "
+                "WHERE id = $1 AND version = $2",
+                id,
+                version,
+            )
+        if row is None:
+            return None
+        data = row["definition_json"]
+        if isinstance(data, str):
+            data = json.loads(data)
+        return ProcessDefinition.model_validate(data)
+
+    async def list_process_versions(self, id: str) -> list[ProcessVersionRecord]:
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT id, version, created_at FROM process_versions "
+                "WHERE id = $1 ORDER BY created_at DESC",
+                id,
+            )
+        return [
+            ProcessVersionRecord(
+                id=r["id"],
+                version=r["version"],
+                created_at=r["created_at"],
+            )
+            for r in rows
+        ]
 
     # --- Agent ---
 
@@ -279,7 +344,10 @@ class PostgresBackend(StorageBackend):
     # --- Run ---
 
     async def create_run(
-        self, process_id: str, work_item_state: dict[str, Any]
+        self,
+        process_id: str,
+        work_item_state: dict[str, Any],
+        process_version: str | None = None,
     ) -> RunRecord:
         run_id = f"run-{uuid4()}"
         now = utcnow()
@@ -287,8 +355,8 @@ class PostgresBackend(StorageBackend):
             await conn.execute(
                 """INSERT INTO runs
                    (id, process_id, status, current_node_id, work_item_state_json,
-                    created_at, updated_at)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7)""",
+                    created_at, updated_at, process_version)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8)""",
                 run_id,
                 process_id,
                 "pending",
@@ -296,6 +364,7 @@ class PostgresBackend(StorageBackend):
                 json.dumps(work_item_state),
                 now,
                 now,
+                process_version,
             )
         return RunRecord(
             id=run_id,
@@ -305,13 +374,14 @@ class PostgresBackend(StorageBackend):
             work_item_state=work_item_state,
             created_at=now,
             updated_at=now,
+            process_version=process_version,
         )
 
     async def get_run(self, run_id: str) -> RunRecord | None:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 "SELECT id, process_id, status, current_node_id, work_item_state_json, "
-                "created_at, updated_at FROM runs WHERE id = $1",
+                "created_at, updated_at, process_version FROM runs WHERE id = $1",
                 run_id,
             )
         if row is None:
@@ -327,6 +397,7 @@ class PostgresBackend(StorageBackend):
             work_item_state=wis,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
+            process_version=row["process_version"],
         )
 
     async def update_run_status(
@@ -357,7 +428,7 @@ class PostgresBackend(StorageBackend):
     ) -> list[RunRecord]:
         query = (
             "SELECT id, process_id, status, current_node_id, "
-            "work_item_state_json, created_at, updated_at FROM runs"
+            "work_item_state_json, created_at, updated_at, process_version FROM runs"
         )
         params: list[Any] = []
         clauses: list[str] = []
@@ -385,6 +456,7 @@ class PostgresBackend(StorageBackend):
                     work_item_state=wis,
                     created_at=r["created_at"],
                     updated_at=r["updated_at"],
+                    process_version=r["process_version"],
                 )
             )
         return result
@@ -638,16 +710,39 @@ class PostgresBackend(StorageBackend):
             )
 
     async def list_decisions(
-        self, process_id: str, node_id: str
+        self,
+        process_id: str,
+        node_id: str | None = None,
+        *,
+        run_id: str | None = None,
+        limit: int | None = None,
+        mode: str | None = None,
     ) -> list[DecisionRecord]:
+        query = (
+            "SELECT id, run_id, process_id, node_id, mode, input_state_json, "
+            "decision_json, confidence, created_at FROM decision_history "
+            "WHERE process_id = $1"
+        )
+        params: list[Any] = [process_id]
+        idx = 2
+        if node_id is not None:
+            query += f" AND node_id = ${idx}"
+            params.append(node_id)
+            idx += 1
+        if run_id is not None:
+            query += f" AND run_id = ${idx}"
+            params.append(run_id)
+            idx += 1
+        if mode is not None:
+            query += f" AND mode = ${idx}"
+            params.append(mode)
+            idx += 1
+        query += " ORDER BY created_at DESC"
+        if limit is not None:
+            query += f" LIMIT ${idx}"
+            params.append(limit)
         async with self.pool.acquire() as conn:
-            rows = await conn.fetch(
-                "SELECT id, run_id, process_id, node_id, mode, input_state_json, "
-                "decision_json, confidence, created_at FROM decision_history "
-                "WHERE process_id = $1 AND node_id = $2",
-                process_id,
-                node_id,
-            )
+            rows = await conn.fetch(query, *params)
         result = []
         for r in rows:
             input_st = r["input_state_json"]

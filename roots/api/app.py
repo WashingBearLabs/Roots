@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from roots.api.deps import get_roots  # noqa: F401 — re-export for backwards compat
 from roots.api.routers.agents import router as agents_router
 from roots.api.routers.checkpoints import router as checkpoints_router
+from roots.api.routers.decisions import router as decisions_router
 from roots.api.routers.processes import router as processes_router
 from roots.api.routers.runs import router as runs_router
 from roots.api.routers.graph import router as graph_router
@@ -48,6 +49,7 @@ def create_app(roots: "Roots", cors_origins: list[str] | None = None) -> FastAPI
     app.include_router(agents_router)
     app.include_router(webhooks_router)
     app.include_router(graph_router)
+    app.include_router(decisions_router)
 
     @app.get("/")
     async def root() -> dict[str, str]:

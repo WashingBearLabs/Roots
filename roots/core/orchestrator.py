@@ -13,9 +13,11 @@ from uuid import uuid4
 from roots.agents.invoker import AgentInvoker, AgentSchemaValidationError
 from roots.agents.registry import AgentRegistry
 from roots.agents.types import AgentInput, AgentOutput
+from roots.core.aggregation import AggregationError, aggregate_votes
 from roots.core.decision import DecisionEngine
 from roots.core.escalation import EscalationTrigger, create_escalation_from_error
 from roots.core.schema import (
+    VOTE_AGGREGATIONS,
     AgentNodeConfig,
     AgentPoolNodeConfig,
     CheckpointNodeConfig,
@@ -141,7 +143,21 @@ class ProcessRunner:
                 return False
 
             # Step 3: Load process definition
-            process = await self._storage.get_process(run.process_id)
+            if run.process_version is not None:
+                process = await self._storage.get_process_version(
+                    run.process_id, run.process_version
+                )
+                if process is None:
+                    await self._storage.release_run_lock(
+                        self.run_id, self._owner_id
+                    )
+                    raise OrchestrationError(
+                        f"Pinned version '{run.process_version}' for process "
+                        f"'{run.process_id}' not found — version may have been "
+                        f"deleted after run creation"
+                    )
+            else:
+                process = await self._storage.get_process(run.process_id)
             if process is None:
                 await self._storage.release_run_lock(self.run_id, self._owner_id)
                 return False
@@ -242,6 +258,37 @@ class ProcessRunner:
                             "error": exc.last_error,
                             "reason": "retry_exhausted",
                         },
+                    )
+                )
+                return False
+            except AggregationError as exc:
+                await self._storage.append_history_event(
+                    self.run_id, "failed", node.id,
+                    {"error": str(exc)},
+                )
+                await self._storage.update_run_atomically(
+                    self.run_id,
+                    work_item_state=state,
+                    status=RunStatus.FAILED,
+                    current_node_id=node.id,
+                )
+                self._event_emitter.emit(
+                    create_event(
+                        EventType.NODE_FAILED,
+                        run_id=self.run_id,
+                        process_id=run.process_id,
+                        node_id=node.id,
+                        node_type=node.type.value,
+                        metadata={"error": str(exc), "reason": "aggregation_failed"},
+                    )
+                )
+                self._event_emitter.emit(
+                    create_event(
+                        EventType.RUN_FAILED,
+                        run_id=self.run_id,
+                        process_id=run.process_id,
+                        node_id=node.id,
+                        metadata={"error": str(exc), "reason": "aggregation_failed"},
                     )
                 )
                 return False
@@ -560,30 +607,36 @@ class ProcessRunner:
         agents: list[str],
         state: dict[str, Any],
     ) -> dict[str, Any]:
-        results = await asyncio.gather(
+        assert isinstance(node.config, AgentPoolNodeConfig)
+        config = node.config
+
+        raw = await asyncio.gather(
             *[self._invoke_pool_agent(node, name, copy.deepcopy(state)) for name in agents],
             return_exceptions=True,
         )
-        successful: list[AgentOutput] = []
-        for r in results:
+        named_successful: list[tuple[str, AgentOutput]] = []
+        for name, r in zip(agents, raw):
             if isinstance(r, BaseException):
                 logger.warning("Agent failed in pool '%s': %s", node.id, r)
             else:
-                successful.append(r)
-        if not successful:
+                named_successful.append((name, r))
+        if not named_successful:
             raise OrchestrationError(
                 f"All {len(agents)} agents failed in pool '{node.id}'"
             )
-        merged: dict[str, Any] = {}
-        for r in successful:
-            merged.update(r.output)
-        # Check escalation on any successful result
-        for r in successful:
+        for _, r in named_successful:
             if r.escalate:
                 await self._trigger_escalation(
                     node, state, r.escalation_reason or "Agent requested escalation"
                 )
                 break
+        if config.aggregation in VOTE_AGGREGATIONS:
+            assert config.vote_config is not None
+            agents_outputs = [(name, r.output) for name, r in named_successful]
+            return aggregate_votes(agents_outputs, config.aggregation, config.vote_config)
+        merged: dict[str, Any] = {}
+        for _, r in named_successful:
+            merged.update(r.output)
         return merged
 
     async def _pool_sequential(
@@ -592,18 +645,29 @@ class ProcessRunner:
         agents: list[str],
         state: dict[str, Any],
     ) -> dict[str, Any]:
+        assert isinstance(node.config, AgentPoolNodeConfig)
+        config = node.config
+        is_vote = config.aggregation in VOTE_AGGREGATIONS
+
         current_state = dict(state)
-        output: dict[str, Any] = {}
+        named_outputs: list[tuple[str, dict[str, Any]]] = []
         for name in agents:
             result = await self._invoke_pool_agent(node, name, current_state)
-            output.update(result.output)
-            current_state.update(result.output)
+            named_outputs.append((name, result.output))
+            if not is_vote:
+                current_state.update(result.output)
             if result.escalate:
                 await self._trigger_escalation(
                     node, state, result.escalation_reason or "Agent requested escalation"
                 )
                 break
-        return output
+        if is_vote:
+            assert config.vote_config is not None
+            return aggregate_votes(named_outputs, config.aggregation, config.vote_config)
+        merged: dict[str, Any] = {}
+        for _, output in named_outputs:
+            merged.update(output)
+        return merged
 
     async def _pool_first_pass(
         self,
@@ -658,7 +722,27 @@ class ProcessRunner:
         self, node: NodeDefinition, state: dict[str, Any]
     ) -> dict[str, Any] | None:
         assert isinstance(node.config, DecisionNodeConfig)
-        result = await self._decision_engine.evaluate(node, state)
+
+        history: list[dict[str, Any]] | None = None
+        if node.config.history_depth is not None:
+            raw_records = await self._storage.list_decisions(
+                process_id=self._process_id or "",
+                node_id=node.id,
+                limit=node.config.history_depth,
+            )
+            history = [
+                {
+                    "selected_edge": r.decision.get("selected_edge"),
+                    "confidence": r.confidence,
+                    "reasoning": r.decision.get("reasoning") or (
+                        r.decision.get("ai_recommendation") or {}
+                    ).get("reasoning"),
+                    "mode": r.mode,
+                }
+                for r in raw_records
+            ]
+
+        result = await self._decision_engine.evaluate(node, state, history=history)
 
         # Record decision to storage
         record = result.to_decision_record(state)
@@ -1081,7 +1165,7 @@ class Orchestrator:
             raise OrchestrationError(
                 f"Process '{process_id}' not found"
             )
-        run = await self._storage.create_run(process_id, work_item)
+        run = await self._storage.create_run(process_id, work_item, process.version)
         await self._storage.update_run_status(
             run.id, RunStatus.PENDING, process.entry_point
         )

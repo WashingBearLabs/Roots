@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.roots.db
+roots.db
+kit_tools/specs/.execution-config.json
+kit_tools/specs/.execution-state.json
+kit_tools/.validate_epic_*.json

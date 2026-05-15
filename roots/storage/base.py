@@ -29,6 +29,7 @@ class RunRecord:
     work_item_state: dict[str, Any]
     created_at: datetime
     updated_at: datetime
+    process_version: str | None = None
 
 
 @dataclass
@@ -83,6 +84,13 @@ class DecisionRecord:
 
 
 @dataclass
+class ProcessVersionRecord:
+    id: str
+    version: str
+    created_at: datetime
+
+
+@dataclass
 class RetryState:
     run_id: str
     node_id: str
@@ -127,6 +135,16 @@ class StorageBackend(abc.ABC):
     @abc.abstractmethod
     async def delete_process(self, id: str) -> bool: ...
 
+    @abc.abstractmethod
+    async def get_process_version(
+        self, id: str, version: str
+    ) -> ProcessDefinition | None: ...
+
+    @abc.abstractmethod
+    async def list_process_versions(
+        self, id: str
+    ) -> list[ProcessVersionRecord]: ...
+
     # --- Agent ---
 
     @abc.abstractmethod
@@ -145,7 +163,10 @@ class StorageBackend(abc.ABC):
 
     @abc.abstractmethod
     async def create_run(
-        self, process_id: str, work_item_state: dict[str, Any]
+        self,
+        process_id: str,
+        work_item_state: dict[str, Any],
+        process_version: str | None = None,
     ) -> RunRecord: ...
 
     @abc.abstractmethod
@@ -243,7 +264,13 @@ class StorageBackend(abc.ABC):
 
     @abc.abstractmethod
     async def list_decisions(
-        self, process_id: str, node_id: str
+        self,
+        process_id: str,
+        node_id: str | None = None,
+        *,
+        run_id: str | None = None,
+        limit: int | None = None,
+        mode: str | None = None,
     ) -> list[DecisionRecord]: ...
 
     # --- Retry ---

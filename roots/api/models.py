@@ -66,6 +66,24 @@ class RunResponse(BaseModel):
     work_item_state: dict[str, Any]
     created_at: datetime
     updated_at: datetime
+    process_version: str | None = None
+
+
+class DecisionHistoryResponse(BaseModel):
+    id: int
+    run_id: str
+    process_id: str
+    node_id: str
+    mode: str
+    decision: dict[str, Any]
+    confidence: float
+    created_at: datetime
+
+
+class ProcessVersionSummary(BaseModel):
+    id: str
+    version: str
+    created_at: datetime
 
 
 class HistoryEventResponse(BaseModel):

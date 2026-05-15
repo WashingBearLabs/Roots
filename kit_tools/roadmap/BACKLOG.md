@@ -12,12 +12,13 @@ Future work items and ideas for the Roots framework.
 | Priority | Item | Type | Ref | Status |
 |----------|------|------|-----|--------|
 | P0 | Root Registry & Marketplace | Feature | T3.8 | Not Started |
-| P1 | Decision History Retrieval | Feature | T3.1 | Not Started |
-| P1 | Process Versioning | Feature | T3.2 | Not Started |
-| P2 | Process Composition | Feature | T3.3 | Not Started |
-| P2 | Vote Aggregation | Feature | T3.4 | Not Started |
-| P2 | Transform Node | Feature | T3.5 | Not Started |
-| P2 | Agent Node Error Key | Feature | T3.9 | Not Started |
+| P1 | Decision History Retrieval | Feature | T3.1 | **Epic: library-refinements** |
+| P1 | Process Versioning | Feature | T3.2 | **Epic: library-refinements** |
+| P2 | Process Composition | Feature | T3.3 | **Epic: process-composition** |
+| P2 | Vote Aggregation | Feature | T3.4 | **Epic: library-refinements** |
+| P2 | ~~Transform Node~~ | Feature | T3.5 | Iceboxed |
+| P2 | ~~Agent Node Error Key~~ | Feature | T3.9 | **Done** (2026-05-13) |
+| P1 | In-Repo Documentation | Docs | D1 | Not Started |
 
 ---
 
@@ -48,15 +49,30 @@ Future work items and ideas for the Roots framework.
 **Effort:** Small
 **Description:** Built-in support for multi-agent voting and consensus mechanisms in decision nodes. Aggregate responses from multiple agents to make collective decisions.
 
-### Transform Node (T3.5)
-**Priority:** P2
-**Effort:** Small
-**Description:** A new node type for data transformation between process steps. Applies mapping, filtering, or reshaping operations to process state without requiring an agent invocation.
+### ~~Transform Node (T3.5)~~ — ICEBOXED
+**Reason:** Scope creep risk — data transformation is a deep rabbit hole that pulls Roots away from its orchestration focus. Adapter agents (3-4 lines of Python) handle this idiomatically. Revisit if .root package portability makes trivial adapter agents a recurring pain point.
 
-### Agent Node Error Key (T3.9)
-**Priority:** P2
-**Effort:** Small
-**Description:** Optional `error_key` config on agent nodes. After a handler returns, Roots checks if `state[error_key]` exists — if so, marks the node as failed instead of completed. Currently, handlers that write errors to state (e.g., `repo_error`) without raising exceptions are treated as successful completions, allowing entire workflows to "complete" with every step having failed silently. Discovered during Poppy integration where handlers don't raise by convention.
+### ~~Agent Node Error Key (T3.9)~~ — DONE
+**Completed:** 2026-05-13 | Commit `7188b9f`
+**Description:** Optional `error_key` on `AgentNodeConfig`. After agent returns, if `output[error_key]` is truthy, node and run are failed. Output is still stored in state for inspection.
+
+### In-Repo Documentation (D1)
+**Priority:** P1
+**Effort:** Medium
+**Description:** Agent-friendly in-repo documentation for the Roots framework. Covers getting started, core concepts (process definitions, node types, orchestrator, agents, storage), YAML reference, API reference, and extension guides. Written so that an AI agent or new developer can ingest it and build on Roots without reading the source. Lives in `docs/` at the repo root (distinct from `kit_tools/docs/` which is internal project docs).
+
+---
+
+## Library Refinements (Epic)
+- [Epic Overview](../specs/epic-library-refinements.md)
+- [Vote Aggregation](../specs/feature-vote-aggregation.md) — Agent pool consensus (T3.4, 4 stories)
+- [Decision History](../specs/feature-decision-history.md) — Query + auto-inject (T3.1, 4 stories)
+- [Process Versioning](../specs/feature-process-versioning.md) — Version pinning (T3.2, 3 stories)
+
+## Process Composition (Epic)
+- [Epic Overview](../specs/epic-process-composition.md)
+- [Subprocess Schema](../specs/feature-subprocess-schema.md) — Node type, storage, validation (T3.3, 3 stories)
+- [Subprocess Execution](../specs/feature-subprocess-execution.md) — Orchestrator lifecycle, pause/fail cascading, API (T3.3, 5 stories)
 
 ---
 
@@ -78,4 +94,4 @@ Future work items and ideas for the Roots framework.
 
 ## Icebox
 
-*No items currently in the icebox.*
+- **Transform Node (T3.5)** — Data transformation between steps. Iceboxed: Roots orchestrates, agents compute. Revisit if .root portability demands it.

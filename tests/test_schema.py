@@ -24,6 +24,8 @@ from roots.core.schema import (
     OnExhaustion,
     ProcessDefinition,
     RetryConfig,
+    TieBreak,
+    VoteConfig,
 )
 
 
@@ -234,6 +236,61 @@ class TestAgentNodeConfig:
             AgentNodeConfig(agent="summarizer")  # type: ignore[call-arg]
 
 
+class TestAggregationEnum:
+    def test_all_values(self) -> None:
+        expected = {"merge_all", "majority_vote", "weighted_vote", "unanimous"}
+        assert {v.value for v in Aggregation} == expected
+
+    def test_is_str_enum(self) -> None:
+        assert isinstance(Aggregation.MAJORITY_VOTE, str)
+        assert Aggregation.MAJORITY_VOTE == "majority_vote"
+
+
+class TestTieBreakEnum:
+    def test_all_values(self) -> None:
+        assert {v.value for v in TieBreak} == {"first_agent", "reject"}
+
+    def test_is_str_enum(self) -> None:
+        assert isinstance(TieBreak.FIRST_AGENT, str)
+        assert TieBreak.FIRST_AGENT == "first_agent"
+        assert TieBreak.REJECT == "reject"
+
+
+class TestVoteConfig:
+    def test_minimal(self) -> None:
+        cfg = VoteConfig(vote_key="decision")
+        assert cfg.vote_key == "decision"
+        assert cfg.threshold == 0.5
+        assert cfg.weights is None
+        assert cfg.tie_break == TieBreak.FIRST_AGENT
+
+    def test_all_fields(self) -> None:
+        cfg = VoteConfig(
+            vote_key="verdict",
+            threshold=0.75,
+            weights={"a1": 2.0, "a2": 1.0},
+            tie_break=TieBreak.REJECT,
+        )
+        assert cfg.vote_key == "verdict"
+        assert cfg.threshold == 0.75
+        assert cfg.weights == {"a1": 2.0, "a2": 1.0}
+        assert cfg.tie_break == TieBreak.REJECT
+
+    def test_threshold_bounds(self) -> None:
+        with pytest.raises(ValueError):
+            VoteConfig(vote_key="x", threshold=-0.1)
+        with pytest.raises(ValueError):
+            VoteConfig(vote_key="x", threshold=1.1)
+
+    def test_threshold_boundary_values(self) -> None:
+        assert VoteConfig(vote_key="x", threshold=0.0).threshold == 0.0
+        assert VoteConfig(vote_key="x", threshold=1.0).threshold == 1.0
+
+    def test_requires_vote_key(self) -> None:
+        with pytest.raises(ValueError):
+            VoteConfig()  # type: ignore[call-arg]
+
+
 class TestAgentPoolNodeConfig:
     def test_valid_config(self) -> None:
         cfg = AgentPoolNodeConfig(
@@ -245,6 +302,7 @@ class TestAgentPoolNodeConfig:
         assert cfg.execution_mode == ExecutionMode.PARALLEL
         assert cfg.aggregation == Aggregation.MERGE_ALL
         assert cfg.output_key == "result"
+        assert cfg.vote_config is None
 
     def test_requires_at_least_one_agent(self) -> None:
         with pytest.raises(ValueError, match="at least"):
@@ -254,7 +312,7 @@ class TestAgentPoolNodeConfig:
                 output_key="result",
             )
 
-    def test_all_execution_modes(self) -> None:
+    def test_all_execution_modes_with_merge_all(self) -> None:
         for mode in ExecutionMode:
             cfg = AgentPoolNodeConfig(
                 agents=["a1"],
@@ -262,6 +320,150 @@ class TestAgentPoolNodeConfig:
                 output_key="out",
             )
             assert cfg.execution_mode == mode
+
+    def test_majority_vote_requires_vote_config(self) -> None:
+        with pytest.raises(ValueError, match="vote_config is required"):
+            AgentPoolNodeConfig(
+                agents=["a1", "a2"],
+                execution_mode=ExecutionMode.PARALLEL,
+                aggregation=Aggregation.MAJORITY_VOTE,
+                output_key="out",
+            )
+
+    def test_weighted_vote_requires_vote_config(self) -> None:
+        with pytest.raises(ValueError, match="vote_config is required"):
+            AgentPoolNodeConfig(
+                agents=["a1"],
+                execution_mode=ExecutionMode.PARALLEL,
+                aggregation=Aggregation.WEIGHTED_VOTE,
+                output_key="out",
+            )
+
+    def test_unanimous_requires_vote_config(self) -> None:
+        with pytest.raises(ValueError, match="vote_config is required"):
+            AgentPoolNodeConfig(
+                agents=["a1"],
+                execution_mode=ExecutionMode.PARALLEL,
+                aggregation=Aggregation.UNANIMOUS,
+                output_key="out",
+            )
+
+    def test_vote_config_rejected_for_merge_all(self) -> None:
+        with pytest.raises(ValueError, match="not allowed when aggregation is 'merge_all'"):
+            AgentPoolNodeConfig(
+                agents=["a1"],
+                execution_mode=ExecutionMode.PARALLEL,
+                aggregation=Aggregation.MERGE_ALL,
+                output_key="out",
+                vote_config=VoteConfig(vote_key="decision"),
+            )
+
+    def test_valid_majority_vote(self) -> None:
+        cfg = AgentPoolNodeConfig(
+            agents=["a1", "a2", "a3"],
+            execution_mode=ExecutionMode.PARALLEL,
+            aggregation=Aggregation.MAJORITY_VOTE,
+            output_key="out",
+            vote_config=VoteConfig(vote_key="decision", threshold=0.6),
+        )
+        assert cfg.aggregation == Aggregation.MAJORITY_VOTE
+        assert cfg.vote_config is not None
+        assert cfg.vote_config.vote_key == "decision"
+
+    def test_valid_unanimous(self) -> None:
+        cfg = AgentPoolNodeConfig(
+            agents=["a1", "a2"],
+            execution_mode=ExecutionMode.SEQUENTIAL,
+            aggregation=Aggregation.UNANIMOUS,
+            output_key="out",
+            vote_config=VoteConfig(vote_key="verdict"),
+        )
+        assert cfg.aggregation == Aggregation.UNANIMOUS
+
+    def test_valid_weighted_vote(self) -> None:
+        cfg = AgentPoolNodeConfig(
+            agents=["a1", "a2"],
+            execution_mode=ExecutionMode.PARALLEL,
+            aggregation=Aggregation.WEIGHTED_VOTE,
+            output_key="out",
+            vote_config=VoteConfig(
+                vote_key="decision",
+                weights={"a1": 2.0, "a2": 1.0},
+            ),
+        )
+        assert cfg.aggregation == Aggregation.WEIGHTED_VOTE
+        assert cfg.vote_config is not None
+        assert cfg.vote_config.weights == {"a1": 2.0, "a2": 1.0}
+
+    def test_weighted_vote_requires_weights(self) -> None:
+        with pytest.raises(ValueError, match="weights are required"):
+            AgentPoolNodeConfig(
+                agents=["a1", "a2"],
+                execution_mode=ExecutionMode.PARALLEL,
+                aggregation=Aggregation.WEIGHTED_VOTE,
+                output_key="out",
+                vote_config=VoteConfig(vote_key="decision"),
+            )
+
+    def test_weight_keys_must_be_subset_of_agents(self) -> None:
+        with pytest.raises(ValueError, match="not in the agents list"):
+            AgentPoolNodeConfig(
+                agents=["a1", "a2"],
+                execution_mode=ExecutionMode.PARALLEL,
+                aggregation=Aggregation.WEIGHTED_VOTE,
+                output_key="out",
+                vote_config=VoteConfig(
+                    vote_key="decision",
+                    weights={"a1": 1.0, "unknown_agent": 2.0},
+                ),
+            )
+
+    def test_partial_weights_valid(self) -> None:
+        cfg = AgentPoolNodeConfig(
+            agents=["a1", "a2", "a3"],
+            execution_mode=ExecutionMode.PARALLEL,
+            aggregation=Aggregation.WEIGHTED_VOTE,
+            output_key="out",
+            vote_config=VoteConfig(
+                vote_key="decision",
+                weights={"a1": 2.0},
+            ),
+        )
+        assert cfg.vote_config is not None
+        assert cfg.vote_config.weights == {"a1": 2.0}
+
+    def test_first_pass_rejected_with_majority_vote(self) -> None:
+        with pytest.raises(ValueError, match="not compatible with execution_mode 'first_pass'"):
+            AgentPoolNodeConfig(
+                agents=["a1", "a2"],
+                execution_mode=ExecutionMode.FIRST_PASS,
+                aggregation=Aggregation.MAJORITY_VOTE,
+                output_key="out",
+                vote_config=VoteConfig(vote_key="decision"),
+            )
+
+    def test_first_pass_rejected_with_weighted_vote(self) -> None:
+        with pytest.raises(ValueError, match="not compatible with execution_mode 'first_pass'"):
+            AgentPoolNodeConfig(
+                agents=["a1", "a2"],
+                execution_mode=ExecutionMode.FIRST_PASS,
+                aggregation=Aggregation.WEIGHTED_VOTE,
+                output_key="out",
+                vote_config=VoteConfig(
+                    vote_key="decision",
+                    weights={"a1": 1.0, "a2": 2.0},
+                ),
+            )
+
+    def test_first_pass_rejected_with_unanimous(self) -> None:
+        with pytest.raises(ValueError, match="not compatible with execution_mode 'first_pass'"):
+            AgentPoolNodeConfig(
+                agents=["a1"],
+                execution_mode=ExecutionMode.FIRST_PASS,
+                aggregation=Aggregation.UNANIMOUS,
+                output_key="out",
+                vote_config=VoteConfig(vote_key="decision"),
+            )
 
 
 class TestDecisionEdge:
