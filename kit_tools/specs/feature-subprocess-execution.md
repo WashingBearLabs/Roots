@@ -44,16 +44,16 @@ With the SUBPROCESS node type and storage foundation in place (feature-subproces
 - Store child_run_id in parent state (e.g., `state["_subprocess_run_" + node.id]`) for pause/resume tracking
 
 **Acceptance Criteria:**
-- [ ] _handle_subprocess added to orchestrator dispatch table (replaces stub handler from schema spec)
-- [ ] Handler creates child run with input_mapping applied: for each (parent_key, child_key) in input_mapping, child_state[child_key] = parent_state[parent_key]; missing parent keys raise OrchestrationError (not KeyError)
-- [ ] Child run executes to completion via inner ProcessRunner tick loop; parent lock refreshed between child ticks to prevent lock theft by other orchestrator instances
-- [ ] Output mapped back: for each (child_key, parent_key) in output_mapping, result[parent_key] = child_state[child_key]; missing child keys produce None (not KeyError); stored at output_key
-- [ ] Child runner uses parent's owner_id for lock acquisition
-- [ ] `_subprocess_depth` injected into child initial state (current depth + 1) for depth tracking by US-004
-- [ ] SUBPROCESS_STARTED and SUBPROCESS_COMPLETED events emitted with child_run_id in metadata
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] _handle_subprocess added to orchestrator dispatch table (replaces stub handler from schema spec)
+- [x] Handler creates child run with input_mapping applied: for each (parent_key, child_key) in input_mapping, child_state[child_key] = parent_state[parent_key]; missing parent keys raise OrchestrationError (not KeyError)
+- [x] Child run executes to completion via inner ProcessRunner tick loop; parent lock refreshed between child ticks to prevent lock theft by other orchestrator instances
+- [x] Output mapped back: for each (child_key, parent_key) in output_mapping, result[parent_key] = child_state[child_key]; missing child keys produce None (not KeyError); stored at output_key
+- [x] Child runner uses parent's owner_id for lock acquisition
+- [x] `_subprocess_depth` injected into child initial state (current depth + 1) for depth tracking by US-004
+- [x] SUBPROCESS_STARTED and SUBPROCESS_COMPLETED events emitted with child_run_id in metadata
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-002: Handle subprocess pause cascading
 
