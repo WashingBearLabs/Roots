@@ -848,3 +848,20 @@
 - Total attempts: 11
 - Total sessions: 25
 
+
+---
+
+## Epic: process-composition — Run 1
+
+**Started:** 2026-05-15
+**Mode:** Guarded (max 3 retries, supervisor monitoring)
+**Branch:** epic/process-composition
+**Models:** Sonnet (implementer), Opus (verifier/validator)
+**Completion:** Create PR
+
+### Specs (in order):
+1. feature-subprocess-schema.md (4 stories)
+2. feature-subprocess-execution.md (5 stories)
+
+### Execution Log
+
