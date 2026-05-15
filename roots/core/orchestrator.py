@@ -17,7 +17,7 @@ from roots.core.aggregation import AggregationError, aggregate_votes
 from roots.core.decision import DecisionEngine
 from roots.core.escalation import EscalationTrigger, create_escalation_from_error
 from roots.core.schema import (
-    Aggregation,
+    VOTE_AGGREGATIONS,
     AgentNodeConfig,
     AgentPoolNodeConfig,
     CheckpointNodeConfig,
@@ -38,8 +38,6 @@ from roots.core.retry import RetryExhaustedError, RetryRoutedError, execute_with
 from roots.storage.base import RunRecord, StorageBackend
 
 logger = logging.getLogger(__name__)
-
-_VOTE_AGGREGATIONS = {Aggregation.MAJORITY_VOTE, Aggregation.WEIGHTED_VOTE, Aggregation.UNANIMOUS}
 
 
 def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -150,12 +148,14 @@ class ProcessRunner:
                     run.process_id, run.process_version
                 )
                 if process is None:
-                    logger.warning(
-                        "Pinned version %s for process %s not found; falling back to latest",
-                        run.process_version,
-                        run.process_id,
+                    await self._storage.release_run_lock(
+                        self.run_id, self._owner_id
                     )
-                    process = await self._storage.get_process(run.process_id)
+                    raise OrchestrationError(
+                        f"Pinned version '{run.process_version}' for process "
+                        f"'{run.process_id}' not found — version may have been "
+                        f"deleted after run creation"
+                    )
             else:
                 process = await self._storage.get_process(run.process_id)
             if process is None:
@@ -630,7 +630,7 @@ class ProcessRunner:
                     node, state, r.escalation_reason or "Agent requested escalation"
                 )
                 break
-        if config.aggregation in _VOTE_AGGREGATIONS:
+        if config.aggregation in VOTE_AGGREGATIONS:
             assert config.vote_config is not None
             agents_outputs = [(name, r.output) for name, r in named_successful]
             return aggregate_votes(agents_outputs, config.aggregation, config.vote_config)
@@ -647,7 +647,7 @@ class ProcessRunner:
     ) -> dict[str, Any]:
         assert isinstance(node.config, AgentPoolNodeConfig)
         config = node.config
-        is_vote = config.aggregation in _VOTE_AGGREGATIONS
+        is_vote = config.aggregation in VOTE_AGGREGATIONS
 
         current_state = dict(state)
         named_outputs: list[tuple[str, dict[str, Any]]] = []

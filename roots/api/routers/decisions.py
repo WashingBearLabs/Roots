@@ -2,27 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any
-
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, Query
 
 from roots import Roots
 from roots.api.deps import get_roots
+from roots.api.models import DecisionHistoryResponse
 
 router = APIRouter(prefix="/processes", tags=["decisions"])
 
-
-class DecisionHistoryResponse(BaseModel):
-    id: int
-    run_id: str
-    process_id: str
-    node_id: str
-    mode: str
-    decision: dict[str, Any]
-    confidence: float
-    created_at: datetime
+_MAX_DECISION_LIMIT = 1000
 
 
 @router.get("/{process_id}/decisions", response_model=list[DecisionHistoryResponse])
@@ -30,7 +18,7 @@ async def list_process_decisions(
     process_id: str,
     node_id: str | None = None,
     run_id: str | None = None,
-    limit: int | None = None,
+    limit: int | None = Query(default=None, ge=1, le=_MAX_DECISION_LIMIT),
     mode: str | None = None,
     roots: Roots = Depends(get_roots),
 ) -> list[DecisionHistoryResponse]:

@@ -1,11 +1,15 @@
-"""Tests for process version history storage — US-001."""
+"""Tests for process version history storage and orchestrator pinning."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 
 import pytest
 
+from roots.agents.invoker import AgentInvoker
+from roots.agents.registry import AgentRegistry
+from roots.core.decision import DecisionEngine
+from roots.core.orchestrator import OrchestrationError, ProcessRunner
 from roots.core.schema import (
     AgentNodeConfig,
     EdgeDefinition,
@@ -15,6 +19,10 @@ from roots.core.schema import (
     NodeType,
     ProcessDefinition,
 )
+from roots.core.state_machine import RunStatus
+from roots.events.emitter import EventEmitter
+from roots.events.sinks import EventSink
+from roots.events.types import EventEnvelope
 
 if TYPE_CHECKING:
     from roots.storage.base import StorageBackend
@@ -302,3 +310,115 @@ async def test_run_pinned_to_original_version(
     latest = await sqlite_storage.get_process(sample_process.id)
     assert latest is not None
     assert latest.version == "2.0.0"
+
+
+# --- Orchestrator-level version pinning tests ---
+
+
+class CollectorSink(EventSink):
+    def __init__(self) -> None:
+        self.events: list[EventEnvelope] = []
+
+    async def emit(self, event: EventEnvelope) -> None:
+        self.events.append(event)
+
+
+async def echo_agent(input: dict[str, Any]) -> dict[str, Any]:
+    return {"output": {"echo": input["work_item_state"]}, "escalate": False}
+
+
+@pytest.fixture
+def registry() -> AgentRegistry:
+    reg = AgentRegistry()
+    reg.register_local("echo", echo_agent)
+    return reg
+
+
+@pytest.fixture
+def invoker(registry: AgentRegistry) -> AgentInvoker:
+    return AgentInvoker(registry)
+
+
+@pytest.fixture
+def decision_engine() -> DecisionEngine:
+    return DecisionEngine(default_model="gpt-4o-mini")
+
+
+@pytest.fixture
+def sink() -> CollectorSink:
+    return CollectorSink()
+
+
+@pytest.fixture
+def emitter(sink: CollectorSink) -> EventEmitter:
+    return EventEmitter(sinks=[sink])
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_tick_uses_pinned_version(
+    sqlite_storage: StorageBackend,
+    sample_process: ProcessDefinition,
+    invoker: AgentInvoker,
+    decision_engine: DecisionEngine,
+    emitter: EventEmitter,
+) -> None:
+    """Create run at v1, update process to v2, tick — run uses v1 definition."""
+    await sqlite_storage.save_process(sample_process)
+    run = await sqlite_storage.create_run(
+        sample_process.id, {"input": "test"}, process_version="1.0.0"
+    )
+
+    v2 = sample_process.model_copy(
+        update={"version": "2.0.0", "description": "V2 changed"}
+    )
+    await sqlite_storage.save_process(v2)
+
+    runner = ProcessRunner(
+        run_id=run.id,
+        storage=sqlite_storage,
+        agent_invoker=invoker,
+        decision_engine=decision_engine,
+        event_emitter=emitter,
+        owner_id="test-owner",
+    )
+
+    await runner.tick()  # pending -> running
+    await runner.tick()  # execute agent node using v1 definition
+    await runner.tick()  # end node
+
+    final = await sqlite_storage.get_run(run.id)
+    assert final is not None
+    assert final.status == RunStatus.COMPLETED
+    assert final.process_version == "1.0.0"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_tick_fails_on_deleted_pinned_version(
+    sqlite_storage: StorageBackend,
+    sample_process: ProcessDefinition,
+    invoker: AgentInvoker,
+    decision_engine: DecisionEngine,
+    emitter: EventEmitter,
+) -> None:
+    """If pinned version is deleted, orchestrator raises OrchestrationError."""
+    await sqlite_storage.save_process(sample_process)
+    run = await sqlite_storage.create_run(
+        sample_process.id, {"input": "test"}, process_version="1.0.0"
+    )
+
+    await sqlite_storage.delete_process(sample_process.id)
+
+    v2 = sample_process.model_copy(update={"version": "2.0.0"})
+    await sqlite_storage.save_process(v2)
+
+    runner = ProcessRunner(
+        run_id=run.id,
+        storage=sqlite_storage,
+        agent_invoker=invoker,
+        decision_engine=decision_engine,
+        event_emitter=emitter,
+        owner_id="test-owner",
+    )
+
+    with pytest.raises(OrchestrationError, match="Pinned version.*not found"):
+        await runner.tick()

@@ -167,7 +167,7 @@ class SqliteBackend(StorageBackend):
                 "ALTER TABLE runs ADD COLUMN process_version TEXT"
             )
             await self._db.commit()
-        except Exception:
+        except aiosqlite.OperationalError:
             pass  # Column already exists
 
     async def close(self) -> None:

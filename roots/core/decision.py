@@ -215,7 +215,8 @@ def build_decision_messages(
             line = f"- Edge: {h.get('selected_edge')}, Confidence: {h.get('confidence')}"
             reasoning = h.get("reasoning")
             if reasoning is not None:
-                line += f", Reasoning: {reasoning[:200]}"
+                sanitized = reasoning[:200].replace("\n", " ").replace("```", "")
+                line += f", Reasoning: {sanitized}"
             history_lines.append(line)
         user_parts.append("## Historical Decisions\n" + "\n".join(history_lines))
     user_parts.append(f"## Available Edges\n" + "\n".join(edge_descriptions))

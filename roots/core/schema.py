@@ -85,7 +85,7 @@ class EndStatus(StrEnum):
     FAILED = "failed"
 
 
-_VOTE_AGGREGATIONS = {
+VOTE_AGGREGATIONS = {
     Aggregation.MAJORITY_VOTE,
     Aggregation.WEIGHTED_VOTE,
     Aggregation.UNANIMOUS,
@@ -114,7 +114,7 @@ class AgentPoolNodeConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_vote_config(self) -> Self:
-        is_vote = self.aggregation in _VOTE_AGGREGATIONS
+        is_vote = self.aggregation in VOTE_AGGREGATIONS
         if is_vote and self.vote_config is None:
             raise ValueError(
                 "vote_config is required when aggregation is a vote type"
@@ -158,7 +158,7 @@ class DecisionNodeConfig(BaseModel):
     context_prompt: str | None = None
     checkpoint_prompt: str | None = None
     edges: list[DecisionEdge] = Field(min_length=1)
-    history_depth: int | None = Field(default=None, ge=1)
+    history_depth: int | None = Field(default=None, ge=1, le=50)
 
     @model_validator(mode="after")
     def validate_mode_constraints(self) -> Self:
