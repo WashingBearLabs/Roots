@@ -91,12 +91,12 @@ With the SUBPROCESS node type and storage foundation in place (feature-subproces
 - History event should record the subprocess failure with child context
 
 **Acceptance Criteria:**
-- [ ] Child run FAILED → parent node fails with NODE_FAILED and RUN_FAILED events; SUBPROCESS_FAILED event emitted with child_run_id
-- [ ] Child run CANCELLED → parent node fails (same behavior as child failure)
-- [ ] Failure metadata includes child_run_id and child's final status
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] Child run FAILED → parent node fails with NODE_FAILED and RUN_FAILED events; SUBPROCESS_FAILED event emitted with child_run_id
+- [x] Child run CANCELLED → parent node fails (same behavior as child failure)
+- [x] Failure metadata includes child_run_id and child's final status
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-004: Enforce subprocess depth limit
 
