@@ -10,9 +10,11 @@ import pytest
 from roots.agents.registry import AgentRegistry
 from roots.agents.invoker import AgentInvoker
 from roots.core.decision import DecisionEngine
+from roots.core.escalation import EscalationTrigger
 from roots.core.orchestrator import Orchestrator, OrchestrationError
 from roots.core.schema import (
     AgentNodeConfig,
+    CheckpointNodeConfig,
     EdgeDefinition,
     EndNodeConfig,
     EndStatus,
@@ -496,3 +498,190 @@ class TestSubprocessHandler:
         completed = next(e for e in sink.events if e.event == EventType.SUBPROCESS_COMPLETED)
         assert started.metadata.get("child_run_id") is not None
         assert completed.metadata.get("child_run_id") == started.metadata["child_run_id"]
+
+    # --- US-002: Subprocess pause cascading ---
+
+    def _make_pausing_child_process(self) -> ProcessDefinition:
+        """Child: CHECKPOINT -> END (pauses at checkpoint on first execution)."""
+        return ProcessDefinition(
+            id="pausing-child-proc",
+            name="Pausing Child",
+            version="1.0.0",
+            nodes=[
+                NodeDefinition(
+                    id="cp",
+                    type=NodeType.CHECKPOINT,
+                    label="Review",
+                    config=CheckpointNodeConfig(prompt="Needs review"),
+                ),
+                NodeDefinition(
+                    id="done",
+                    type=NodeType.END,
+                    label="Done",
+                    config=EndNodeConfig(status=EndStatus.COMPLETED),
+                ),
+            ],
+            edges=[EdgeDefinition(from_node="cp", to_node="done")],
+            entry_point="cp",
+        )
+
+    def _make_pausing_parent_process(self) -> ProcessDefinition:
+        """Parent: SUBPROCESS(pausing-child-proc) -> END."""
+        return ProcessDefinition(
+            id="pausing-parent-proc",
+            name="Pausing Parent",
+            version="1.0.0",
+            nodes=[
+                NodeDefinition(
+                    id="sub",
+                    type=NodeType.SUBPROCESS,
+                    label="Sub",
+                    config=SubProcessNodeConfig(
+                        process_id="pausing-child-proc",
+                        output_key="child_result",
+                        input_mapping={},
+                        output_mapping={},
+                    ),
+                ),
+                NodeDefinition(
+                    id="done",
+                    type=NodeType.END,
+                    label="Done",
+                    config=EndNodeConfig(status=EndStatus.COMPLETED),
+                ),
+            ],
+            edges=[EdgeDefinition(from_node="sub", to_node="done")],
+            entry_point="sub",
+        )
+
+    async def test_subprocess_initial_pause_cascades_to_parent(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+    ) -> None:
+        """Child pause cascades to parent with SUBPROCESS_PAUSED escalation."""
+        await sqlite_storage.save_process(self._make_pausing_child_process())
+        await sqlite_storage.save_process(self._make_pausing_parent_process())
+
+        run = await orchestrator.start_run("pausing-parent-proc", {})
+        await orchestrator.execute_run(run.id)
+
+        parent = await sqlite_storage.get_run(run.id)
+        assert parent is not None
+        assert parent.status == RunStatus.PAUSED
+        assert "_subprocess_run_sub" in parent.work_item_state
+
+        escalation = await sqlite_storage.get_pending_escalation(run.id)
+        assert escalation is not None
+        assert escalation.trigger_type == EscalationTrigger.SUBPROCESS_PAUSED
+        child_run_id = parent.work_item_state["_subprocess_run_sub"]
+        assert child_run_id in escalation.reason
+
+    async def test_subprocess_resume_child_completed(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+    ) -> None:
+        """Resuming parent when child completed extracts output; no duplicate child run."""
+        await sqlite_storage.save_process(self._make_pausing_child_process())
+        await sqlite_storage.save_process(self._make_pausing_parent_process())
+
+        run = await orchestrator.start_run("pausing-parent-proc", {})
+        await orchestrator.execute_run(run.id)
+
+        parent = await sqlite_storage.get_run(run.id)
+        assert parent is not None
+        assert parent.status == RunStatus.PAUSED
+        child_run_id = parent.work_item_state["_subprocess_run_sub"]
+
+        # Advance child past checkpoint to "done" and complete it
+        child = await sqlite_storage.get_run(child_run_id)
+        assert child is not None
+        assert child.status == RunStatus.PAUSED
+        await sqlite_storage.update_run_status(child_run_id, RunStatus.RUNNING, "done")
+        child_runner_proc = orchestrator
+        await child_runner_proc.execute_run(child_run_id)
+
+        child_after = await sqlite_storage.get_run(child_run_id)
+        assert child_after is not None
+        assert child_after.status == RunStatus.COMPLETED
+
+        # Resume parent — should detect child completed and finish
+        assert parent.current_node_id is not None
+        await sqlite_storage.update_run_status(
+            run.id, RunStatus.RUNNING, parent.current_node_id
+        )
+        await orchestrator.execute_run(run.id)
+
+        parent_after = await sqlite_storage.get_run(run.id)
+        assert parent_after is not None
+        assert parent_after.status == RunStatus.COMPLETED
+
+        # No duplicate child runs
+        children = await sqlite_storage.get_child_runs(run.id)
+        assert len(children) == 1
+
+    async def test_subprocess_resume_child_still_paused(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+    ) -> None:
+        """Resuming parent when child still paused re-pauses parent without new escalation."""
+        await sqlite_storage.save_process(self._make_pausing_child_process())
+        await sqlite_storage.save_process(self._make_pausing_parent_process())
+
+        run = await orchestrator.start_run("pausing-parent-proc", {})
+        await orchestrator.execute_run(run.id)
+
+        parent = await sqlite_storage.get_run(run.id)
+        assert parent is not None
+        assert parent.status == RunStatus.PAUSED
+
+        # Resolve original escalation so we can detect if a new one is created
+        escalation = await sqlite_storage.get_pending_escalation(run.id)
+        assert escalation is not None
+        await sqlite_storage.resolve_escalation(escalation.id, {"resolved_by": "test"})
+
+        # Resume parent while child is still paused
+        assert parent.current_node_id is not None
+        await sqlite_storage.update_run_status(
+            run.id, RunStatus.RUNNING, parent.current_node_id
+        )
+        await orchestrator.execute_run(run.id)
+
+        parent_after = await sqlite_storage.get_run(run.id)
+        assert parent_after is not None
+        assert parent_after.status == RunStatus.PAUSED
+
+        # No new escalation created — re-pause used self._escalated = True directly
+        new_escalation = await sqlite_storage.get_pending_escalation(run.id)
+        assert new_escalation is None
+
+    async def test_subprocess_resume_missing_child_run_raises(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+    ) -> None:
+        """Resuming parent with a nonexistent stored child_run_id raises OrchestrationError."""
+        await sqlite_storage.save_process(self._make_pausing_child_process())
+        await sqlite_storage.save_process(self._make_pausing_parent_process())
+
+        run = await orchestrator.start_run("pausing-parent-proc", {})
+        await orchestrator.execute_run(run.id)
+
+        parent = await sqlite_storage.get_run(run.id)
+        assert parent is not None
+        assert parent.status == RunStatus.PAUSED
+
+        # Overwrite stored child_run_id with a nonexistent ID
+        bad_state = dict(parent.work_item_state)
+        bad_state["_subprocess_run_sub"] = "run-nonexistent-id"
+        await sqlite_storage.update_work_item_state(run.id, bad_state)
+
+        assert parent.current_node_id is not None
+        await sqlite_storage.update_run_status(
+            run.id, RunStatus.RUNNING, parent.current_node_id
+        )
+
+        with pytest.raises(OrchestrationError, match="not found in storage"):
+            await orchestrator.execute_run(run.id)

@@ -1145,75 +1145,90 @@ class ProcessRunner:
         assert isinstance(node.config, SubProcessNodeConfig)
         config = node.config
 
-        # Build child input state from input_mapping
-        child_state: dict[str, Any] = {}
-        for parent_key, child_key in config.input_mapping.items():
-            if parent_key not in state:
+        existing_child_run_id: str | None = state.get(f"_subprocess_run_{node.id}")
+        if existing_child_run_id is not None:
+            # Resume path: parent was previously paused waiting for this child
+            child_run = await self._storage.get_run(existing_child_run_id)
+            if child_run is None:
                 raise OrchestrationError(
-                    f"Subprocess '{node.id}': input_mapping key '{parent_key}' "
-                    f"not found in parent state"
+                    f"Subprocess '{node.id}': stored child run "
+                    f"'{existing_child_run_id}' not found in storage"
                 )
-            child_state[child_key] = state[parent_key]
+            if child_run.status == RunStatus.PAUSED:
+                # Child still paused — re-pause parent without a new escalation record
+                self._escalated = True
+                return None
+            # Child completed/failed since parent paused — extract output below
+        else:
+            # Fresh start: build child input state from input_mapping
+            child_state: dict[str, Any] = {}
+            for parent_key, child_key in config.input_mapping.items():
+                if parent_key not in state:
+                    raise OrchestrationError(
+                        f"Subprocess '{node.id}': input_mapping key '{parent_key}' "
+                        f"not found in parent state"
+                    )
+                child_state[child_key] = state[parent_key]
 
-        # Inject subprocess depth for depth tracking
-        current_depth = state.get("_subprocess_depth", 0)
-        child_state["_subprocess_depth"] = current_depth + 1
+            # Inject subprocess depth for depth tracking
+            current_depth = state.get("_subprocess_depth", 0)
+            child_state["_subprocess_depth"] = current_depth + 1
 
-        # Create child run linked to parent
-        child_run = await self._storage.create_run(
-            config.process_id,
-            child_state,
-            parent_run_id=self.run_id,
-            parent_node_id=node.id,
-        )
-        child_run_id = child_run.id
-
-        # Store child_run_id in parent state for pause/resume tracking
-        state[f"_subprocess_run_{node.id}"] = child_run_id
-
-        # Emit SUBPROCESS_STARTED
-        self._event_emitter.emit(
-            create_event(
-                EventType.SUBPROCESS_STARTED,
-                run_id=self.run_id,
-                process_id=self._process_id or "",
-                node_id=node.id,
-                metadata={"child_run_id": child_run_id},
+            # Create child run linked to parent
+            child_run = await self._storage.create_run(
+                config.process_id,
+                child_state,
+                parent_run_id=self.run_id,
+                parent_node_id=node.id,
             )
-        )
+            child_run_id = child_run.id
 
-        # Execute child via inner tick loop; refresh parent lock between ticks
-        child_runner = ProcessRunner(
-            run_id=child_run_id,
-            storage=self._storage,
-            agent_invoker=self._agent_invoker,
-            decision_engine=self._decision_engine,
-            event_emitter=self._event_emitter,
-            owner_id=self._owner_id,
-        )
+            # Store child_run_id in parent state for pause/resume tracking
+            state[f"_subprocess_run_{node.id}"] = child_run_id
 
-        while await child_runner.tick():
-            await self._storage.release_run_lock(self.run_id, self._owner_id)
-            if not await self._storage.acquire_run_lock(self.run_id, self._owner_id):
+            # Emit SUBPROCESS_STARTED
+            self._event_emitter.emit(
+                create_event(
+                    EventType.SUBPROCESS_STARTED,
+                    run_id=self.run_id,
+                    process_id=self._process_id or "",
+                    node_id=node.id,
+                    metadata={"child_run_id": child_run_id},
+                )
+            )
+
+            # Execute child via inner tick loop; refresh parent lock between ticks
+            child_runner = ProcessRunner(
+                run_id=child_run_id,
+                storage=self._storage,
+                agent_invoker=self._agent_invoker,
+                decision_engine=self._decision_engine,
+                event_emitter=self._event_emitter,
+                owner_id=self._owner_id,
+            )
+
+            while await child_runner.tick():
+                await self._storage.release_run_lock(self.run_id, self._owner_id)
+                if not await self._storage.acquire_run_lock(self.run_id, self._owner_id):
+                    raise OrchestrationError(
+                        f"Parent run '{self.run_id}' lock was stolen during subprocess execution"
+                    )
+
+            # Reload child run to get final state and status
+            child_run = await self._storage.get_run(child_run_id)
+            if child_run is None:
                 raise OrchestrationError(
-                    f"Parent run '{self.run_id}' lock was stolen during subprocess execution"
+                    f"Child run '{child_run_id}' not found after completion"
                 )
 
-        # Reload child run to get final state and status
-        child_run = await self._storage.get_run(child_run_id)
-        if child_run is None:
-            raise OrchestrationError(
-                f"Child run '{child_run_id}' not found after completion"
-            )
-
-        # Child paused — cascade pause to parent
-        if child_run.status == RunStatus.PAUSED:
-            await self._trigger_escalation(
-                node, state,
-                f"Subprocess '{node.id}' child run '{child_run_id}' paused",
-                EscalationTrigger.SUBPROCESS_PAUSED,
-            )
-            return None
+            # Child paused — cascade pause to parent (initial pause)
+            if child_run.status == RunStatus.PAUSED:
+                await self._trigger_escalation(
+                    node, state,
+                    f"Subprocess '{node.id}' child run '{child_run_id}' paused",
+                    EscalationTrigger.SUBPROCESS_PAUSED,
+                )
+                return None
 
         # Map output from child final state; missing keys produce None
         result: dict[str, Any] = {}
@@ -1227,7 +1242,7 @@ class ProcessRunner:
                 run_id=self.run_id,
                 process_id=self._process_id or "",
                 node_id=node.id,
-                metadata={"child_run_id": child_run_id},
+                metadata={"child_run_id": child_run.id},
             )
         )
 
