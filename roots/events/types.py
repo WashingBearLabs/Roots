@@ -41,6 +41,11 @@ class EventType(StrEnum):
     ESCALATION_TRIGGERED = "roots.escalation.triggered"
     ESCALATION_RESOLVED = "roots.escalation.resolved"
 
+    # Subprocess lifecycle
+    SUBPROCESS_STARTED = "roots.subprocess.started"
+    SUBPROCESS_COMPLETED = "roots.subprocess.completed"
+    SUBPROCESS_FAILED = "roots.subprocess.failed"
+
 
 class EventEnvelope(BaseModel):
     event: str

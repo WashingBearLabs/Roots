@@ -19,6 +19,7 @@ from roots.core.schema import (
     NodeDefinition,
     NodeType,
     ProcessDefinition,
+    SubProcessNodeConfig,
 )
 from roots.core.state_machine import RunStatus
 from roots.events.emitter import EventEmitter
@@ -283,3 +284,42 @@ class TestStartExecuteCompletedFlow:
         assert final is not None
         assert final.status == RunStatus.COMPLETED
         assert "step1_out" in final.work_item_state
+
+
+class TestSubprocessStubHandler:
+    async def test_subprocess_node_raises_not_implemented(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+    ) -> None:
+        """Subprocess nodes raise OrchestrationError with a clear not-yet-implemented message."""
+        proc = ProcessDefinition(
+            id="subprocess-proc",
+            name="Subprocess Process",
+            version="1.0.0",
+            nodes=[
+                NodeDefinition(
+                    id="sub-node",
+                    type=NodeType.SUBPROCESS,
+                    label="Sub",
+                    config=SubProcessNodeConfig(
+                        process_id="child-proc",
+                        output_key="child_result",
+                    ),
+                ),
+                NodeDefinition(
+                    id="done",
+                    type=NodeType.END,
+                    label="Done",
+                    config=EndNodeConfig(status=EndStatus.COMPLETED),
+                ),
+            ],
+            edges=[EdgeDefinition(from_node="sub-node", to_node="done")],
+            entry_point="sub-node",
+        )
+        await sqlite_storage.save_process(proc)
+
+        run = await orchestrator.start_run("subprocess-proc", {"input": "test"})
+
+        with pytest.raises(OrchestrationError, match="not yet implemented"):
+            await orchestrator.execute_run(run.id)

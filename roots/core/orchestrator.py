@@ -30,6 +30,7 @@ from roots.core.schema import (
     MergeStrategy,
     NodeDefinition,
     NodeType,
+    SubProcessNodeConfig,
 )
 from roots.core.state_machine import RunStatus
 from roots.events.emitter import EventEmitter
@@ -426,6 +427,7 @@ class ProcessRunner:
             NodeType.END: self._handle_end,
             NodeType.FORK: self._handle_fork,
             NodeType.JOIN: self._handle_join,
+            NodeType.SUBPROCESS: self._handle_subprocess,
         }
         handler = handlers.get(node.type)
         if handler is None:
@@ -1135,6 +1137,12 @@ class ProcessRunner:
             state[node.config.collect_key] = collected  # type: ignore[index]
 
         return None
+
+    async def _handle_subprocess(
+        self, node: NodeDefinition, state: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        assert isinstance(node.config, SubProcessNodeConfig)
+        raise OrchestrationError("Subprocess execution not yet implemented")
 
 
 class Orchestrator:

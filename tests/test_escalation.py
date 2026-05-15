@@ -260,6 +260,17 @@ def _make_runner(
     )
 
 
+# --- Unit Tests for EscalationTrigger enum ---
+
+
+class TestEscalationTrigger:
+    def test_subprocess_paused_trigger_defined(self) -> None:
+        assert EscalationTrigger.SUBPROCESS_PAUSED == "subprocess_paused"
+
+    def test_all_four_triggers_defined(self) -> None:
+        assert len(EscalationTrigger) == 4
+
+
 # --- Unit Tests for create_escalation_from_error ---
 
 

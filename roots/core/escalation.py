@@ -14,6 +14,7 @@ class EscalationTrigger(StrEnum):
     SCHEMA_VALIDATION_FAILURE = "schema_validation_failure"
     CONFIDENCE_BELOW_THRESHOLD = "confidence_below_threshold"
     AGENT_EXPLICIT_SIGNAL = "agent_explicit_signal"
+    SUBPROCESS_PAUSED = "subprocess_paused"
 
 
 async def create_escalation_from_error(
