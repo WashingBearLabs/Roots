@@ -896,3 +896,86 @@
 - Learnings: validate_subprocess_references uses DFS with path tracking (not a visited set) to correctly detect cycles — a visited-set optimization is incorrect because cycle detection depends on the current ancestor path, not just whether a node was previously visited.; Wiring validate_subprocess_references into start_run required updating the existing TestSubprocessStubHandler test to save a 'child-proc' process in storage, since the new validation rejects missing referenced processes before start_run returns.; TYPE_CHECKING guard used for StorageBackend import in validator.py to avoid runtime import overhead while keeping full type annotations.; subprocess added to VALID_CONFIGS in test_validator.py for use by _make_node helper in new structural tests.; Verifier note: Implementation matches feature spec hints faithfully. Self-reference is caught statically in validate_structure(); transitive cycles and missing refs are caught dynamically via async validate_subprocess_references against storage; the orchestrator gates start_run on it unconditionally. Tests cover the two cycle depths the spec called out plus self-ref, missing ref, and the cycle-path message format. DFS lacks a global visited set, so a non-cyclic DAG that reuses the same subprocess across branches will re-traverse it — correct, just slightly inefficient at scale; not a blocker for v1.
 - Committed: feat(subprocess-schema): US-004 - Validate subprocess references
 
+### US-001: Implement subprocess handler — happy path (Attempt 1) — PASS
+- Completed: 2026-05-15T15:41:04Z
+- Verified by: independent verifier session
+- Learnings: Lock refresh pattern: release_run_lock + acquire_run_lock between child ticks. acquire_run_lock only updates stale locks (locked_at < stale_threshold), so releasing first is required to refresh a recently-acquired lock.; ProcessRunner can be instantiated directly with the same 5 deps and parent owner_id — child runner uses parent's owner_id so child lock acquisition uses the same identity.; The tick loop stores handler output at output_key automatically (step 7 in tick); handler must return the raw result dict, not nest it at output_key.; Renamed TestSubprocessStubHandler to TestSubprocessHandler and replaced the 'not yet implemented' assertion with 8 happy-path acceptance tests covering: execute/complete, input_mapping, missing-input-raises, output_mapping, missing-output-produces-None, depth injection, child_run_id in parent state, SUBPROCESS_STARTED/COMPLETED events.; Pre-existing Pyright warnings on EdgeDefinition(from_node=..., to_node=...) in test files are unrelated and expected.; Verifier note: Implementation matches the acceptance criteria cleanly. The handler follows existing patterns in the file (dispatch table, escalation helper, event emission). The test coverage is thorough for the happy path and structured error paths. Parent lock refresh between child ticks is correctly implemented and uses the documented release/re-acquire pattern. Output is correctly stored at output_key via the existing tick() write at orchestrator.py:298-302, so the implementation integrates with the existing handler protocol rather than duplicating it.
+- Committed: feat(subprocess-execution): US-001 - Implement subprocess handler — happy path
+
+### US-002: Handle subprocess pause cascading (Attempt 1) — FAIL
+- Failed: 2026-05-15T19:41:36Z
+- Failure: Exit code 1
+- Learnings: update_run_status without current_node_id sets it to None unconditionally — always read parent.current_node_id first when resuming a paused run in tests; Both pause paths (initial via _trigger_escalation and re-pause via self._escalated = True) correctly flow through tick()'s `if self._escalated` branch which saves PAUSED status — the only difference is whether create_escalation_from_error is called; Re-pause path (child still paused on resume) deliberately skips _trigger_escalation to avoid duplicate escalation records — sets self._escalated = True directly instead; Pyright correctly narrows child_run to RunRecord after both if/else branches because raise and return None narrow out the None and PAUSED cases before the shared output mapping code; Verify session error: SESSION_ERROR: Exit code 1
+
+API Error: The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()
+
+- Working tree reset, retrying...
+
+### US-002: Handle subprocess pause cascading (Attempt 2) — FAIL
+- Failed: 2026-05-15T21:59:30Z
+- Failure: Exit code 143
+- Learnings: Session error: SESSION_ERROR: Exit code 143
+
+
+- Working tree reset, retrying...
+
+### US-002: Handle subprocess pause cascading (Attempt 3) — PASS
+- Completed: 2026-05-15T22:12:05Z
+- Verified by: independent verifier session
+- Learnings: Resume path branches on existing_child_run_id in state before any child run creation — if present, fetch and check child status; if absent, run fresh start path. Both paths converge at shared output mapping using child_run.id.; Re-pause path (child still PAUSED on resume) sets self._escalated = True directly without calling _trigger_escalation — avoids duplicate escalation records since create_escalation raises StorageError if a pending escalation already exists.; Pyright correctly narrows child_run to RunRecord after the if/else because both early-exit paths (raise OrchestrationError and self._escalated=True + return None) and the terminal PAUSED path in the fresh-start branch all prevent reaching the shared output mapping with None.; To test resume after pause: read parent.current_node_id before calling update_run_status — the method sets current_node_id to None if omitted, which would break the re-entry.; For 'child completed' test: advance child past checkpoint by calling update_run_status(child_id, RUNNING, 'done') then execute_run — skips re-executing the checkpoint.; For 're-pause without new escalation' test: resolve original escalation before resuming, then verify get_pending_escalation returns None after re-pause — cleanly proves no new escalation was created.; SUBPROCESS_COMPLETED event now uses child_run.id instead of child_run_id local variable so both fresh-start and resume paths use the same reference.; Verifier note: Implementation cleanly splits _handle_subprocess into a resume branch and a fresh-start branch. The resume branch correctly distinguishes the three resume outcomes (child still paused → re-pause without new escalation; child completed → fall through to output extraction; missing child → OrchestrationError). The 'no new escalation record' contract (criterion 5) is satisfied by bypassing _trigger_escalation and setting self._escalated directly. SUBPROCESS_COMPLETED metadata correctly uses child_run.id (reloaded record) rather than the captured variable, which is the right thing on the resume path. Test coverage for all four branches is solid.
+- Committed: feat(subprocess-execution): US-002 - Handle subprocess pause cascading
+
+### US-003: Handle subprocess failure propagation (Attempt 1) — PASS
+- Completed: 2026-05-15T22:21:32Z
+- Verified by: independent verifier session
+- Learnings: RunRecord.status is a plain str, not a RunStatus enum — do not call .value on it; SubprocessFailedError follows AggregationError/RetryExhaustedError pattern: handler raises, tick() catches and emits NODE_FAILED + RUN_FAILED + updates run status; SUBPROCESS_FAILED event is emitted from inside the handler (before raising) so the handler has full child context; NODE_FAILED/RUN_FAILED are emitted from tick() catch block where run.process_id is available; Failure check (FAILED or CANCELLED) placed after the if/else block before output mapping — pyright correctly narrows child_run to RunRecord at this point because both branches either raise/return or set child_run to non-None; Verifier note: Implementation cleanly mirrors the error_key_detected handler pattern referenced in the hints. Both fresh-execution and resume paths in _handle_subprocess converge on the same failure check (line 1288), so a child that fails during inner tick execution and a child that fails externally while the parent was paused are handled identically. RunStatus is a StrEnum so passing child_run.status (enum) to SubprocessFailedError(child_status: str) is sound, and metadata serializes to its string value. Pre-existing pyright/ruff noise in the test file is unrelated to this story.
+- Committed: feat(subprocess-execution): US-003 - Handle subprocess failure propagation
+
+### US-004: Enforce subprocess depth limit (Attempt 1) — PASS
+- Completed: 2026-05-15T22:28:26Z
+- Verified by: independent verifier session
+- Learnings: Depth check belongs at the top of the fresh-start else branch in _handle_subprocess — moving current_depth read there removes duplication and places the guard before any child state is built.; Injecting _subprocess_depth into initial run state simulates any nesting level without needing real recursive process chains — useful for isolated unit-style integration tests.; OrchestrationError (not SubprocessFailedError) is the right exception for handler validation failures that prevent a child run from being created; it matches the pattern used for missing input keys and lock-stolen scenarios.; Verifier note: Implementation is minimal, correct, and matches the spec hints exactly. The depth check is placed precisely where it should be — at handler entry, in the fresh-start branch only, so resumed parent runs do not re-trigger the check. The error message format is verified by string-match in the tests. Note: tests pre-inject _subprocess_depth into state rather than exercising true multi-level recursion; this is a pragmatic choice given the propagation logic (current_depth+1 on each level) is exercised by other subprocess tests, but a deeper integration test could be added later if multi-level recursion regressions are a concern. Not a blocker.
+- Committed: feat(subprocess-execution): US-004 - Enforce subprocess depth limit
+
+### US-005: API visibility for subprocess runs (Attempt 1) — FAIL
+- Failed: 2026-05-16T09:07:35Z
+- Failure: Exit code 1
+- Learnings: fastapi_app.state.roots.storage is directly accessible in tests — no need for dependency injection gymnastics to set up child runs in test fixtures; GET /runs/{id}/children must be registered before GET /runs/{id}/history in the router to avoid any potential path shadowing (both use /{run_id}/ prefix); RunResponse fields with None defaults are cleanly backward-compatible — existing top-level runs return null for parent_run_id/parent_node_id without any migration needed; Verify session error: SESSION_ERROR: Exit code 1
+
+API Error: Unable to connect to API (ECONNRESET)
+
+- Working tree reset, retrying...
+
+### US-005: API visibility for subprocess runs (Attempt 2) — FAIL
+- Failed: 2026-05-16T09:41:07Z
+- Failure: Exit code 1
+- Learnings: Session error: SESSION_ERROR: Exit code 1
+
+API Error: The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()
+
+- Working tree reset, retrying...
+
+### US-005: API visibility for subprocess runs (Attempt 3) — FAIL
+- Failed: 2026-05-16T09:59:11Z
+- Failure: Exit code 1
+- Learnings: Session error: SESSION_ERROR: Exit code 1
+
+API Error: The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()
+
+- Working tree reset, retrying...
+
+### US-005: API visibility for subprocess runs (Attempt 2) — FAIL
+- Failed: 2026-05-17T13:49:12Z
+- Failure: Exit code 1
+- Learnings: Session error: SESSION_ERROR: Exit code 1
+
+API Error: The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()
+
+- Working tree reset, retrying...
+
+### US-005: API visibility for subprocess runs (Attempt 3) — PASS
+- Completed: 2026-05-17T16:54:51Z
+- Verified by: independent verifier session
+- Learnings: Previous attempt's session errors left model and router changes applied but uncommitted, with tests missing — retry only needed to add tests and commit; GET /runs/{id}/children registered before GET /runs/{id}/history to avoid path shadowing; fastapi_app.state.roots.storage accessible directly in tests for creating child runs with parent_run_id/parent_node_id; RunResponse parent_run_id/parent_node_id fields with None defaults are backward-compatible — top-level runs return null without migration; Verifier note: Clean, minimal implementation that follows the existing 404-on-missing-parent pattern used elsewhere in runs.py (get_run, cancel_run, pause_run, resume_run, get_run_history). Reused RunResponse rather than introducing a child-specific schema, keeping the API surface consistent. Pre-existing E402 lint errors in roots/api/routers/runs.py (logger placed between imports) are not caused by this story and are out of scope for verification.
+- Committed: feat(subprocess-execution): US-005 - API visibility for subprocess runs
+
