@@ -129,12 +129,12 @@ With the SUBPROCESS node type and storage foundation in place (feature-subproces
 - get_child_runs(parent_run_id) from storage spec — wire to endpoint
 
 **Acceptance Criteria:**
-- [ ] GET /runs/{id}/children endpoint returns list of child runs for a parent run
-- [ ] Existing RunResponse model (or equivalent) updated to include parent_run_id and parent_node_id fields; _run_to_response helper updated
-- [ ] Returns empty list (not 404) when run has no children
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] GET /runs/{id}/children endpoint returns list of child runs for a parent run
+- [x] Existing RunResponse model (or equivalent) updated to include parent_run_id and parent_node_id fields; _run_to_response helper updated
+- [x] Returns empty list (not 404) when run has no children
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ## Out of Scope
 
