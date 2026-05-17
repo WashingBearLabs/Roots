@@ -549,6 +549,7 @@ class TestDispatchDict:
             NodeType.END: runner._handle_end,
             NodeType.FORK: runner._handle_fork,
             NodeType.JOIN: runner._handle_join,
+            NodeType.SUBPROCESS: runner._handle_subprocess,
         }
         for node_type in NodeType:
             assert node_type in handlers, f"Missing handler for {node_type}"

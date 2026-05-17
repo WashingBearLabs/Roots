@@ -49,6 +49,11 @@
 - Security warnings: unbounded limit (DoS); prompt injection via unsanitized history reasoning in build_decision_messages.
 - Findings logged as 2026-05-13-013 through -023 in AUDIT_FINDINGS.md. No autopause (no criticals). Did NOT invoke complete-implementation (epic flag).
 
+[session] Implemented subprocess-execution US-001 — happy path handler
+- Files: roots/core/orchestrator.py (_handle_subprocess replaced stub), tests/test_orchestrator_class.py (8 new tests)
+- Decision: Lock refresh = release_run_lock + acquire_run_lock between child ticks (acquire_run_lock only refreshes stale locks, so release first is required)
+- Decision: Handler returns raw result dict; tick loop stores it at output_key automatically
+
 [session] Implemented US-001: Add process version history storage (feature-process-versioning)
 - Files: roots/storage/base.py (ProcessVersionRecord + 2 abstract methods), roots/storage/sqlite.py, roots/storage/postgres.py, tests/test_process_versioning.py (13 tests)
 - Decision: aiosqlite async with conn context manager re-opens connection (breaks) — used two execute() + commit() for implicit transaction instead
@@ -63,3 +68,9 @@
 - Files: roots/api/models.py (ProcessVersionSummary + process_version in RunResponse), roots/api/routers/processes.py (2 new routes), roots/api/routers/runs.py (_run_to_response includes process_version), tests/test_process_routes.py (6 new tests), tests/test_run_routes.py (1 new test)
 - Decision: list versions route checks get_process() first to return 404 for unknown process IDs (not empty list)
 - Decision: get version route delegates 404 detection entirely to get_process_version() returning None
+
+[15:42] validate-implementation autonomous run for feature-subprocess-schema
+- Result: 1 critical (test_handlers.py missing SUBPROCESS in dispatch dict) — fixed inline, full suite green (1332 passed)
+- Remaining: 2 warnings + 6 info — logged as 2026-05-15-001..009 in AUDIT_FINDINGS.md
+- Compliance: clean across all 4 user stories (US-001..US-004)
+- Decision: epic_mode=true — did not invoke complete-implementation
