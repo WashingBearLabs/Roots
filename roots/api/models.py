@@ -67,6 +67,8 @@ class RunResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     process_version: str | None = None
+    parent_run_id: str | None = None
+    parent_node_id: str | None = None
 
 
 class DecisionHistoryResponse(BaseModel):
