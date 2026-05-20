@@ -9,7 +9,7 @@
 
 > **TEMPLATE_INTENT:** Persistent record of code quality, security, and intent alignment findings from automated validation. Tracks findings across sessions with status tracking and archival.
 
-> Last updated: 2026-05-15
+> Last updated: 2026-05-19
 > Updated by: Claude (validate-implementation — feature-decision-history)
 
 ---
@@ -36,6 +36,39 @@
 
 <!-- Newest findings at top. Each entry has a unique ID: YYYY-MM-DD-NNN -->
 <!-- Findings are added by /kit-tools:validate-feature -->
+
+### 2026-05-19 — process-composition Epic Validation
+
+| ID | Category | Severity | File | Status |
+|----|----------|----------|------|--------|
+| 2026-05-19-001 | security | warning | `roots/core/orchestrator.py` | resolved |
+| 2026-05-19-002 | security | warning | `roots/core/orchestrator.py` | open |
+| 2026-05-19-003 | security | warning | `roots/core/orchestrator.py` | open |
+| 2026-05-19-004 | security | warning | `roots/core/validator.py` | open |
+| 2026-05-19-005 | quality | warning | `roots/core/orchestrator.py` | open |
+| 2026-05-19-006 | quality | warning | `roots/core/orchestrator.py` | open |
+| 2026-05-19-007 | quality | warning | `roots/core/orchestrator.py` | open |
+
+**2026-05-19-001** — `_subprocess_depth` readable from user-supplied work_item_state. Negative values bypass depth limit.
+> **RESOLVED:** Clamped to `max(0, ...)` — negative user input treated as depth 0.
+
+**2026-05-19-002** — Lock release/reacquire race window between child ticks. Another orchestrator could steal parent lock during the gap.
+> Recommendation: Use lock renewal (update locked_at in-place) instead of release-then-reacquire.
+
+**2026-05-19-003** — No cap on total child runs per parent. A crafted process graph could fan out into many child runs.
+> Recommendation: Enforce per-parent child run cap via get_child_runs count check before creating.
+
+**2026-05-19-004** — Unbounded DFS traversal depth in validate_subprocess_references. Long non-circular chains trigger many storage reads.
+> Recommendation: Cap DFS depth at max_depth limit (20).
+
+**2026-05-19-005** — `_handle_subprocess` is 134 lines, exceeding 50-line guideline. Mixes resume, execution, pause, failure, and output mapping.
+> Recommendation: Extract helpers for resume path, child execution, and output mapping.
+
+**2026-05-19-006** — SubprocessFailedError handler duplicates the 30-line failure pattern (3rd copy in tick()).
+> Recommendation: Extract shared `_fail_run` helper used by all three failure paths.
+
+**2026-05-19-007** — Child runs created without process version pinning. Child uses latest version of referenced process rather than stable snapshot.
+> Recommendation: Pass parent's pinned version or resolve at creation time.
 
 ### 2026-05-15 — feature-subprocess-schema Validation
 

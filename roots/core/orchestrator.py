@@ -1215,7 +1215,7 @@ class ProcessRunner:
             # Child completed/failed since parent paused — extract output below
         else:
             # Check depth limit before creating child run
-            current_depth: int = state.get("_subprocess_depth", 0)
+            current_depth: int = max(0, state.get("_subprocess_depth", 0))
             if current_depth >= config.max_depth:
                 raise OrchestrationError(
                     f"Subprocess depth limit exceeded: {current_depth}/{config.max_depth}"
