@@ -1,7 +1,7 @@
 <!-- Template Version: 2.2.0 -->
 ---
 feature: subprocess-execution
-status: active
+status: completed
 session_ready: true
 depends_on: [subprocess-schema]
 vision_ref: "T3.3 — Process Composition"
@@ -11,7 +11,8 @@ epic: process-composition
 epic_seq: 2
 epic_final: true
 created: 2026-05-13
-updated: 2026-05-13
+updated: 2026-05-21
+completed: 2026-05-21
 ---
 
 # Feature Spec: Subprocess Execution & Lifecycle

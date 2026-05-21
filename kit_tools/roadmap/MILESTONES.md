@@ -1,6 +1,6 @@
 # Milestones
 
-> Last updated: 2026-05-13
+> Last updated: 2026-05-21
 > Updated by: Claude
 
 Tracks major milestones for the Roots framework.
@@ -20,15 +20,10 @@ Internal library improvements:
 
 ---
 
-## Next: Process Composition (v1.2)
+## Next: Root Registry (T3.8)
 
-**Target:** TBD (after library refinements)
-**Status:** Planned — [epic-process-composition.md](../specs/epic-process-composition.md)
-**Stories:** 8 across 2 feature specs
-
-Hierarchical process decomposition:
-- Subprocess Schema (T3.3) — node type, storage, validation (3 stories)
-- Subprocess Execution (T3.3) — orchestrator lifecycle, pause/fail cascading, API (5 stories)
+**Target:** TBD (not yet planned)
+**Status:** Not Started
 
 ---
 
@@ -46,6 +41,8 @@ The next major milestone after library refinements. Will enable publishing, disc
 - [x] ~~**Roots v1 Core** — Core orchestrator, agent contracts, storage backends, YAML process definitions, expression evaluation, fork/join, decision nodes~~ (71 stories, completed 2026-03-24)
 - [x] ~~**Demo Apps** — Reference applications demonstrating Roots framework capabilities~~ (14 stories, completed 2026-03-25)
 - [x] ~~**Root Packaging** — .root packaging format, manifest & export, import & install, defaults & config~~ (16 stories, completed 2026-03-25)
+- [x] ~~**Library Refinements** — Vote aggregation, decision history, process versioning~~ (11 stories, completed 2026-05-13)
+- [x] ~~**Process Composition** — Subprocess node type, pause/fail cascading, depth limits, API~~ (9 stories, completed 2026-05-21)
 
 ---
 
