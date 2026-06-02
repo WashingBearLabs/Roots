@@ -37,6 +37,49 @@
 <!-- Newest findings at top. Each entry has a unique ID: YYYY-MM-DD-NNN -->
 <!-- Findings are added by /kit-tools:validate-feature -->
 
+### 2026-06-01 — feature-iterator-node Validation
+
+> Branch: `epic/embedding-enhancements` · Mode: autonomous (epic child) · Validation loops: 1 · **No critical findings.** Tests pass (1550 passed, 106 skipped, 0 failed). Diff scoped to iterator-node commits (`722ca69..HEAD`). Compliance: all US-001..US-007 acceptance criteria genuinely implemented and verified against orchestrator/schema/validator/events code (not just checkbox-marked); no out-of-scope creep. Security: no injection (all IDs reach storage as bound params), no secrets, no new deps; only resource-limit warnings on iterator fan-out. Quality: 3 warnings + 3 info. Not auto-completing — feature is part of an active epic.
+
+| ID | Category | Severity | File | Status |
+|----|----------|----------|------|--------|
+| 2026-06-01-035 | quality | warning | `roots/core/schema.py` | open |
+| 2026-06-01-036 | quality | warning | `roots/core/schema.py` | open |
+| 2026-06-01-037 | quality | warning | `roots/core/orchestrator.py` | open |
+| 2026-06-01-038 | security | warning | `roots/core/schema.py` | open |
+| 2026-06-01-039 | quality | info | `roots/core/orchestrator.py` | open |
+| 2026-06-01-040 | quality | info | `roots/core/orchestrator.py` | open |
+| 2026-06-01-041 | quality | info | `roots/core/validator.py` | open |
+| 2026-06-01-042 | compliance | info | `roots/core/orchestrator.py` | open |
+| 2026-06-01-043 | testing | info | `tests/` | open |
+
+**2026-06-01-035** — `IteratorNodeConfig.output_mapping` (schema.py:230) is declared but never read anywhere; `_handle_iterator` always stores the full child state as the envelope `output` regardless of the field. Inert/incomplete config that misleads consumers. (Corroborated by compliance review.)
+> Recommendation: Either implement output_mapping in the result-envelope construction, or remove/document it as reserved-no-op for this release and add a test asserting the chosen behavior.
+
+**2026-06-01-036** — `max_failures` (int=1) and `max_concurrency` (int|None=None) lack lower-bound `Field(ge=...)` constraints, unlike sibling bounded ints (`max_depth` uses ge=1/le=20). `max_concurrency=0` → `asyncio.Semaphore(0)` deadlocks the parallel path; negative → runtime crash; `max_failures<1` makes stop_after_n inconsistent. (Corroborated by security review.)
+> Recommendation: Add `Field(default=1, ge=1)` to max_failures and `Field(default=None, ge=1)` to max_concurrency so invalid values are rejected at process-definition time.
+
+**2026-06-01-037** — `_handle_iterator` (orchestrator.py:1399-1951) is ~550 lines; the sequential and parallel branches duplicate substantial logic (child work-item build, child runner creation, completed/failed envelope construction, save_branch_result, item-event emission) and the parallel closure reaches 5+ nesting levels.
+> Recommendation: Extract shared helpers (`_build_child_work_item`, `_make_completed/failed_envelope`, `_execute_child_run`, `_emit_item_event`) used by both paths to cut duplication and nesting.
+
+**2026-06-01-038** — `max_concurrency` defaults to None (unbounded) with no cap on the `items_key` list length; parallel mode eagerly creates one `asyncio.create_task` child run per item. A large list spawns unbounded concurrent child ProcessRunner runs (storage I/O + agent invocation) = resource-exhaustion / fan-out DoS risk. Unlike `max_depth` (le=20) there is no ceiling on fan-out width.
+> Recommendation: Provide a sane bounded default for max_concurrency and/or enforce a maximum items count; gate task creation through the semaphore rather than creating all tasks up front.
+
+**2026-06-01-039** — Redundant `lock_stolen` check in the parallel path: the in-branch raise (orchestrator.py:1922-1925) makes the post-finally raise (1934-1937) unreachable for the parallel path; the post-finally check is the real catch for the sequential path's last item.
+> Recommendation: Remove the in-branch check and rely on the single post-finally check, or add a comment clarifying why both exist.
+
+**2026-06-01-040** — Lock-renewal scaffolding (300s magic number, `_renewal_loop` coroutine, cancel-in-finally) is now copy-pasted across three handlers (`_handle_fork` at 617/1039, `_handle_iterator` at 1477). Matches the pre-existing fork/join pattern (not a new violation) but entrenches duplication.
+> Recommendation: Extract a reusable `_with_lock_renewal` helper and promote 300 to a module constant (e.g. `LOCK_STALE_TIMEOUT_SECONDS`). Not required for this changeset.
+
+**2026-06-01-041** — `validate_subprocess_references` (validator.py:252-258) marks `ref_id` visited and short-circuits on later encounters; a process reachable via two distinct paths where only the second closes a cycle could have that cycle missed. Back-edges within the current path ARE caught (line 246), so direct/transitive cycles are detected — the gap is narrow (diamond topologies only).
+> Recommendation: If exhaustive cross-diamond cycle detection is required, detect via the path check alone or track visited per-path; otherwise document the BFS scope limitation in the docstring.
+
+**2026-06-01-042** — Sequential pause/resume stores transient bookkeeping keys `_iterator_paused_child_run_id` / `_iterator_paused_item_index` in the parent's work_item_state and pops them only on resume of that child. All US-004 pause criteria are met and tested; noted only because these private keys can linger in consumer-visible state alongside `output_key` in edge cases.
+> Recommendation: Optional — strip `_iterator_paused_*` keys from state once the iterator completes to avoid leaking internal bookkeeping downstream.
+
+**2026-06-01-043** — Full test suite passes: 1550 passed, 106 skipped (postgres tests skip without `ROOTS_POSTGRES_DSN`), 0 failed, in 22.82s. Iterator coverage is strong (test_iterator_execution.py, test_iterator_parallel.py, test_iterator_validation.py, test_schema.py).
+> Recommendation: None — informational.
+
 ### 2026-06-01 — feature-crash-safe-parallel Validation
 
 > Branch: `epic/embedding-enhancements` · Mode: autonomous (epic child) · Validation loops: 1 · **No critical findings.** Tests pass (1449 passed, 106 skipped). Compliance: clean — all six stories (US-001..US-006) genuinely implemented and verified against code, not just checkbox-marked. Security: clean — all new `branch_results` SQL fully parameterized, no secrets, no new deps. Quality: 4 warnings + 2 info (duplicated lock-renewal scaffolding, silent except-pass on checkpoint save, release-then-acquire lock window, duplicated 300s magic number, fork branch-id collision risk, inline result_json contract). Not auto-completing — feature is part of an active epic.
