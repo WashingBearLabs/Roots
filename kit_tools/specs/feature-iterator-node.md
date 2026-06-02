@@ -54,17 +54,17 @@ This feature adds an `iterator` node type that reads a list from work_item_state
 - **Register in CONFIG_MAP** at `schema.py:223`: `NodeType.ITERATOR: IteratorNodeConfig`
 
 **Acceptance Criteria:**
-- [ ] `NodeType.ITERATOR` added to enum
-- [ ] `IteratorNodeConfig` model with all fields; reuses `ExecutionMode` enum with FIRST_PASS rejected
-- [ ] `ItemFailureMode` StrEnum: continue, stop, stop_after_n
-- [ ] Field named `input_mapping` (matching SubProcessNodeConfig convention)
-- [ ] `output_mapping: dict[str, str] = {}` field for optional per-item output reshaping
-- [ ] `max_concurrency` optional field for parallel mode
-- [ ] `max_depth: int = Field(default=5, ge=1, le=20)` field for depth enforcement
-- [ ] Registered in `CONFIG_MAP` at `schema.py:223`
-- [ ] Tests: schema parsing; FIRST_PASS rejection; CONFIG_MAP registration
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] `NodeType.ITERATOR` added to enum
+- [x] `IteratorNodeConfig` model with all fields; reuses `ExecutionMode` enum with FIRST_PASS rejected
+- [x] `ItemFailureMode` StrEnum: continue, stop, stop_after_n
+- [x] Field named `input_mapping` (matching SubProcessNodeConfig convention)
+- [x] `output_mapping: dict[str, str] = {}` field for optional per-item output reshaping
+- [x] `max_concurrency` optional field for parallel mode
+- [x] `max_depth: int = Field(default=5, ge=1, le=20)` field for depth enforcement
+- [x] Registered in `CONFIG_MAP` at `schema.py:223`
+- [x] Tests: schema parsing; FIRST_PASS rejection; CONFIG_MAP registration
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-002: Iterator validation and orchestrator wiring
 
