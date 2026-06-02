@@ -848,3 +848,21 @@
 - Total attempts: 11
 - Total sessions: 25
 
+
+---
+
+## 2026-06-01 — Epic: embedding-enhancements
+
+**Mode:** Guarded (pause after 3 consecutive failures)
+**Branch:** epic/embedding-enhancements
+**Stories:** 25 across 5 feature specs
+**Models:** Sonnet (implementer), Opus (verifier/validator)
+**Completion:** PR
+
+### Specs (in order):
+1. feature-run-metadata (4 stories)
+2. feature-event-subscriptions (4 stories)
+3. feature-agent-context (4 stories)
+4. feature-crash-safe-parallel (6 stories)
+5. feature-iterator-node (7 stories)
+
