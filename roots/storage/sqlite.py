@@ -159,7 +159,9 @@ def _build_sqlite_metadata_clauses(
             ops = raw_condition
         for op, value in ops.items():
             if op == "$eq":
-                if isinstance(value, bool):
+                if value is None:
+                    clauses.append(f"json_type(metadata_json, '$.{key}') = 'null'")
+                elif isinstance(value, bool):
                     clauses.append(f"json_extract(metadata_json, '$.{key}') = ?")
                     params.append(1 if value else 0)
                 elif isinstance(value, (int, float)):
@@ -447,6 +449,7 @@ class SqliteBackend(StorageBackend):
             clauses.append("status = ?")
             params.append(status)
         if metadata_filter is not None:
+            clauses.append("metadata_json IS NOT NULL")
             clauses.extend(_build_sqlite_metadata_clauses(metadata_filter, params))
         if clauses:
             query += " WHERE " + " AND ".join(clauses)

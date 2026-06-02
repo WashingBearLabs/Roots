@@ -165,7 +165,9 @@ def _build_pg_metadata_clauses(
             ops = raw_condition
         for op, value in ops.items():
             if op == "$eq":
-                if isinstance(value, bool):
+                if value is None:
+                    clauses.append(f"(metadata ? '{key}') AND (metadata->>'{key}') IS NULL")
+                elif isinstance(value, bool):
                     params.append("true" if value else "false")
                     clauses.append(f"metadata->>'{key}' = ${len(params)}")
                 elif isinstance(value, (int, float)):
@@ -495,6 +497,7 @@ class PostgresBackend(StorageBackend):
             params.append(status)
             clauses.append(f"status = ${len(params)}")
         if metadata_filter is not None:
+            clauses.append("metadata IS NOT NULL")
             clauses.extend(_build_pg_metadata_clauses(metadata_filter, params))
         if clauses:
             query += " WHERE " + " AND ".join(clauses)
