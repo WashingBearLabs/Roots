@@ -47,16 +47,16 @@ This feature adds an optional metadata dict to runs with filtering operators tha
 - Metadata values restricted to JSON scalar types (str, int, float, bool, None) — validate on write, reject nested dicts/arrays with clear error
 
 **Acceptance Criteria:**
-- [ ] RunRecord has `metadata: dict[str, Any] | None = None` field
-- [ ] StorageBackend.create_run accepts optional `metadata` keyword parameter
-- [ ] SQLite and PostgreSQL backends persist metadata as JSON/JSONB column
-- [ ] Migration adds nullable metadata column to existing runs tables (idempotent, catches specific exceptions)
-- [ ] `Roots.start_run(process_id, work_item, metadata=None)` passes metadata through to storage
-- [ ] `get_run()`, `list_runs()`, and `get_child_runs()` all return metadata in RunRecord
-- [ ] Metadata values validated on write: only JSON scalar values allowed (str, int, float, bool, None); nested dicts/arrays raise ValueError
-- [ ] Tests: metadata round-trips through create_run/get_run for both backends; None metadata stores and retrieves correctly; migration is idempotent; scalar validation rejects nested values
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] RunRecord has `metadata: dict[str, Any] | None = None` field
+- [x] StorageBackend.create_run accepts optional `metadata` keyword parameter
+- [x] SQLite and PostgreSQL backends persist metadata as JSON/JSONB column
+- [x] Migration adds nullable metadata column to existing runs tables (idempotent, catches specific exceptions)
+- [x] `Roots.start_run(process_id, work_item, metadata=None)` passes metadata through to storage
+- [x] `get_run()`, `list_runs()`, and `get_child_runs()` all return metadata in RunRecord
+- [x] Metadata values validated on write: only JSON scalar values allowed (str, int, float, bool, None); nested dicts/arrays raise ValueError
+- [x] Tests: metadata round-trips through create_run/get_run for both backends; None metadata stores and retrieves correctly; migration is idempotent; scalar validation rejects nested values
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-002: Metadata filter operator implementation
 
