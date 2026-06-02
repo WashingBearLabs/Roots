@@ -497,7 +497,7 @@ class ProcessRunner:
                 )
             )
             result = await self._agent_invoker.invoke(
-                config.agent, agent_input
+                config.agent, agent_input, owner_id=self._owner_id
             )
             self._event_emitter.emit(
                 create_event(
@@ -583,7 +583,9 @@ class ProcessRunner:
                     metadata={"agent": agent_name},
                 )
             )
-            result = await self._agent_invoker.invoke(agent_name, agent_input)
+            result = await self._agent_invoker.invoke(
+                agent_name, agent_input, owner_id=self._owner_id
+            )
             self._event_emitter.emit(
                 create_event(
                     EventType.AGENT_RETURNED,
@@ -640,7 +642,10 @@ class ProcessRunner:
                         "failed", str(exc),
                     )
                 except Exception:
-                    pass
+                    logger.warning(
+                        "Failed to persist branch failure for %s/%s",
+                        self.run_id, storage_branch_id, exc_info=True,
+                    )
                 raise
             result_dict: dict[str, Any] = {
                 "output": result.output,
@@ -816,7 +821,7 @@ class ProcessRunner:
                 process_id=self._process_id or "",
             )
         except StorageError:
-            pass
+            logger.debug("Escalation already exists for run %s, skipping", self.run_id)
 
     # --- Decision, Checkpoint, Emit, End Handlers (US-004) ---
 
@@ -1072,7 +1077,10 @@ class ProcessRunner:
                         "failed", str(exc),
                     )
                 except Exception:
-                    pass
+                    logger.warning(
+                        "Failed to persist branch failure for %s/%s",
+                        self.run_id, storage_branch_id, exc_info=True,
+                    )
                 raise
             await self._storage.save_branch_result(
                 self.run_id, fork_node_id, storage_branch_id,
@@ -1415,11 +1423,8 @@ class ProcessRunner:
                 f"must be a list, got {type(items).__name__}"
             )
 
-        # Get subprocess depth from current run metadata; enforce max_depth
-        run = await self._storage.get_run(self.run_id)
-        if run is None:
-            raise OrchestrationError(f"Run '{self.run_id}' not found")
-        current_depth = int((run.metadata or {}).get("_subprocess_depth", 0))
+        # Get subprocess depth from work_item_state; enforce max_depth
+        current_depth = max(0, int(state.get("_subprocess_depth", 0)))
         child_depth = current_depth + 1
         if child_depth > config.max_depth:
             raise OrchestrationError(

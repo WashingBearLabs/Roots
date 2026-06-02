@@ -81,7 +81,9 @@ class AgentInvoker:
         if self._owns_client:
             await self._http_client.aclose()
 
-    async def invoke(self, agent_name: str, input: AgentInput) -> AgentOutput:
+    async def invoke(
+        self, agent_name: str, input: AgentInput, *, owner_id: str = ""
+    ) -> AgentOutput:
         """Invoke a registered agent by name.
 
         Raises AgentNotFoundError if the agent is not registered.
@@ -104,8 +106,10 @@ class AgentInvoker:
         else:
             invocation_context = InvocationContext(
                 run_id=input.run_id,
-                owner_id="",
-                subprocess_depth=0,
+                owner_id=owner_id,
+                subprocess_depth=int(
+                    input.work_item_state.get("_subprocess_depth", 0)
+                ),
             )
             result = await self._invoke_local(agent_name, input, invocation_context)
 

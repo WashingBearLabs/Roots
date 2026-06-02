@@ -192,6 +192,8 @@ def _build_pg_metadata_clauses(
                     raise ValueError(
                         f"$in operator requires a list, got {type(value).__name__}"
                     )
+                if not value:
+                    raise ValueError("$in operator requires a non-empty list")
                 sub: list[str] = []
                 for v in value:
                     params.append(str(v) if not isinstance(v, str) else v)

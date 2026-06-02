@@ -710,7 +710,6 @@ class TestIteratorNodeConfig:
         assert cfg.on_item_failure == ItemFailureMode.STOP
         assert cfg.max_failures == 1
         assert cfg.input_mapping == {}
-        assert cfg.output_mapping == {}
         assert cfg.max_concurrency is None
         assert cfg.max_depth == 5
 
@@ -747,16 +746,16 @@ class TestIteratorNodeConfig:
         )
         assert cfg.input_mapping == {"parent_key": "child_key"}
 
-    def test_output_mapping(self) -> None:
-        cfg = IteratorNodeConfig(
-            items_key="items",
-            process_id="sub_proc",
-            execution_mode=ExecutionMode.SEQUENTIAL,
-            output_key="results",
-            item_key="item",
-            output_mapping={"child_out": "result_key"},
-        )
-        assert cfg.output_mapping == {"child_out": "result_key"}
+    def test_max_failures_ge_1(self) -> None:
+        with pytest.raises(ValueError):
+            IteratorNodeConfig(
+                items_key="items",
+                process_id="sub_proc",
+                execution_mode=ExecutionMode.SEQUENTIAL,
+                output_key="results",
+                item_key="item",
+                max_failures=0,
+            )
 
     def test_max_depth_bounds(self) -> None:
         with pytest.raises(ValueError):

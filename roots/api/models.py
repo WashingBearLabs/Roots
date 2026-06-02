@@ -63,7 +63,10 @@ class RunCreateRequest(BaseModel):
     def validate_metadata_scalars(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
         if v is None:
             return v
+        from roots.storage.base import validate_metadata_key
+
         for key, value in v.items():
+            validate_metadata_key(key)
             if isinstance(value, (dict, list)):
                 raise ValueError(
                     f"Metadata value for key '{key}' must be a scalar "

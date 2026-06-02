@@ -1,10 +1,11 @@
 <!-- Template Version: 2.1.0 -->
 ---
 epic: embedding-enhancements
-status: active
+status: completed
 vision_ref: "Framework Consumer (Embedded) persona; Crash safety success criterion"
 created: 2026-06-01
-updated: 2026-06-01
+updated: 2026-06-02
+completed: 2026-06-02
 ---
 
 # Epic: Embedding Enhancements

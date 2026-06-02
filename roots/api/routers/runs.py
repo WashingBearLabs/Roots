@@ -85,9 +85,15 @@ async def list_runs(
                 detail="metadata_filter must be a JSON object",
             )
         parsed_filter = raw
-    runs = await roots.storage.list_runs(
-        process_id=process_id, status=run_status, metadata_filter=parsed_filter
-    )
+    try:
+        runs = await roots.storage.list_runs(
+            process_id=process_id, status=run_status, metadata_filter=parsed_filter
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        )
     return [_run_to_response(r) for r in runs]
 
 

@@ -396,17 +396,6 @@ class TestIteratorDepthEnforcement:
     ) -> None:
         """If current depth == max_depth, child_depth > max_depth → error."""
         storage = AsyncMock()
-        storage.get_run.return_value = RunRecord(
-            id="r1",
-            process_id="proc",
-            status="running",
-            current_node_id="iter",
-            work_item_state={},
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
-            metadata={"_subprocess_depth": 5},
-        )
-
         runner = ProcessRunner(
             run_id="r1",
             storage=storage,
@@ -432,7 +421,7 @@ class TestIteratorDepthEnforcement:
         )
 
         with pytest.raises(OrchestrationError, match="depth.*exceeded|exceeded.*depth"):
-            await runner._handle_iterator(node, {"items": ["x"]})
+            await runner._handle_iterator(node, {"items": ["x"], "_subprocess_depth": 5})
 
     async def test_depth_at_zero_allows_child(
         self,

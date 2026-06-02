@@ -39,6 +39,8 @@ class AgentContext:
         owner_id: str = "",
         max_depth: int = 5,
     ) -> None:
+        if max_depth < 1 or max_depth > 20:
+            raise ValueError("max_depth must be between 1 and 20")
         self._roots = roots
         self._run_id = run_id
         self._owner_id = owner_id
@@ -74,7 +76,7 @@ class AgentContext:
 
         # Read current depth from parent run's persisted state
         parent_state = await self._roots.storage.get_work_item_state(self._run_id)
-        current_depth = int(parent_state.get("_subprocess_depth", 0))
+        current_depth = max(0, int(parent_state.get("_subprocess_depth", 0)))
 
         if current_depth >= self._max_depth:
             raise OrchestrationError(

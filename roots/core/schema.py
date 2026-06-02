@@ -224,11 +224,10 @@ class IteratorNodeConfig(BaseModel):
     execution_mode: ExecutionMode
     output_key: str
     on_item_failure: ItemFailureMode = ItemFailureMode.STOP
-    max_failures: int = 1
+    max_failures: int = Field(default=1, ge=1)
     item_key: str
     input_mapping: dict[str, str] = Field(default_factory=dict)
-    output_mapping: dict[str, str] = Field(default_factory=dict)
-    max_concurrency: int | None = None
+    max_concurrency: int | None = Field(default=None, ge=1)
     max_depth: int = Field(default=5, ge=1, le=20)
 
     @model_validator(mode="after")

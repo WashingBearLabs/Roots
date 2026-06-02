@@ -189,6 +189,8 @@ def _build_sqlite_metadata_clauses(
                     raise ValueError(
                         f"$in operator requires a list, got {type(value).__name__}"
                     )
+                if not value:
+                    raise ValueError("$in operator requires a non-empty list")
                 placeholders = ", ".join("?" * len(value))
                 clauses.append(
                     f"json_extract(metadata_json, '$.{key}') IN ({placeholders})"

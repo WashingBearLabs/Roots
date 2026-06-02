@@ -1,7 +1,7 @@
 <!-- Template Version: 2.2.0 -->
 ---
 feature: crash-safe-parallel
-status: active
+status: completed
 session_ready: true
 depends_on: []
 vision_ref: "Crash safety success criterion"
@@ -11,7 +11,7 @@ epic: embedding-enhancements
 epic_seq: 4
 epic_final: false
 created: 2026-06-01
-updated: 2026-06-01
+updated: 2026-06-02
 ---
 
 # Feature Spec: Crash-Safe Parallel Execution

@@ -1,7 +1,7 @@
 <!-- Template Version: 2.2.0 -->
 ---
 feature: iterator-node
-status: active
+status: completed
 session_ready: true
 depends_on: [crash-safe-parallel, agent-context]
 vision_ref: "Framework Consumer (Embedded) persona"
@@ -11,7 +11,7 @@ epic: embedding-enhancements
 epic_seq: 5
 epic_final: true
 created: 2026-06-01
-updated: 2026-06-01
+updated: 2026-06-02
 ---
 
 # Feature Spec: Iterator / For-Each Node Type
