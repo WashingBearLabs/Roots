@@ -15,6 +15,7 @@ from roots.core.state_machine import RunStatus as _RunStatus
 from roots.core.state_machine import can_transition as _can_transition
 from roots.core.utils import utcnow
 from roots.storage.base import (
+    BranchResult,
     CheckpointRecord,
     DecisionRecord,
     EscalationRecord,
@@ -138,6 +139,16 @@ CREATE TABLE IF NOT EXISTS run_locks (
     run_id TEXT PRIMARY KEY,
     owner_id TEXT NOT NULL,
     locked_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS branch_results (
+    run_id TEXT,
+    node_id TEXT,
+    branch_id TEXT,
+    status TEXT,
+    result_json JSONB,
+    created_at TIMESTAMPTZ,
+    PRIMARY KEY (run_id, node_id, branch_id)
 );
 """
 
@@ -1049,3 +1060,65 @@ class PostgresBackend(StorageBackend):
         if row is None:
             return (None, None)
         return (row["owner_id"], row["locked_at"])
+
+    # --- Branch Results ---
+
+    async def save_branch_result(
+        self,
+        run_id: str,
+        node_id: str,
+        branch_id: str,
+        status: str,
+        result: Any,
+    ) -> None:
+        now = utcnow()
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO branch_results "
+                "(run_id, node_id, branch_id, status, result_json, created_at) "
+                "VALUES ($1, $2, $3, $4, $5, $6) "
+                "ON CONFLICT (run_id, node_id, branch_id) DO UPDATE SET "
+                "status = EXCLUDED.status, result_json = EXCLUDED.result_json",
+                run_id,
+                node_id,
+                branch_id,
+                status,
+                json.dumps(result),
+                now,
+            )
+
+    async def get_branch_results(
+        self, run_id: str, node_id: str
+    ) -> list[BranchResult]:
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT run_id, node_id, branch_id, status, result_json, created_at "
+                "FROM branch_results WHERE run_id = $1 AND node_id = $2 "
+                "ORDER BY branch_id",
+                run_id,
+                node_id,
+            )
+        result = []
+        for r in rows:
+            rj = r["result_json"]
+            if isinstance(rj, str):
+                rj = json.loads(rj)
+            result.append(
+                BranchResult(
+                    run_id=r["run_id"],
+                    node_id=r["node_id"],
+                    branch_id=r["branch_id"],
+                    status=r["status"],
+                    result_json=rj,
+                    created_at=r["created_at"],
+                )
+            )
+        return result
+
+    async def clear_branch_results(self, run_id: str, node_id: str) -> None:
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                "DELETE FROM branch_results WHERE run_id = $1 AND node_id = $2",
+                run_id,
+                node_id,
+            )

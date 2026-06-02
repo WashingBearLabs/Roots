@@ -15,6 +15,7 @@ from roots.core.state_machine import RunStatus as _RunStatus
 from roots.core.state_machine import can_transition as _can_transition
 from roots.core.utils import utcnow
 from roots.storage.base import (
+    BranchResult,
     CheckpointRecord,
     DecisionRecord,
     EscalationRecord,
@@ -132,6 +133,16 @@ CREATE TABLE IF NOT EXISTS webhooks (
     events_json TEXT,
     secret TEXT,
     created_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS branch_results (
+    run_id TEXT,
+    node_id TEXT,
+    branch_id TEXT,
+    status TEXT,
+    result_json TEXT,
+    created_at TEXT,
+    PRIMARY KEY (run_id, node_id, branch_id)
 );
 """
 
@@ -909,3 +920,52 @@ class SqliteBackend(StorageBackend):
         locked_by = row[0]
         locked_at = datetime.fromisoformat(row[1]) if row[1] else None
         return (locked_by, locked_at)
+
+    # --- Branch Results ---
+
+    async def save_branch_result(
+        self,
+        run_id: str,
+        node_id: str,
+        branch_id: str,
+        status: str,
+        result: Any,
+    ) -> None:
+        now = utcnow().isoformat()
+        await self.db.execute(
+            "INSERT INTO branch_results "
+            "(run_id, node_id, branch_id, status, result_json, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(run_id, node_id, branch_id) DO UPDATE SET "
+            "status = excluded.status, result_json = excluded.result_json",
+            (run_id, node_id, branch_id, status, json.dumps(result), now),
+        )
+        await self.db.commit()
+
+    async def get_branch_results(
+        self, run_id: str, node_id: str
+    ) -> list[BranchResult]:
+        cursor = await self.db.execute(
+            "SELECT run_id, node_id, branch_id, status, result_json, created_at "
+            "FROM branch_results WHERE run_id = ? AND node_id = ? ORDER BY branch_id",
+            (run_id, node_id),
+        )
+        rows = await cursor.fetchall()
+        return [
+            BranchResult(
+                run_id=r[0],
+                node_id=r[1],
+                branch_id=r[2],
+                status=r[3],
+                result_json=json.loads(r[4]),
+                created_at=datetime.fromisoformat(r[5]),
+            )
+            for r in rows
+        ]
+
+    async def clear_branch_results(self, run_id: str, node_id: str) -> None:
+        await self.db.execute(
+            "DELETE FROM branch_results WHERE run_id = ? AND node_id = ?",
+            (run_id, node_id),
+        )
+        await self.db.commit()

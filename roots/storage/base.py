@@ -123,6 +123,16 @@ class RetryState:
 
 
 @dataclass
+class BranchResult:
+    run_id: str
+    node_id: str
+    branch_id: str
+    status: str  # "completed" | "failed"
+    result_json: Any  # dict for success, str for error
+    created_at: datetime
+
+
+@dataclass
 class WebhookRecord:
     id: str
     url: str
@@ -364,3 +374,23 @@ class StorageBackend(abc.ABC):
     async def check_run_lock(
         self, run_id: str
     ) -> tuple[str | None, datetime | None]: ...
+
+    # --- Branch Results ---
+
+    @abc.abstractmethod
+    async def save_branch_result(
+        self,
+        run_id: str,
+        node_id: str,
+        branch_id: str,
+        status: str,
+        result: Any,
+    ) -> None: ...
+
+    @abc.abstractmethod
+    async def get_branch_results(
+        self, run_id: str, node_id: str
+    ) -> list[BranchResult]: ...
+
+    @abc.abstractmethod
+    async def clear_branch_results(self, run_id: str, node_id: str) -> None: ...

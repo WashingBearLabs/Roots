@@ -684,3 +684,95 @@ async def test_check_lock_nonexistent_run(storage: StorageBackend) -> None:
     locked_by, locked_at = await storage.check_run_lock("run-nonexistent")
     assert locked_by is None
     assert locked_at is None
+
+
+# ---------------------------------------------------------------------------
+# Branch Results — US-001
+# ---------------------------------------------------------------------------
+
+
+async def test_save_and_get_branch_results(storage: StorageBackend) -> None:
+    run = await storage.create_run("proc-1", {})
+    result_data = {"output": "done"}
+    await storage.save_branch_result(run.id, "fork-node", "branch:node-a", "completed", result_data)
+
+    results = await storage.get_branch_results(run.id, "fork-node")
+    assert len(results) == 1
+    assert results[0].run_id == run.id
+    assert results[0].node_id == "fork-node"
+    assert results[0].branch_id == "branch:node-a"
+    assert results[0].status == "completed"
+    assert results[0].result_json == result_data
+    assert results[0].created_at is not None
+
+
+async def test_save_branch_result_failed_with_string_error(storage: StorageBackend) -> None:
+    run = await storage.create_run("proc-1", {})
+    await storage.save_branch_result(run.id, "fork-node", "branch:node-b", "failed", "timeout error")
+
+    results = await storage.get_branch_results(run.id, "fork-node")
+    assert len(results) == 1
+    assert results[0].status == "failed"
+    assert results[0].result_json == "timeout error"
+
+
+async def test_save_branch_result_upsert_overwrites(storage: StorageBackend) -> None:
+    run = await storage.create_run("proc-1", {})
+    await storage.save_branch_result(run.id, "fork-node", "branch:node-a", "failed", "first error")
+    await storage.save_branch_result(run.id, "fork-node", "branch:node-a", "completed", {"output": "retry ok"})
+
+    results = await storage.get_branch_results(run.id, "fork-node")
+    assert len(results) == 1
+    assert results[0].status == "completed"
+    assert results[0].result_json == {"output": "retry ok"}
+
+
+async def test_get_branch_results_ordered_by_branch_id(storage: StorageBackend) -> None:
+    run = await storage.create_run("proc-1", {})
+    await storage.save_branch_result(run.id, "fork-node", "branch:node-z", "completed", {})
+    await storage.save_branch_result(run.id, "fork-node", "branch:node-a", "completed", {})
+    await storage.save_branch_result(run.id, "fork-node", "branch:node-m", "completed", {})
+
+    results = await storage.get_branch_results(run.id, "fork-node")
+    branch_ids = [r.branch_id for r in results]
+    assert branch_ids == sorted(branch_ids)
+
+
+async def test_get_branch_results_empty(storage: StorageBackend) -> None:
+    run = await storage.create_run("proc-1", {})
+    results = await storage.get_branch_results(run.id, "fork-node")
+    assert results == []
+
+
+async def test_clear_branch_results(storage: StorageBackend) -> None:
+    run = await storage.create_run("proc-1", {})
+    await storage.save_branch_result(run.id, "fork-node", "branch:node-a", "completed", {})
+    await storage.save_branch_result(run.id, "fork-node", "branch:node-b", "completed", {})
+
+    await storage.clear_branch_results(run.id, "fork-node")
+
+    results = await storage.get_branch_results(run.id, "fork-node")
+    assert results == []
+
+
+async def test_clear_branch_results_only_clears_specified_node(storage: StorageBackend) -> None:
+    run = await storage.create_run("proc-1", {})
+    await storage.save_branch_result(run.id, "fork-node-1", "branch:node-a", "completed", {})
+    await storage.save_branch_result(run.id, "fork-node-2", "branch:node-b", "completed", {})
+
+    await storage.clear_branch_results(run.id, "fork-node-1")
+
+    assert await storage.get_branch_results(run.id, "fork-node-1") == []
+    assert len(await storage.get_branch_results(run.id, "fork-node-2")) == 1
+
+
+async def test_branch_results_isolated_by_run(storage: StorageBackend) -> None:
+    run1 = await storage.create_run("proc-1", {})
+    run2 = await storage.create_run("proc-1", {})
+    await storage.save_branch_result(run1.id, "fork-node", "branch:node-a", "completed", {"r": 1})
+    await storage.save_branch_result(run2.id, "fork-node", "branch:node-a", "completed", {"r": 2})
+
+    r1 = await storage.get_branch_results(run1.id, "fork-node")
+    r2 = await storage.get_branch_results(run2.id, "fork-node")
+    assert r1[0].result_json == {"r": 1}
+    assert r2[0].result_json == {"r": 2}

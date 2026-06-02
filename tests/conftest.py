@@ -55,7 +55,7 @@ async def storage(request: pytest.FixtureRequest) -> AsyncIterator[StorageBacken
             await conn.execute(
                 "TRUNCATE process_versions, processes, agents, runs, run_history, "
                 "checkpoints, escalations, decision_history, retry_state, webhooks, "
-                "run_locks CASCADE"
+                "run_locks, branch_results CASCADE"
             )
         yield backend
         await backend.close()

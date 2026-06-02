@@ -39,7 +39,7 @@ async def pg_storage() -> AsyncIterator[StorageBackend]:
         await conn.execute(
             "TRUNCATE process_versions, processes, agents, runs, run_history, "
             "checkpoints, escalations, decision_history, retry_state, webhooks, "
-            "run_locks CASCADE"
+            "run_locks, branch_results CASCADE"
         )
     yield backend
     await backend.close()
@@ -91,6 +91,7 @@ async def test_initialize_creates_tables(pg_storage: StorageBackend) -> None:
 
     expected = sorted([
         "agents",
+        "branch_results",
         "checkpoints",
         "decision_history",
         "escalations",

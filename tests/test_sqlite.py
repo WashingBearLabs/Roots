@@ -39,6 +39,7 @@ async def test_initialize_creates_tables(sqlite_storage: StorageBackend) -> None
 
     expected = sorted([
         "agents",
+        "branch_results",
         "checkpoints",
         "decision_history",
         "escalations",
