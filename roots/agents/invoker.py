@@ -155,7 +155,9 @@ class AgentInvoker:
         if registration.needs_context and self._roots is not None:
             from roots.agents.context import AgentContext
             input_dict["_roots_context"] = AgentContext(
-                self._roots, invocation_context.run_id
+                self._roots,
+                invocation_context.run_id,
+                owner_id=invocation_context.owner_id,
             )
 
         try:
