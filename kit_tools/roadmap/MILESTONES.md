@@ -1,22 +1,24 @@
 # Milestones
 
-> Last updated: 2026-05-21
+> Last updated: 2026-06-01
 > Updated by: Claude
 
 Tracks major milestones for the Roots framework.
 
 ---
 
-## Current Target: Library Refinements (v1.1)
+## Current Target: Embedding Enhancements (v1.2)
 
-**Target:** 2026-05 (in progress)
-**Status:** Active — [epic-library-refinements.md](../specs/epic-library-refinements.md)
-**Stories:** 9 across 3 feature specs
+**Target:** 2026-06 (active)
+**Status:** Active — [epic-embedding-enhancements.md](../specs/epic-embedding-enhancements.md)
+**Stories:** 18 across 5 feature specs
 
-Internal library improvements:
-- Vote Aggregation (T3.4) — agent pool consensus mechanisms (4 stories)
-- Decision History Retrieval (T3.1) — query + auto-inject into AI prompts (4 stories)
-- Process Versioning (T3.2) — version history + run pinning (3 stories)
+Production embedding improvements:
+- Run Metadata & Tagging (3 stories) — run tagging with rich filtering
+- Event Subscriptions (3 stories) — callback hooks and wait_for
+- Agent Context Injection (3 stories) — agent orchestration access
+- Crash-Safe Parallel Execution (5 stories) — per-branch state checkpointing
+- Iterator Node (4 stories) — dynamic for_each iteration
 
 ---
 
@@ -25,14 +27,7 @@ Internal library improvements:
 **Target:** TBD (not yet planned)
 **Status:** Not Started
 
----
-
-## Future: Root Registry (T3.8)
-
-**Target:** TBD (not yet planned)
-**Status:** Not Started
-
-The next major milestone after library refinements. Will enable publishing, discovering, and installing .root packages from a central registry.
+The next major milestone. Will enable publishing, discovering, and installing .root packages from a central registry.
 
 ---
 
