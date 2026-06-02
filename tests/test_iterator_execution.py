@@ -1,4 +1,4 @@
-"""Tests for iterator sequential execution core handler (US-003)."""
+"""Tests for iterator sequential execution core handler (US-003, US-004)."""
 
 from __future__ import annotations
 
@@ -12,9 +12,11 @@ import pytest
 from roots.agents.invoker import AgentInvoker
 from roots.agents.registry import AgentRegistry
 from roots.core.decision import DecisionEngine
+from roots.core.escalation import EscalationTrigger
 from roots.core.orchestrator import OrchestrationError, ProcessRunner
 from roots.core.schema import (
     AgentNodeConfig,
+    CheckpointNodeConfig,
     EdgeDefinition,
     EndNodeConfig,
     EndStatus,
@@ -90,6 +92,31 @@ def _make_failing_child_process(proc_id: str) -> ProcessDefinition:
             )
         ],
         edges=[],
+    )
+
+
+def _make_checkpoint_child_process(proc_id: str) -> ProcessDefinition:
+    """Child process with a checkpoint node — always pauses on first run."""
+    return ProcessDefinition(
+        id=proc_id,
+        name="Checkpoint Child",
+        version="1.0.0",
+        entry_point="cp",
+        nodes=[
+            NodeDefinition(
+                id="cp",
+                type=NodeType.CHECKPOINT,
+                label="Checkpoint",
+                config=CheckpointNodeConfig(prompt="Review item"),
+            ),
+            NodeDefinition(
+                id="done",
+                type=NodeType.END,
+                label="Done",
+                config=EndNodeConfig(status=EndStatus.COMPLETED),
+            ),
+        ],
+        edges=[EdgeDefinition(from_node="cp", to_node="done")],
     )
 
 
@@ -755,15 +782,16 @@ class TestIteratorFailureBehavior:
 
 
 class TestIteratorBranchPersistence:
-    """Results are persisted via save_branch_result."""
+    """Results are persisted via save_branch_result; cleared on success."""
 
-    async def test_completed_items_saved_as_branch_results(
+    async def test_successful_completion_clears_branch_results(
         self,
         sqlite_storage: StorageBackend,
         invoker: AgentInvoker,
         decision_engine: DecisionEngine,
         emitter: EventEmitter,
     ) -> None:
+        """Branch results are cleared after successful completion (US-004)."""
         parent_proc = _make_iterator_process("parent", "child")
         child_proc = _make_child_process("child")
 
@@ -773,13 +801,9 @@ class TestIteratorBranchPersistence:
             work_item={"items": ["a", "b"]},
         )
 
+        # Results cleared on success — not preserved after completion
         branches = await sqlite_storage.get_branch_results(run_id, "iter")
-        assert len(branches) == 2
-        branch_ids = {b.branch_id for b in branches}
-        assert "item-0" in branch_ids
-        assert "item-1" in branch_ids
-        for b in branches:
-            assert b.status == "completed"
+        assert len(branches) == 0
 
     async def test_failed_item_saved_as_failed_branch(
         self,
@@ -788,19 +812,25 @@ class TestIteratorBranchPersistence:
         decision_engine: DecisionEngine,
         emitter: EventEmitter,
     ) -> None:
+        """On STOP failure, failed branch result is preserved for crash recovery."""
         parent_proc = _make_iterator_process(
             "parent", "fail-child",
-            on_item_failure=ItemFailureMode.CONTINUE,
+            on_item_failure=ItemFailureMode.STOP,
         )
         child_proc = _make_failing_child_process("fail-child")
 
-        run_id, _ = await _run_iterator_process(
-            sqlite_storage, invoker, decision_engine, emitter,
-            parent_proc, child_proc,
-            work_item={"items": ["x"]},
-        )
+        await sqlite_storage.save_process(parent_proc)
+        await sqlite_storage.save_process(child_proc)
+        run = await sqlite_storage.create_run(parent_proc.id, {"items": ["x"]})
+        runner = _make_runner(run.id, sqlite_storage, invoker, decision_engine, emitter)
 
-        branches = await sqlite_storage.get_branch_results(run_id, "iter")
+        try:
+            await runner.run_to_completion()
+        except OrchestrationError:
+            pass
+
+        # Branch results preserved on failure (not cleared)
+        branches = await sqlite_storage.get_branch_results(run.id, "iter")
         assert len(branches) == 1
         assert branches[0].branch_id == "item-0"
         assert branches[0].status == "failed"
@@ -991,3 +1021,288 @@ class TestIteratorLifecycleEvents:
         started_idx = event_types.index(EventType.ITERATOR_STARTED)
         completed_idx = event_types.index(EventType.ITERATOR_COMPLETED)
         assert started_idx < completed_idx
+
+
+# ---- Crash recovery tests (US-004) ----
+
+
+class TestIteratorCrashRecovery:
+    """Crash recovery: resume from first incomplete item using branch result presence."""
+
+    async def test_fresh_execution_runs_all_items(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Without prior branch results, fresh execution processes every item."""
+        parent_proc = _make_iterator_process("parent", "child")
+        child_proc = _make_child_process("child")
+
+        run_id, final_run = await _run_iterator_process(
+            sqlite_storage, invoker, decision_engine, emitter,
+            parent_proc, child_proc,
+            work_item={"items": ["a", "b"]},
+        )
+
+        assert final_run.status == RunStatus.COMPLETED
+        child_runs = await sqlite_storage.list_runs(process_id="child")
+        assert len(child_runs) == 2
+
+    async def test_resume_skips_completed_items(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """After crash, iterator resumes from first incomplete item."""
+        parent_proc = _make_iterator_process("parent", "child")
+        child_proc = _make_child_process("child")
+
+        await sqlite_storage.save_process(parent_proc)
+        await sqlite_storage.save_process(child_proc)
+
+        run = await sqlite_storage.create_run(
+            parent_proc.id, {"items": ["a", "b", "c"]}
+        )
+        # Simulate crash after item-0 completed: seed branch result
+        envelope_0: dict[str, Any] = {
+            "_item_index": 0,
+            "_status": "completed",
+            "_item_value": "a",
+            "output": {"item": "a"},
+        }
+        await sqlite_storage.save_branch_result(
+            run.id, "iter", "item-0", "completed", envelope_0
+        )
+        # Simulate run was already in RUNNING state when crash occurred
+        await sqlite_storage.update_run_status(run.id, RunStatus.RUNNING, "iter")
+
+        runner = _make_runner(run.id, sqlite_storage, invoker, decision_engine, emitter)
+        await runner.run_to_completion()
+
+        # Only 2 child runs created (item-0 was skipped via crash recovery)
+        child_runs = await sqlite_storage.list_runs(process_id="child")
+        assert len(child_runs) == 2
+
+        # Final results include all 3 items in order
+        final_run = await sqlite_storage.get_run(run.id)
+        assert final_run is not None
+        assert final_run.status == RunStatus.COMPLETED
+        results = final_run.work_item_state.get("results")
+        assert results is not None
+        assert len(results) == 3
+        assert results[0]["_item_value"] == "a"
+        assert results[0]["_status"] == "completed"
+
+    async def test_failure_preserves_branch_results_for_recovery(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """On STOP mode failure, branch results are NOT cleared (preserved for recovery)."""
+        parent_proc = _make_iterator_process(
+            "parent", "fail-child",
+            on_item_failure=ItemFailureMode.STOP,
+        )
+        child_proc = _make_failing_child_process("fail-child")
+
+        await sqlite_storage.save_process(parent_proc)
+        await sqlite_storage.save_process(child_proc)
+        run = await sqlite_storage.create_run(
+            parent_proc.id, {"items": ["a", "b"]}
+        )
+        runner = _make_runner(run.id, sqlite_storage, invoker, decision_engine, emitter)
+
+        try:
+            await runner.run_to_completion()
+        except OrchestrationError:
+            pass
+
+        branches = await sqlite_storage.get_branch_results(run.id, "iter")
+        assert len(branches) >= 1
+        assert branches[0].status == "failed"
+
+    async def test_success_clears_branch_results(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Branch results cleared after successful completion."""
+        parent_proc = _make_iterator_process("parent", "child")
+        child_proc = _make_child_process("child")
+
+        run_id, _ = await _run_iterator_process(
+            sqlite_storage, invoker, decision_engine, emitter,
+            parent_proc, child_proc,
+            work_item={"items": ["a", "b"]},
+        )
+
+        branches = await sqlite_storage.get_branch_results(run_id, "iter")
+        assert len(branches) == 0
+
+
+# ---- Pause cascade tests (US-004) ----
+
+
+class TestIteratorPauseCascade:
+    """Child pause cascades to parent via SUBPROCESS_PAUSED escalation."""
+
+    async def test_child_pause_cascades_to_parent(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        sink: CollectorSink,
+        emitter: EventEmitter,
+    ) -> None:
+        """When child pauses at checkpoint, parent iterator pauses too."""
+        parent_proc = _make_iterator_process("parent", "cp-child")
+        child_proc = _make_checkpoint_child_process("cp-child")
+
+        await sqlite_storage.save_process(parent_proc)
+        await sqlite_storage.save_process(child_proc)
+        run = await sqlite_storage.create_run(parent_proc.id, {"items": ["a"]})
+        runner = _make_runner(run.id, sqlite_storage, invoker, decision_engine, emitter)
+
+        await runner.run_to_completion()
+
+        # Parent should be paused
+        parent_run = await sqlite_storage.get_run(run.id)
+        assert parent_run is not None
+        assert parent_run.status == RunStatus.PAUSED
+
+        # State should track the paused child
+        assert "_iterator_paused_child_run_id" in parent_run.work_item_state
+        assert parent_run.work_item_state["_iterator_paused_item_index"] == 0
+
+    async def test_pause_cascade_sets_subprocess_paused_trigger(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        sink: CollectorSink,
+        emitter: EventEmitter,
+    ) -> None:
+        """SUBPROCESS_PAUSED escalation is triggered when child pauses."""
+        parent_proc = _make_iterator_process("parent", "cp-child")
+        child_proc = _make_checkpoint_child_process("cp-child")
+
+        await sqlite_storage.save_process(parent_proc)
+        await sqlite_storage.save_process(child_proc)
+        run = await sqlite_storage.create_run(parent_proc.id, {"items": ["a"]})
+        runner = _make_runner(run.id, sqlite_storage, invoker, decision_engine, emitter)
+
+        await runner.run_to_completion()
+        await asyncio.sleep(0)
+
+        # Escalation events emitted (child checkpoint + parent subprocess_paused)
+        esc_events = [e for e in sink.events if e.event == EventType.ESCALATION_TRIGGERED]
+        assert len(esc_events) >= 1
+        trigger_types = {e.metadata.get("trigger_type") for e in esc_events}
+        assert EscalationTrigger.SUBPROCESS_PAUSED in trigger_types
+
+    async def test_pause_resume_completes_iteration(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """After pause cascade, resolving child and resuming parent completes iteration."""
+        parent_proc = _make_iterator_process("parent", "cp-child")
+        child_proc = _make_checkpoint_child_process("cp-child")
+
+        await sqlite_storage.save_process(parent_proc)
+        await sqlite_storage.save_process(child_proc)
+        # Use single item so after resume, iteration completes without another pause
+        run = await sqlite_storage.create_run(parent_proc.id, {"items": ["a"]})
+        runner = _make_runner(run.id, sqlite_storage, invoker, decision_engine, emitter)
+
+        # First run: child pauses at checkpoint → parent pauses
+        await runner.run_to_completion()
+
+        parent_run = await sqlite_storage.get_run(run.id)
+        assert parent_run is not None
+        assert parent_run.status == RunStatus.PAUSED
+
+        # Resolve child's checkpoint: advance child past "cp" to "done"
+        paused_child_id = parent_run.work_item_state["_iterator_paused_child_run_id"]
+        await sqlite_storage.update_run_status(
+            paused_child_id, RunStatus.RUNNING, "done"
+        )
+
+        # Resume parent
+        await sqlite_storage.update_run_status(run.id, RunStatus.RUNNING, "iter")
+
+        # Resume execution — paused child resumes and completes, iterator finishes
+        resumed_runner = _make_runner(
+            run.id, sqlite_storage, invoker, decision_engine, emitter
+        )
+        await resumed_runner.run_to_completion()
+
+        final_run = await sqlite_storage.get_run(run.id)
+        assert final_run is not None
+        assert final_run.status == RunStatus.COMPLETED
+        results = final_run.work_item_state.get("results")
+        assert results is not None
+        assert len(results) == 1
+
+
+# ---- Lock renewal tests (US-004) ----
+
+
+class TestIteratorLockRenewal:
+    """Lock renewal task runs in background during child execution."""
+
+    async def test_lock_renewal_does_not_break_normal_execution(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Lock renewal task is created and cancelled without affecting correctness."""
+        parent_proc = _make_iterator_process("parent", "child")
+        child_proc = _make_child_process("child")
+
+        _, final_run = await _run_iterator_process(
+            sqlite_storage, invoker, decision_engine, emitter,
+            parent_proc, child_proc,
+            work_item={"items": ["a", "b", "c"]},
+        )
+
+        assert final_run.status == RunStatus.COMPLETED
+        results = final_run.work_item_state.get("results")
+        assert isinstance(results, list)
+        assert len(results) == 3
+
+    async def test_multiple_items_complete_with_renewal_running(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Renewal task runs quietly in background; all items complete correctly."""
+        parent_proc = _make_iterator_process("parent", "child")
+        child_proc = _make_child_process("child")
+
+        _, final_run = await _run_iterator_process(
+            sqlite_storage, invoker, decision_engine, emitter,
+            parent_proc, child_proc,
+            work_item={"items": ["x", "y", "z"]},
+        )
+
+        # All items processed correctly with renewal task running
+        assert final_run.status == RunStatus.COMPLETED
+        results = final_run.work_item_state.get("results")
+        assert isinstance(results, list)
+        assert len(results) == 3
+        assert [r["_item_value"] for r in results] == ["x", "y", "z"]
