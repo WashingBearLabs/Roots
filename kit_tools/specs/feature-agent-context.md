@@ -108,16 +108,16 @@ This feature adds an opt-in `AgentContext` object injected into agents at invoca
 - Max depth default 5 (matching `SubProcessNodeConfig.max_depth` default) — configurable on `AgentContext` construction
 
 **Acceptance Criteria:**
-- [ ] `AgentContext.execute_run` reads `_subprocess_depth` from current run's work_item_state and increments for child
-- [ ] Depth limit (default 5) raises `OrchestrationError` with clear message including current depth and max
-- [ ] Parent run lock released before child execution, reacquired after (matching subprocess handler pattern)
-- [ ] Lock reacquisition failure raises `OrchestrationError` (propagates to tick-level error handler, run marked failed)
-- [ ] Tests: depth limit enforced at boundary
-- [ ] Tests: depth accumulates correctly across mixed subprocess node + context.execute_run chains
-- [ ] Tests: lock released during child execution and reacquired after
-- [ ] Tests: lock reacquisition failure raises OrchestrationError
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] `AgentContext.execute_run` reads `_subprocess_depth` from current run's work_item_state and increments for child
+- [x] Depth limit (default 5) raises `OrchestrationError` with clear message including current depth and max
+- [x] Parent run lock released before child execution, reacquired after (matching subprocess handler pattern)
+- [x] Lock reacquisition failure raises `OrchestrationError` (propagates to tick-level error handler, run marked failed)
+- [x] Tests: depth limit enforced at boundary
+- [x] Tests: depth accumulates correctly across mixed subprocess node + context.execute_run chains
+- [x] Tests: lock released during child execution and reacquired after
+- [x] Tests: lock reacquisition failure raises OrchestrationError
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ## Out of Scope
 
