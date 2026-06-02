@@ -246,3 +246,100 @@ async def test_run_response_includes_process_version(client):
     data = resp.json()
     assert "process_version" in data
     assert data["process_version"] == "1.0.0"
+
+
+# --- Metadata ---
+
+
+@pytest.mark.asyncio
+async def test_create_run_with_metadata(client):
+    """POST /runs with metadata stores and returns metadata."""
+    await _create_process(client)
+    resp = await client.post(
+        "/runs",
+        json={"process_id": "proc-1", "work_item": {"x": 1}, "metadata": {"env": "test", "priority": 1}},
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["metadata"] == {"env": "test", "priority": 1}
+
+
+@pytest.mark.asyncio
+async def test_create_run_without_metadata(client):
+    """POST /runs without metadata returns metadata as None."""
+    await _create_process(client)
+    resp = await client.post(
+        "/runs", json={"process_id": "proc-1", "work_item": {"x": 1}}
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["metadata"] is None
+
+
+@pytest.mark.asyncio
+async def test_create_run_with_nested_metadata_returns_422(client):
+    """POST /runs with nested dict in metadata returns 422."""
+    await _create_process(client)
+    resp = await client.post(
+        "/runs",
+        json={"process_id": "proc-1", "work_item": {"x": 1}, "metadata": {"nested": {"a": 1}}},
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_create_run_with_list_metadata_value_returns_422(client):
+    """POST /runs with list value in metadata returns 422."""
+    await _create_process(client)
+    resp = await client.post(
+        "/runs",
+        json={"process_id": "proc-1", "work_item": {"x": 1}, "metadata": {"tags": ["a", "b"]}},
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_get_run_includes_metadata(client):
+    """GET /runs/{run_id} returns metadata in response."""
+    await _create_process(client)
+    create_resp = await client.post(
+        "/runs",
+        json={"process_id": "proc-1", "work_item": {"x": 1}, "metadata": {"env": "prod"}},
+    )
+    run_id = create_resp.json()["id"]
+
+    resp = await client.get(f"/runs/{run_id}")
+    assert resp.status_code == 200
+    assert resp.json()["metadata"] == {"env": "prod"}
+
+
+@pytest.mark.asyncio
+async def test_list_runs_with_metadata_filter(client):
+    """GET /runs?metadata_filter=... filters by metadata."""
+    await _create_process(client)
+    await client.post(
+        "/runs",
+        json={"process_id": "proc-1", "work_item": {"x": 1}, "metadata": {"env": "test"}},
+    )
+    await client.post(
+        "/runs",
+        json={"process_id": "proc-1", "work_item": {"x": 2}, "metadata": {"env": "prod"}},
+    )
+
+    import json as json_mod
+
+    resp = await client.get(
+        "/runs", params={"metadata_filter": json_mod.dumps({"env": "test"})}
+    )
+    assert resp.status_code == 200
+    runs = resp.json()
+    assert len(runs) == 1
+    assert runs[0]["metadata"]["env"] == "test"
+
+
+@pytest.mark.asyncio
+async def test_list_runs_invalid_json_filter_returns_422(client):
+    """GET /runs?metadata_filter=<invalid JSON> returns 422."""
+    resp = await client.get("/runs", params={"metadata_filter": "not-valid-json{"})
+    assert resp.status_code == 422
+    assert "metadata_filter" in resp.json()["detail"].lower() or "invalid" in resp.json()["detail"].lower()

@@ -56,6 +56,20 @@ class RunCreateRequest(BaseModel):
 
     process_id: str
     work_item: dict[str, Any]
+    metadata: dict[str, Any] | None = None
+
+    @field_validator("metadata")
+    @classmethod
+    def validate_metadata_scalars(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
+        if v is None:
+            return v
+        for key, value in v.items():
+            if isinstance(value, (dict, list)):
+                raise ValueError(
+                    f"Metadata value for key '{key}' must be a scalar "
+                    f"(str, int, float, bool, or None), got {type(value).__name__}"
+                )
+        return v
 
 
 class RunResponse(BaseModel):
@@ -67,6 +81,7 @@ class RunResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     process_version: str | None = None
+    metadata: dict[str, Any] | None = None
 
 
 class DecisionHistoryResponse(BaseModel):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import Any
 
@@ -28,6 +29,7 @@ def _run_to_response(run: Any) -> RunResponse:
         created_at=run.created_at,
         updated_at=run.updated_at,
         process_version=run.process_version,
+        metadata=run.metadata,
     )
 
 
@@ -42,7 +44,7 @@ async def create_run(
     roots: Roots = Depends(get_roots),
 ) -> RunResponse:
     """Create a new run and start background execution."""
-    run = await roots.start_run(body.process_id, body.work_item)
+    run = await roots.start_run(body.process_id, body.work_item, metadata=body.metadata)
 
     task = asyncio.create_task(roots.execute_run(run.id))
 
@@ -64,11 +66,27 @@ async def create_run(
 async def list_runs(
     process_id: str | None = None,
     run_status: str | None = None,
+    metadata_filter: str | None = None,
     roots: Roots = Depends(get_roots),
 ) -> list[RunResponse]:
     """List runs with optional filters."""
+    parsed_filter: dict[str, Any] | None = None
+    if metadata_filter is not None:
+        try:
+            raw = json.loads(metadata_filter)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid JSON in metadata_filter: {exc}",
+            )
+        if not isinstance(raw, dict):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="metadata_filter must be a JSON object",
+            )
+        parsed_filter = raw
     runs = await roots.storage.list_runs(
-        process_id=process_id, status=run_status
+        process_id=process_id, status=run_status, metadata_filter=parsed_filter
     )
     return [_run_to_response(r) for r in runs]
 
