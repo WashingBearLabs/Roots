@@ -1,4 +1,4 @@
-"""Tests for fork/join (US-001 branch creation, US-002 parallel execution, US-003 merge_all, US-004 collect, US-005 partial failure, US-002-crash branch persistence)."""
+"""Tests for fork/join (US-001 branch creation, US-002 parallel execution, US-003 merge_all, US-004 collect, US-005 partial failure, US-002-crash branch persistence, US-003-crash recovery)."""
 
 from __future__ import annotations
 
@@ -2025,3 +2025,367 @@ class TestCrashSafeForkPersistence:
         with patch("asyncio.sleep", fast_sleep):
             with pytest.raises(OrchestrationError, match="Lock lost during parallel execution"):
                 await runner.tick()
+
+
+# --- US-003 (crash recovery) Tests ---
+
+
+class TestCrashRecovery:
+    """US-003: Crash-safe fork — recovery on re-entry."""
+
+    async def test_fork_skips_completed_branch_from_storage(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Fork detects completed branch via storage and does not re-execute it."""
+        call_log: list[str] = []
+
+        async def tracking_a(input: dict[str, Any]) -> dict[str, Any]:
+            call_log.append("branch_a_called")
+            return {"output": {"a_out": "fresh"}, "escalate": False}
+
+        async def tracking_b(input: dict[str, Any]) -> dict[str, Any]:
+            call_log.append("branch_b_called")
+            return {"output": {"b_out": "fresh"}, "escalate": False}
+
+        invoker._registry.register_local("tracking_a", tracking_a)
+        invoker._registry.register_local("tracking_b", tracking_b)
+
+        proc = ProcessDefinition(
+            id="crash-skip",
+            name="Crash Skip Test",
+            version="1.0.0",
+            nodes=[
+                NodeDefinition(id="fork1", type=NodeType.FORK, label="Fork", config=ForkNodeConfig()),
+                NodeDefinition(id="ba", type=NodeType.AGENT, label="A", config=AgentNodeConfig(agent="tracking_a", output_key="a_out")),
+                NodeDefinition(id="bb", type=NodeType.AGENT, label="B", config=AgentNodeConfig(agent="tracking_b", output_key="b_out")),
+                NodeDefinition(id="join1", type=NodeType.JOIN, label="Join", config=JoinNodeConfig()),
+                NodeDefinition(id="done", type=NodeType.END, label="Done", config=EndNodeConfig(status=EndStatus.COMPLETED)),
+            ],
+            edges=[
+                EdgeDefinition(from_node="fork1", to_node="ba"),
+                EdgeDefinition(from_node="fork1", to_node="bb"),
+                EdgeDefinition(from_node="ba", to_node="join1"),
+                EdgeDefinition(from_node="bb", to_node="join1"),
+                EdgeDefinition(from_node="join1", to_node="done"),
+            ],
+            entry_point="fork1",
+            fork_join_map={"fork1": "join1"},
+        )
+        proc, run_id = await _setup_run(sqlite_storage, proc)
+
+        # Pre-seed branch_a (target node "ba") as already completed
+        pre_seeded_state = {"input": "hello", "a_out": "recovered_value"}
+        await sqlite_storage.save_branch_result(
+            run_id, "fork1", "branch:ba", "completed", pre_seeded_state
+        )
+
+        runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
+        await runner.tick()  # fork
+
+        # branch_a should NOT have been called (its result was recovered from storage)
+        assert "branch_a_called" not in call_log
+        # branch_b SHOULD have been called (not in storage)
+        assert "branch_b_called" in call_log
+
+        # The final results should have both: recovered branch_a and fresh branch_b
+        results = runner._fork_branch_results
+        assert results is not None
+        assert len(results) == 2
+        assert results[0] == pre_seeded_state  # recovered
+        assert isinstance(results[1], dict)    # fresh
+
+    async def test_fork_re_executes_failed_branch(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Failed branches in storage are re-executed on re-entry (not skipped)."""
+        call_log: list[str] = []
+
+        async def tracking_a(input: dict[str, Any]) -> dict[str, Any]:
+            call_log.append("branch_a_called")
+            return {"output": {"a_out": "retried"}, "escalate": False}
+
+        invoker._registry.register_local("tracking_a_retry", tracking_a)
+
+        proc = ProcessDefinition(
+            id="crash-retry",
+            name="Crash Retry Test",
+            version="1.0.0",
+            nodes=[
+                NodeDefinition(id="fork1", type=NodeType.FORK, label="Fork", config=ForkNodeConfig()),
+                NodeDefinition(id="ba", type=NodeType.AGENT, label="A", config=AgentNodeConfig(agent="tracking_a_retry", output_key="a_out")),
+                NodeDefinition(id="bb", type=NodeType.AGENT, label="B", config=AgentNodeConfig(agent="echo", output_key="b_out")),
+                NodeDefinition(id="join1", type=NodeType.JOIN, label="Join", config=JoinNodeConfig()),
+                NodeDefinition(id="done", type=NodeType.END, label="Done", config=EndNodeConfig(status=EndStatus.COMPLETED)),
+            ],
+            edges=[
+                EdgeDefinition(from_node="fork1", to_node="ba"),
+                EdgeDefinition(from_node="fork1", to_node="bb"),
+                EdgeDefinition(from_node="ba", to_node="join1"),
+                EdgeDefinition(from_node="bb", to_node="join1"),
+                EdgeDefinition(from_node="join1", to_node="done"),
+            ],
+            entry_point="fork1",
+            fork_join_map={"fork1": "join1"},
+        )
+        proc, run_id = await _setup_run(sqlite_storage, proc)
+
+        # Pre-seed branch_a as FAILED (should be re-executed)
+        await sqlite_storage.save_branch_result(
+            run_id, "fork1", "branch:ba", "failed", "previous transient error"
+        )
+
+        runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
+        await runner.tick()  # fork
+
+        # branch_a SHOULD have been called (failed branches are re-executed)
+        assert "branch_a_called" in call_log
+
+    async def test_join_recovery_loads_from_storage(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Join handler loads branch results from storage when _fork_branch_results is None."""
+        invoker._registry.register_local("agent_add_x", agent_add_x)
+        invoker._registry.register_local("agent_add_y", agent_add_y)
+
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_merge_all_process("agent_add_x", "agent_add_y"),
+            {"input": "recovery_test"},
+        )
+        runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
+
+        # Fork tick: executes branches and stores results
+        await runner.tick()
+
+        # Simulate crash: clear in-memory state
+        runner._fork_branch_results = None
+        runner._fork_branches = []
+
+        # Join tick: must recover from storage
+        await runner.tick()
+
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        # Join should have merged both branch outputs
+        assert "a_out" in run.work_item_state
+        assert "b_out" in run.work_item_state
+
+    async def test_join_resolves_fork_node_via_fork_join_map(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Join finds its fork node via fork_join_map inverse lookup."""
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_fork_2_branch_process(),
+        )
+        runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
+
+        await runner.tick()  # fork (saves branch results to storage)
+
+        # Simulate crash: clear in-memory state
+        runner._fork_branch_results = None
+        runner._fork_branches = []
+
+        # Join should resolve fork node from fork_join_map and load from storage
+        await runner.tick()  # join
+
+        # Verify join completed (run moved past join node)
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        # Run should have continued (not failed)
+        assert run.current_node_id == "done"
+
+    async def test_clear_branch_results_after_successful_join(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Branch results are cleared from storage after a successful join."""
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_fork_2_branch_process(),
+        )
+        runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
+
+        await runner.tick()  # fork
+
+        # Verify results stored before join
+        before = await sqlite_storage.get_branch_results(run_id, "fork1")
+        assert len(before) == 2
+
+        await runner.tick()  # join (successful)
+
+        # Results should be cleared after successful join
+        after = await sqlite_storage.get_branch_results(run_id, "fork1")
+        assert len(after) == 0
+
+    async def test_branch_results_preserved_on_failed_join(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Branch results are NOT cleared when the join fails (preserves progress for recovery)."""
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_fork_all_failing_process(allow_partial=False),
+        )
+        runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
+
+        await runner.tick()  # fork (both fail, stored as failed)
+
+        stored_before = await sqlite_storage.get_branch_results(run_id, "fork1")
+        assert len(stored_before) > 0
+
+        with pytest.raises(OrchestrationError):
+            await runner.tick()  # join fails
+
+        # Results must still be in storage
+        stored_after = await sqlite_storage.get_branch_results(run_id, "fork1")
+        assert len(stored_after) > 0
+
+    async def test_merge_all_correct_with_recovered_data(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """merge_all strategy produces correct results when join recovers from storage."""
+        invoker._registry.register_local("agent_add_x", agent_add_x)
+        invoker._registry.register_local("agent_add_y", agent_add_y)
+
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_merge_all_process("agent_add_x", "agent_add_y"),
+            {"input": "merge_recovery"},
+        )
+        runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
+
+        await runner.tick()  # fork
+
+        # Reset in-memory state (simulate crash)
+        runner._fork_branch_results = None
+        runner._fork_branches = []
+
+        await runner.tick()  # join — recovers from storage
+        await runner.tick()  # end
+
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        assert run.status == RunStatus.COMPLETED
+        state = run.work_item_state
+        assert "a_out" in state
+        assert "b_out" in state
+        assert state["input"] == "merge_recovery"
+
+    async def test_collect_correct_with_recovered_data(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """collect strategy produces correct results when join recovers from storage."""
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_collect_process("echo", "echo", collect_key="results"),
+            {"input": "collect_recovery"},
+        )
+        runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
+
+        await runner.tick()  # fork
+
+        # Simulate crash
+        runner._fork_branch_results = None
+        runner._fork_branches = []
+
+        await runner.tick()  # join — recovers from storage
+        await runner.tick()  # end
+
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        assert run.status == RunStatus.COMPLETED
+        state = run.work_item_state
+        assert "results" in state
+        collected = state["results"]
+        assert len(collected) == 2
+        assert collected[0]["branch_id"] == "branch-0"
+        assert collected[1]["branch_id"] == "branch-1"
+
+    async def test_crash_recovery_integration(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Integration: crash after branch_a completes; recovered fork skips branch_a,
+        re-runs branch_b, and join merges both correctly."""
+        invoker._registry.register_local("agent_add_x", agent_add_x)
+        invoker._registry.register_local("agent_add_y", agent_add_y)
+
+        proc, run_id = await _setup_run(
+            sqlite_storage,
+            make_merge_all_process("agent_add_x", "agent_add_y"),
+            {"input": "crash_integration"},
+        )
+
+        # Simulate: before the crash, branch_a (target="branch_a") completed.
+        # agent_add_x writes {x: 1, shared: {from_x: True}} under output_key "a_out".
+        pre_crash_state_a: dict[str, Any] = {
+            "input": "crash_integration",
+            "a_out": {"x": 1, "shared": {"from_x": True}},
+        }
+        await sqlite_storage.save_branch_result(
+            run_id, "fork1", "branch:branch_a", "completed", pre_crash_state_a
+        )
+
+        # First "recovery" fork tick: skips branch_a, runs branch_b fresh
+        runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
+        await runner.tick()
+
+        results = runner._fork_branch_results
+        assert results is not None
+        assert len(results) == 2
+
+        # Branch_a result came from storage (pre-seeded)
+        assert results[0] == pre_crash_state_a
+        # Branch_b result is fresh (agent_add_y: {y: 2, shared: {from_y: True}})
+        assert isinstance(results[1], dict)
+        assert "b_out" in results[1]
+
+        # Join tick: merges pre-seeded branch_a + fresh branch_b
+        await runner.tick()
+
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        state = run.work_item_state
+        # Both outputs should be merged
+        assert "a_out" in state
+        assert "b_out" in state
+        assert state["a_out"]["x"] == 1      # from pre-seeded branch_a
+        assert state["b_out"]["y"] == 2      # from fresh branch_b
+
+        # Branch results should be cleared after successful join
+        stored = await sqlite_storage.get_branch_results(run_id, "fork1")
+        assert len(stored) == 0

@@ -34,7 +34,7 @@ from roots.core.state_machine import RunStatus
 from roots.events.emitter import EventEmitter
 from roots.events.types import EventEnvelope, EventType, create_event
 from roots.core.retry import RetryExhaustedError, RetryRoutedError, execute_with_retry
-from roots.storage.base import RunRecord, StorageBackend
+from roots.storage.base import BranchResult, RunRecord, StorageBackend
 
 logger = logging.getLogger(__name__)
 
@@ -925,6 +925,27 @@ class ProcessRunner:
         fork_node_id = node.id
         stale_timeout_seconds = 300
 
+        # Crash recovery: check for already-completed branches in storage
+        existing_results = await self._storage.get_branch_results(
+            self.run_id, fork_node_id
+        )
+        completed_by_storage_id: dict[str, Any] = {}
+        for br in existing_results:
+            if br.status == "completed":
+                completed_by_storage_id[br.branch_id] = br.result_json
+
+        # Determine which branches still need execution
+        # Completed branches are skipped; failed branches are re-executed
+        pending_indices: list[int] = []
+        pending_branches: list[dict[str, Any]] = []
+        pending_targets: list[str | None] = []
+        for i, (ctx, tgt) in enumerate(zip(branches, target_node_ids)):
+            storage_branch_id = f"branch:{tgt}"
+            if storage_branch_id not in completed_by_storage_id:
+                pending_indices.append(i)
+                pending_branches.append(ctx)
+                pending_targets.append(tgt)
+
         async def _execute_with_persistence(
             ctx: dict[str, Any], target_node_id: str | None
         ) -> dict[str, Any]:
@@ -949,7 +970,7 @@ class ProcessRunner:
         lock_stolen = False
         branch_tasks: list[asyncio.Task[Any]] = [
             asyncio.create_task(_execute_with_persistence(ctx, tgt))
-            for ctx, tgt in zip(branches, target_node_ids)
+            for ctx, tgt in zip(pending_branches, pending_targets)
         ]
 
         async def _renewal_loop() -> None:
@@ -974,7 +995,7 @@ class ProcessRunner:
 
         renewal_task = asyncio.create_task(_renewal_loop())
         try:
-            results: list[Any] = await asyncio.gather(
+            fresh_results: list[Any] = await asyncio.gather(
                 *branch_tasks, return_exceptions=True
             )
         finally:
@@ -987,8 +1008,18 @@ class ProcessRunner:
         if lock_stolen:
             raise OrchestrationError("Lock lost during parallel execution")
 
+        # Assemble final results in original branch order
+        # (recovered completed results + fresh execution results)
+        all_results: list[Any] = [None] * len(branches)
+        for i, tgt in enumerate(target_node_ids):
+            storage_branch_id = f"branch:{tgt}"
+            if storage_branch_id in completed_by_storage_id:
+                all_results[i] = completed_by_storage_id[storage_branch_id]
+        for pos, original_i in enumerate(pending_indices):
+            all_results[original_i] = fresh_results[pos]
+
         # Store branch results for the join node
-        self._fork_branch_results = results
+        self._fork_branch_results = all_results
 
         # Route to join node so tick() advances past the fork
         self._decision_next_node = join_node_id
@@ -1098,12 +1129,62 @@ class ProcessRunner:
         assert isinstance(node.config, JoinNodeConfig)
 
         results = getattr(self, "_fork_branch_results", None)
-        if results is None:
-            raise OrchestrationError(
-                f"Join node '{node.id}' reached without branch results"
-            )
-
         branches: list[dict[str, Any]] = getattr(self, "_fork_branches", [])
+
+        # Load process to resolve fork node ID (needed for storage operations)
+        process = await self._storage.get_process(self._process_id or "")
+        if process is None:
+            raise OrchestrationError(
+                f"Process '{self._process_id}' not found"
+            )
+        fork_node_id: str | None = next(
+            (fid for fid, jid in process.fork_join_map.items() if jid == node.id),
+            None,
+        )
+
+        if results is None:
+            # Crash recovery: _fork_branch_results not in memory.
+            # Load branch results from storage (crash happened after fork, at join).
+            if fork_node_id is None:
+                raise OrchestrationError(
+                    f"Join node '{node.id}' reached without branch results "
+                    f"and has no matching fork in fork_join_map"
+                )
+            stored = await self._storage.get_branch_results(
+                self.run_id, fork_node_id
+            )
+            if not stored:
+                raise OrchestrationError(
+                    f"Join node '{node.id}' reached without branch results"
+                )
+            # Reconstruct branches and results in original edge order
+            fork_edges = process.get_outbound_edges(fork_node_id)
+            stored_map: dict[str, BranchResult] = {
+                br.branch_id: br for br in stored
+            }
+            recovered_branches: list[dict[str, Any]] = []
+            recovered_results: list[Any] = []
+            for i, edge in enumerate(fork_edges):
+                to_node = getattr(edge, "to_node", None)
+                storage_branch_id = f"branch:{to_node}"
+                recovered_branches.append({
+                    "branch_id": f"branch-{i}",
+                    "entry_node_id": to_node,
+                    "state": {},
+                })
+                br = stored_map.get(storage_branch_id)
+                if br is None:
+                    recovered_results.append(RuntimeError(
+                        f"Branch '{to_node}' result not found in storage"
+                    ))
+                elif br.status == "completed":
+                    recovered_results.append(br.result_json)
+                else:
+                    recovered_results.append(RuntimeError(str(br.result_json)))
+            branches = recovered_branches
+            results = recovered_results
+            self._fork_branches = branches
+            self._fork_branch_results = results
 
         # Classify results into successes and failures
         successful: list[tuple[int, dict[str, Any]]] = []
@@ -1190,6 +1271,11 @@ class ProcessRunner:
                         "state": result,
                     })
             state[node.config.collect_key] = collected  # type: ignore[index]
+
+        # Successful join: clear branch results from storage so they do not
+        # accumulate. Failed joins leave results intact for recovery.
+        if fork_node_id is not None:
+            await self._storage.clear_branch_results(self.run_id, fork_node_id)
 
         return None
 
