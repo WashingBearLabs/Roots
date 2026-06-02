@@ -2,7 +2,7 @@
 
 > For AI coding agents and developers integrating Roots into applications.
 >
-> Last updated: 2026-05-25
+> Last updated: 2026-06-02
 
 ---
 
@@ -115,12 +115,17 @@ async with Roots(storage=backend) as app:
 | `load_process(path)` | Parse YAML and save to storage |
 | `register_agent(name, callable)` | Register a local agent |
 | `register_mcp_server(url=..., command=...)` | Auto-discover and register MCP tools as agents |
-| `start_run(process_id, work_item)` | Create a new run (returns `RunRecord`) |
+| `start_run(process_id, work_item, metadata=None)` | Create a new run with optional metadata (returns `RunRecord`) |
 | `execute_run(run_id)` | Run to completion (blocks until done or paused) |
 | `get_run(run_id)` | Fetch run status and state |
 | `get_run_graph(run_id)` | Get headless graph JSON for visualization |
 | `resolve_checkpoint(run_id, decision)` | Resume a paused run |
-| `close()` | Drain events and release resources |
+| `on(event_type, callback, run_id=None)` | Register event callback (returns subscription_id) |
+| `once(event_type, callback, run_id=None)` | One-shot event callback |
+| `off(subscription_id)` | Remove event subscription |
+| `wait_for(event_type, run_id=None, timeout=...)` | Await a specific event (asyncio-friendly) |
+| `start_and_wait(process_id, work_item, timeout=...)` | Start a run and wait for completion (race-free) |
+| `close()` | Drain events, cancel pending futures, release resources |
 
 ---
 
@@ -177,11 +182,38 @@ await app.register_agent(
     output_schema={"type": "object", "required": ["score"]},
 )
 
+# With orchestration context (agent can start child runs, resolve checkpoints)
+await app.register_agent("sequencer", sequencer_func, needs_context=True)
+
 # MCP server (auto-discovers tools)
 agent_names = await app.register_mcp_server(url="http://localhost:3000/mcp")
 # or
 agent_names = await app.register_mcp_server(command=["npx", "my-mcp-server"])
 ```
+
+### Agent Context
+
+Agents registered with `needs_context=True` receive an `AgentContext` object at `input["_roots_context"]` that provides controlled access to orchestration operations:
+
+```python
+async def sequencer_agent(input: dict) -> dict:
+    ctx = input["_roots_context"]  # AgentContext instance
+
+    # Start a child run
+    child_run = await ctx.start_run("child-process", {"data": input["work_item_state"]["items"][0]})
+
+    # Execute and wait for completion (returns RunRecord)
+    result = await ctx.execute_run(child_run.id)
+
+    # Check status
+    if result.status == "paused":
+        await ctx.resolve_checkpoint(child_run.id, "approve")
+        result = await ctx.execute_run(child_run.id)
+
+    return {"output": {"child_status": result.status}, "escalate": False}
+```
+
+Context methods: `start_run`, `get_run`, `execute_run`, `resolve_checkpoint`. Context is in-process only — not available for remote HTTP or MCP agents. Nesting depth is tracked and enforced (default max 5).
 
 ---
 
@@ -193,7 +225,7 @@ A process is a directed graph of nodes connected by edges. Every process needs:
 - `nodes` — the steps
 - `edges` — the connections
 
-### The 9 Node Types
+### The 10 Node Types
 
 #### `agent` — Single Agent Invocation
 ```yaml
@@ -269,7 +301,7 @@ For AI decision modes, add:
     merge_strategy: merge_all   # merge_all | collect
 ```
 
-**Note:** Fork/join is not crash-safe. If the process crashes during parallel execution, the run cannot reliably resume from where it left off.
+Fork/join is crash-safe — completed branches are checkpointed to storage and survive orchestrator crashes. On restart, only incomplete branches are re-executed.
 
 #### `emit` — Fire an Event
 ```yaml
@@ -304,6 +336,29 @@ For AI decision modes, add:
     output_key: sub_result
     max_depth: 5                    # recursion limit (1-20)
 ```
+
+#### `iterator` — Dynamic Fan-Out
+```yaml
+- id: process_stories
+  type: iterator
+  label: Implement Stories
+  config:
+    items_key: stories              # key in work_item_state containing the list
+    process_id: execute-story       # subprocess to run per item
+    execution_mode: sequential      # sequential | parallel
+    item_key: story                 # each item placed here in child work_item
+    input_mapping:                  # additional parent state passed to every child
+      epic_context: epic_context
+    output_key: story_results       # results collected as ordered list
+    on_item_failure: continue       # continue | stop | stop_after_n
+    max_failures: 3                 # only for stop_after_n
+    max_concurrency: 5              # only for parallel mode (caps concurrent children)
+    max_depth: 5                    # recursion limit (1-20)
+```
+
+The iterator reads a list from `work_item_state` at runtime and runs a subprocess for each item. Results are collected as an ordered list of uniform envelopes: `{"_item_index": 0, "_status": "completed", "_item_value": ..., "output": {...}}`.
+
+Sequential mode processes items one at a time with crash recovery (completed items survive restarts). Parallel mode uses `asyncio.create_task` with optional concurrency limiting via `max_concurrency`.
 
 ### Edges
 
@@ -348,6 +403,13 @@ Each run accumulates state in `work_item_state`. When you create a run, you prov
 
 ```python
 run = await app.start_run("my-process", {"task": "Review this document", "priority": 3})
+
+# With metadata for tagging and filtering
+run = await app.start_run(
+    "my-process",
+    {"task": "Review this document"},
+    metadata={"epic_id": "abc", "triggered_by": "user-123"},
+)
 ```
 
 As nodes execute, their outputs are stored at the node's `output_key`:
@@ -489,7 +551,7 @@ Both backends implement the same `StorageBackend` interface. You can also implem
 
 ## Events
 
-Roots emits 22 event types as side effects of orchestration. Events are informational — orchestrator state is never derived from them. Storage is always the source of truth.
+Roots emits 27 event types as side effects of orchestration. Events are informational — orchestrator state is never derived from them. Storage is always the source of truth.
 
 ### Event Types
 
@@ -507,6 +569,8 @@ Escalation lifecycle: `ESCALATION_TRIGGERED`, `ESCALATION_RESOLVED`
 
 Subprocess lifecycle: `SUBPROCESS_STARTED`, `SUBPROCESS_COMPLETED`, `SUBPROCESS_FAILED`
 
+Iterator lifecycle: `ITERATOR_STARTED`, `ITERATOR_ITEM_COMPLETED`, `ITERATOR_ITEM_FAILED`, `ITERATOR_COMPLETED`, `ITERATOR_FAILED`
+
 ### Event Sinks
 
 ```python
@@ -523,6 +587,38 @@ app = Roots(
 ```
 
 Events are fire-and-forget with a bounded in-memory buffer (default 100). Slow sinks don't block orchestration.
+
+### Event Subscriptions
+
+For in-process applications that need to react to events without polling:
+
+```python
+from roots.events.types import EventType
+
+# Register a persistent callback
+sub_id = app.on(EventType.RUN_COMPLETED, my_callback, run_id="run-123")
+
+# One-shot callback (auto-removed after first fire)
+sub_id = app.once(EventType.NODE_FAILED, my_error_handler)
+
+# Wait for an event (asyncio-friendly, required timeout)
+event = await app.wait_for(EventType.RUN_COMPLETED, run_id=run.id, timeout=300)
+
+# Start a run and wait for completion in one call (race-free)
+run, event = await app.start_and_wait("my-process", {"key": "value"}, timeout=600)
+
+# Multi-event matching (list of types)
+event = await app.wait_for(
+    [EventType.RUN_COMPLETED, EventType.RUN_FAILED],
+    run_id=run.id,
+    timeout=300,
+)
+
+# Unsubscribe
+app.off(sub_id)
+```
+
+Callbacks are async callables receiving an `EventEnvelope`. Exceptions in callbacks are caught and logged — they never break orchestration. Subscription dispatch uses a separate bounded buffer from sinks.
 
 ---
 
@@ -583,8 +679,8 @@ When running as a server (`roots serve` or `create_app()`), the full REST API is
 | `/processes/{id}` | DELETE | Delete process |
 | `/processes/{id}/versions` | GET | List version history |
 | `/processes/{id}/versions/{v}` | GET | Get specific version |
-| `/runs` | GET | List runs (filterable by process/status) |
-| `/runs` | POST | Create and start a run |
+| `/runs` | GET | List runs (filterable by process/status/metadata) |
+| `/runs` | POST | Create and start a run (with optional metadata) |
 | `/runs/{id}` | GET | Get run status and state |
 | `/runs/{id}/graph` | GET | Get headless graph JSON |
 | `/runs/{id}/children` | GET | Get subprocess child runs |
@@ -636,6 +732,39 @@ roots agents get <name>                              # Get agent details
 roots pack <process.yaml> [--output FILE]            # Create .root package
 roots install <file.root> [--storage PATH] [--force] # Install .root package
 ```
+
+---
+
+## Run Metadata
+
+Attach application-specific metadata to runs at creation time for tagging, grouping, and filtering:
+
+```python
+# Create a run with metadata
+run = await app.start_run(
+    "my-process",
+    {"task": "Process document"},
+    metadata={"project_id": "proj-123", "user": "alice", "priority": 5},
+)
+
+# Filter runs by metadata
+runs = await app.storage.list_runs(
+    metadata_filter={"project_id": "proj-123"}  # shorthand for $eq
+)
+
+# Using operators
+runs = await app.storage.list_runs(
+    metadata_filter={
+        "project_id": {"$eq": "proj-123"},      # exact match
+        "user": {"$in": ["alice", "bob"]},       # set membership
+        "debug": {"$exists": True},              # key presence
+    }
+)
+```
+
+Via the REST API, pass `metadata_filter` as a JSON-encoded query parameter: `GET /runs?metadata_filter={"project_id":"proj-123"}`.
+
+Metadata values must be JSON scalars (str, int, float, bool, None). Keys must match `^[a-zA-Z_][a-zA-Z0-9_]*$`. Metadata is immutable after creation.
 
 ---
 
@@ -733,6 +862,38 @@ edges:
     max_depth: 3
 ```
 
+### Dynamic Fan-Out with Iterator
+
+```yaml
+# Process each item in a list — N determined at runtime
+- id: process_items
+  type: iterator
+  label: Process All Items
+  config:
+    items_key: documents           # list in work_item_state
+    process_id: analyze-document   # subprocess per item
+    execution_mode: parallel
+    item_key: document
+    output_key: analysis_results
+    on_item_failure: continue      # don't stop on individual failures
+    max_concurrency: 10            # limit parallel children
+```
+
+### Start Run and Wait (Event-Driven)
+
+```python
+# Race-free: registers subscription before starting the run
+run, event = await app.start_and_wait(
+    "my-process",
+    {"task": "analyze"},
+    timeout=300,
+)
+if event.event == "roots.run.completed":
+    print("Success:", run.work_item_state)
+else:
+    print("Failed:", event.metadata)
+```
+
 ### Retry with Fallback
 
 ```yaml
@@ -779,4 +940,4 @@ Decision conditions and edge conditions use `simpleeval` for safe evaluation. Av
 - **Don't use `eval()` or `exec()`.** Roots uses `simpleeval` for safe expression evaluation. Never bypass this.
 - **Don't forget `by_alias=True`.** When serializing Roots models, always use `model_dump(by_alias=True, mode="json")`.
 - **Don't use `utcnow()`.** Use `datetime.now(datetime.UTC)` for all datetime operations.
-- **Don't rely on fork/join for critical workflows.** Fork/join is not crash-safe in the current version.
+- **Don't set `_subprocess_depth` or `_roots_context` in work_item_state.** These are reserved keys used by the orchestrator for depth tracking and agent context injection.
