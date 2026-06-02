@@ -85,15 +85,15 @@ This feature adds an opt-in `AgentContext` object injected into agents at invoca
 - **Inject AFTER input schema validation** — `_invoke_local` validates input schema at lines 92-95 before invocation. The `_roots_context` key must be added AFTER this validation step, otherwise schemas with `additionalProperties: false` will reject it
 
 **Acceptance Criteria:**
-- [ ] `register_agent` accepts `needs_context: bool = False` parameter
-- [ ] `AgentRegistration` model has `needs_context: bool = False` field
-- [ ] `needs_context=True` on REMOTE or MCP agent raises `ValueError` at registration
-- [ ] `InvocationContext` carries `run_id`, `owner_id`, `subprocess_depth` (not leaked into `AgentInput`)
-- [ ] `_roots_context` injected AFTER input schema validation (not before)
-- [ ] End-to-end test: agent registered with `needs_context=True` receives context, calls `context.start_run()`
-- [ ] Agents registered without `needs_context` receive no context key (backward compatible)
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] `register_agent` accepts `needs_context: bool = False` parameter
+- [x] `AgentRegistration` model has `needs_context: bool = False` field
+- [x] `needs_context=True` on REMOTE or MCP agent raises `ValueError` at registration
+- [x] `InvocationContext` carries `run_id`, `owner_id`, `subprocess_depth` (not leaked into `AgentInput`)
+- [x] `_roots_context` injected AFTER input schema validation (not before)
+- [x] End-to-end test: agent registered with `needs_context=True` receives context, calls `context.start_run()`
+- [x] Agents registered without `needs_context` receive no context key (backward compatible)
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-004: Depth guard for nested execute_run
 
