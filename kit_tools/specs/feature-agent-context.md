@@ -47,15 +47,15 @@ This feature adds an opt-in `AgentContext` object injected into agents at invoca
 - Max depth default 5 (matching `SubProcessNodeConfig.max_depth` default)
 
 **Acceptance Criteria:**
-- [ ] `AgentContext` class with methods: `start_run`, `get_run`, `execute_run`, `resolve_checkpoint`
-- [ ] `start_run(process_id, work_item, metadata=None)` creates and returns `RunRecord`
-- [ ] `execute_run(run_id) -> RunRecord` blocks until run completes or pauses; raises `OrchestrationError` if child run fails (with status and error details); returns `RunRecord` with final state
-- [ ] `resolve_checkpoint(run_id, decision, notes=None)` resolves paused runs
-- [ ] No admin/mutation methods exposed
-- [ ] `wait_for` and `start_and_wait` methods added after event-subscriptions feature ships (declared dependency)
-- [ ] Tests: each method delegates correctly; execute_run raises on child failure; context cannot access admin methods
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] `AgentContext` class with methods: `start_run`, `get_run`, `execute_run`, `resolve_checkpoint`
+- [x] `start_run(process_id, work_item, metadata=None)` creates and returns `RunRecord`
+- [x] `execute_run(run_id) -> RunRecord` blocks until run completes or pauses; raises `OrchestrationError` if child run fails (with status and error details); returns `RunRecord` with final state
+- [x] `resolve_checkpoint(run_id, decision, notes=None)` resolves paused runs
+- [x] No admin/mutation methods exposed
+- [x] `wait_for` and `start_and_wait` methods added after event-subscriptions feature ships (declared dependency)
+- [x] Tests: each method delegates correctly; execute_run raises on child failure; context cannot access admin methods
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-002: Roots owns AgentInvoker (wiring refactor)
 
