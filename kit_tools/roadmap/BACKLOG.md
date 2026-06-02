@@ -1,6 +1,6 @@
 # BACKLOG.md
 
-> Last updated: 2026-05-13
+> Last updated: 2026-06-01
 > Updated by: Claude
 
 Future work items and ideas for the Roots framework.
@@ -11,14 +11,15 @@ Future work items and ideas for the Roots framework.
 
 | Priority | Item | Type | Ref | Status |
 |----------|------|------|-----|--------|
+| P0 | Embedding Enhancements | Epic | E1 | **Active** |
 | P0 | Root Registry & Marketplace | Feature | T3.8 | Not Started |
-| P1 | Decision History Retrieval | Feature | T3.1 | **Epic: library-refinements** |
-| P1 | Process Versioning | Feature | T3.2 | **Epic: library-refinements** |
-| P2 | Process Composition | Feature | T3.3 | **Epic: process-composition** |
-| P2 | Vote Aggregation | Feature | T3.4 | **Epic: library-refinements** |
+| P1 | ~~Decision History Retrieval~~ | Feature | T3.1 | **Done** (2026-05-13) |
+| P1 | ~~Process Versioning~~ | Feature | T3.2 | **Done** (2026-05-13) |
+| P2 | ~~Process Composition~~ | Feature | T3.3 | **Done** (2026-05-21) |
+| P2 | ~~Vote Aggregation~~ | Feature | T3.4 | **Done** (2026-05-13) |
 | P2 | ~~Transform Node~~ | Feature | T3.5 | Iceboxed |
 | P2 | ~~Agent Node Error Key~~ | Feature | T3.9 | **Done** (2026-05-13) |
-| P1 | In-Repo Documentation | Docs | D1 | Not Started |
+| P1 | In-Repo Documentation | Docs | D1 | Partial (Integration Guide created) |
 
 ---
 
@@ -74,13 +75,20 @@ Future work items and ideas for the Roots framework.
 - [Subprocess Schema](../specs/feature-subprocess-schema.md) — Node type, storage, validation (T3.3, 3 stories)
 - [Subprocess Execution](../specs/feature-subprocess-execution.md) — Orchestrator lifecycle, pause/fail cascading, API (T3.3, 5 stories)
 
+## Embedding Enhancements (Epic)
+- [Epic Overview](../specs/epic-embedding-enhancements.md)
+- [Run Metadata](../specs/feature-run-metadata.md) — Run tagging and rich filtering (3 stories)
+- [Event Subscriptions](../specs/feature-event-subscriptions.md) — Callback hooks and wait_for (3 stories)
+- [Agent Context](../specs/feature-agent-context.md) — Agent context injection for orchestration access (3 stories)
+- [Crash-Safe Parallel](../specs/feature-crash-safe-parallel.md) — Per-branch state checkpointing (5 stories)
+- [Iterator Node](../specs/feature-iterator-node.md) — Dynamic for_each iteration (4 stories)
+
 ---
 
 ## Technical Debt
 
-### Fork/Join Crash Safety
-**Impact:** Medium
-**Description:** Fork/join is not crash-safe in v1 (see `arch/DECISIONS.md`). A crash during fork execution loses in-flight branch progress and requires re-execution from the fork node. Needs state checkpointing per branch to enable resumption.
+### ~~Fork/Join Crash Safety~~ — ADDRESSED
+**Impact:** ~~Medium~~ → Addressed by Embedding Enhancements epic (feature-crash-safe-parallel.md)
 
 ### .gitignore for __pycache__
 **Impact:** Low

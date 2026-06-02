@@ -1,43 +1,33 @@
 # Milestones
 
-> Last updated: 2026-05-13
+> Last updated: 2026-06-01
 > Updated by: Claude
 
 Tracks major milestones for the Roots framework.
 
 ---
 
-## Current Target: Library Refinements (v1.1)
+## Current Target: Embedding Enhancements (v1.2)
 
-**Target:** 2026-05 (in progress)
-**Status:** Active — [epic-library-refinements.md](../specs/epic-library-refinements.md)
-**Stories:** 9 across 3 feature specs
+**Target:** 2026-06 (active)
+**Status:** Active — [epic-embedding-enhancements.md](../specs/epic-embedding-enhancements.md)
+**Stories:** 18 across 5 feature specs
 
-Internal library improvements:
-- Vote Aggregation (T3.4) — agent pool consensus mechanisms (4 stories)
-- Decision History Retrieval (T3.1) — query + auto-inject into AI prompts (4 stories)
-- Process Versioning (T3.2) — version history + run pinning (3 stories)
-
----
-
-## Next: Process Composition (v1.2)
-
-**Target:** TBD (after library refinements)
-**Status:** Planned — [epic-process-composition.md](../specs/epic-process-composition.md)
-**Stories:** 8 across 2 feature specs
-
-Hierarchical process decomposition:
-- Subprocess Schema (T3.3) — node type, storage, validation (3 stories)
-- Subprocess Execution (T3.3) — orchestrator lifecycle, pause/fail cascading, API (5 stories)
+Production embedding improvements:
+- Run Metadata & Tagging (3 stories) — run tagging with rich filtering
+- Event Subscriptions (3 stories) — callback hooks and wait_for
+- Agent Context Injection (3 stories) — agent orchestration access
+- Crash-Safe Parallel Execution (5 stories) — per-branch state checkpointing
+- Iterator Node (4 stories) — dynamic for_each iteration
 
 ---
 
-## Future: Root Registry (T3.8)
+## Next: Root Registry (T3.8)
 
 **Target:** TBD (not yet planned)
 **Status:** Not Started
 
-The next major milestone after library refinements. Will enable publishing, discovering, and installing .root packages from a central registry.
+The next major milestone. Will enable publishing, discovering, and installing .root packages from a central registry.
 
 ---
 
@@ -46,6 +36,8 @@ The next major milestone after library refinements. Will enable publishing, disc
 - [x] ~~**Roots v1 Core** — Core orchestrator, agent contracts, storage backends, YAML process definitions, expression evaluation, fork/join, decision nodes~~ (71 stories, completed 2026-03-24)
 - [x] ~~**Demo Apps** — Reference applications demonstrating Roots framework capabilities~~ (14 stories, completed 2026-03-25)
 - [x] ~~**Root Packaging** — .root packaging format, manifest & export, import & install, defaults & config~~ (16 stories, completed 2026-03-25)
+- [x] ~~**Library Refinements** — Vote aggregation, decision history, process versioning~~ (11 stories, completed 2026-05-13)
+- [x] ~~**Process Composition** — Subprocess node type, pause/fail cascading, depth limits, API~~ (9 stories, completed 2026-05-21)
 
 ---
 
