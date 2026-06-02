@@ -11,7 +11,6 @@ from typing import Any
 from uuid import uuid4
 
 from roots.agents.invoker import AgentInvoker, AgentSchemaValidationError
-from roots.agents.registry import AgentRegistry
 from roots.agents.types import AgentInput, AgentOutput
 from roots.core.aggregation import AggregationError, aggregate_votes
 from roots.core.decision import DecisionEngine
@@ -1143,14 +1142,13 @@ class Orchestrator:
     def __init__(
         self,
         storage: StorageBackend,
-        agent_registry: AgentRegistry,
+        agent_invoker: AgentInvoker,
         decision_engine: DecisionEngine,
         event_emitter: EventEmitter,
         poll_interval: float = 1.0,
     ) -> None:
         self._storage = storage
-        self._agent_registry = agent_registry
-        self._agent_invoker = AgentInvoker(agent_registry)
+        self._agent_invoker = agent_invoker
         self._decision_engine = decision_engine
         self._event_emitter = event_emitter
         self._poll_interval = poll_interval

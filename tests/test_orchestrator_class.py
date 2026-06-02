@@ -110,7 +110,7 @@ def orchestrator(
 ) -> Orchestrator:
     return Orchestrator(
         storage=sqlite_storage,
-        agent_registry=registry,
+        agent_invoker=AgentInvoker(registry),
         decision_engine=decision_engine,
         event_emitter=emitter,
         poll_interval=0.01,
@@ -128,8 +128,8 @@ class TestOwnerIdUniqueness:
         decision_engine: DecisionEngine,
         emitter: EventEmitter,
     ) -> None:
-        o1 = Orchestrator(sqlite_storage, registry, decision_engine, emitter)
-        o2 = Orchestrator(sqlite_storage, registry, decision_engine, emitter)
+        o1 = Orchestrator(sqlite_storage, AgentInvoker(registry), decision_engine, emitter)
+        o2 = Orchestrator(sqlite_storage, AgentInvoker(registry), decision_engine, emitter)
         assert o1.owner_id != o2.owner_id
         assert o1.owner_id.startswith("orchestrator-")
         assert o2.owner_id.startswith("orchestrator-")

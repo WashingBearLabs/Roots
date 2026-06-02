@@ -72,7 +72,7 @@ class Roots:
         )
         self._orchestrator = Orchestrator(
             storage,
-            self._agent_registry,
+            self._agent_invoker,
             self._decision_engine,
             self._event_emitter,
         )
