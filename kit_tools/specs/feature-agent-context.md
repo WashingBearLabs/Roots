@@ -67,11 +67,11 @@ This feature adds an opt-in `AgentContext` object injected into agents at invoca
 - This also fixes a latent bug where `Orchestrator`'s invoker doesn't receive `mcp_gateway`.
 
 **Acceptance Criteria:**
-- [ ] `Roots` creates `AgentInvoker` and passes to `Orchestrator` (single invoker instance)
-- [ ] `Orchestrator` no longer creates its own `AgentInvoker`
-- [ ] All existing tests pass with the refactored wiring
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] `Roots` creates `AgentInvoker` and passes to `Orchestrator` (single invoker instance)
+- [x] `Orchestrator` no longer creates its own `AgentInvoker`
+- [x] All existing tests pass with the refactored wiring
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-003: Opt-in context injection mechanism
 
