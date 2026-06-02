@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from roots.core.orchestrator import OrchestrationError
 from roots.storage.base import RunRecord
 
 if TYPE_CHECKING:
@@ -48,6 +47,8 @@ class AgentContext:
         Raises ``OrchestrationError`` if the child run fails, including the
         run ID and final status in the message.
         """
+        from roots.core.orchestrator import OrchestrationError
+
         await self._roots.execute_run(run_id)
         run = await self._roots.get_run(run_id)
         if run is None:

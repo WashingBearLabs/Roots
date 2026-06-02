@@ -59,7 +59,7 @@ class Roots:
         self._agent_registry = AgentRegistry()
         self._mcp_gateway = MCPGateway()
         self._agent_invoker = AgentInvoker(
-            self._agent_registry, mcp_gateway=self._mcp_gateway
+            self._agent_registry, mcp_gateway=self._mcp_gateway, roots=self
         )
         self._decision_engine = DecisionEngine(
             default_model=default_model,
@@ -88,10 +88,15 @@ class Roots:
         callable: Callable[..., Any],
         input_schema: dict[str, Any] | None = None,
         output_schema: dict[str, Any] | None = None,
+        needs_context: bool = False,
     ) -> None:
         """Register a local agent callable."""
         self._agent_registry.register_local(
-            name, callable, input_schema=input_schema, output_schema=output_schema
+            name,
+            callable,
+            input_schema=input_schema,
+            output_schema=output_schema,
+            needs_context=needs_context,
         )
 
     async def register_mcp_server(

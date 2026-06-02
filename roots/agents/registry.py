@@ -42,6 +42,7 @@ class AgentRegistry:
         callable: Callable[..., Any],
         input_schema: dict[str, Any] | None = None,
         output_schema: dict[str, Any] | None = None,
+        needs_context: bool = False,
     ) -> None:
         """Convenience method for registering a local agent."""
         registration = AgentRegistration(
@@ -50,5 +51,6 @@ class AgentRegistry:
             callable=callable,
             input_schema=input_schema,
             output_schema=output_schema,
+            needs_context=needs_context,
         )
         self.register(registration)

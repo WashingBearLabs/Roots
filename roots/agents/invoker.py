@@ -10,9 +10,10 @@ import httpx
 import jsonschema
 
 from roots.agents.registry import AgentRegistry
-from roots.agents.types import AgentInput, AgentOutput, AgentRegistration, AgentType
+from roots.agents.types import AgentInput, AgentOutput, AgentType, InvocationContext
 
 if TYPE_CHECKING:
+    from roots import Roots
     from roots.agents.mcp_gateway import MCPGateway
 
 
@@ -67,11 +68,13 @@ class AgentInvoker:
         registry: AgentRegistry,
         http_client: httpx.AsyncClient | None = None,
         mcp_gateway: MCPGateway | None = None,
+        roots: Roots | None = None,
     ) -> None:
         self._registry = registry
         self._owns_client = http_client is None
         self._http_client = http_client or httpx.AsyncClient()
         self._mcp_gateway = mcp_gateway
+        self._roots = roots
 
     async def close(self) -> None:
         """Close the HTTP client if we own it."""
@@ -99,7 +102,12 @@ class AgentInvoker:
         elif registration.agent_type == AgentType.REMOTE:
             result = await self._invoke_remote(agent_name, input)
         else:
-            result = await self._invoke_local(agent_name, input)
+            invocation_context = InvocationContext(
+                run_id=input.run_id,
+                owner_id="",
+                subprocess_depth=0,
+            )
+            result = await self._invoke_local(agent_name, input, invocation_context)
 
         if registration.output_schema is not None:
             self._validate_schema(
@@ -133,13 +141,22 @@ class AgentInvoker:
             )
 
     async def _invoke_local(
-        self, agent_name: str, input: AgentInput
+        self,
+        agent_name: str,
+        input: AgentInput,
+        invocation_context: InvocationContext,
     ) -> AgentOutput:
         registration = self._registry.get(agent_name)
         assert registration is not None
         fn = registration.callable
         assert fn is not None, "LOCAL agent must have a callable"
         input_dict = input.model_dump()
+
+        if registration.needs_context and self._roots is not None:
+            from roots.agents.context import AgentContext
+            input_dict["_roots_context"] = AgentContext(
+                self._roots, invocation_context.run_id
+            )
 
         try:
             if inspect.iscoroutinefunction(fn):

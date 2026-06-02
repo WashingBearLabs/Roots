@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -9,6 +10,20 @@ from pydantic import BaseModel, model_validator
 
 if TYPE_CHECKING:
     from typing import Self
+
+
+@dataclass
+class InvocationContext:
+    """Internal invocation metadata threaded alongside AgentInput.
+
+    Keeps AgentInput clean as the public contract while carrying
+    orchestration state needed for context injection and future
+    depth/lock management.
+    """
+
+    run_id: str
+    owner_id: str
+    subprocess_depth: int
 
 
 class AgentType(StrEnum):
@@ -29,6 +44,7 @@ class AgentRegistration(BaseModel):
     mcp_server_url: str | None = None
     mcp_server_command: list[str] | None = None
     mcp_tool_name: str | None = None
+    needs_context: bool = False
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -55,6 +71,8 @@ class AgentRegistration(BaseModel):
                     "MCP agent requires exactly one of "
                     "mcp_server_url or mcp_server_command"
                 )
+        if self.needs_context and self.agent_type in (AgentType.REMOTE, AgentType.MCP):
+            raise ValueError("needs_context is only supported for LOCAL agents")
         return self
 
 
