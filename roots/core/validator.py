@@ -75,12 +75,20 @@ def _validate_fork_join_pairing(
                     )
                     found_join = None
                     break
+                if current_type == NodeType.FORK:
+                    errors.append(
+                        f"Fork node '{node.id}': branch starting at "
+                        f"'{branch_start}' contains nested fork node '{current}' "
+                        f"— nested fork/join is not supported"
+                    )
+                    found_join = None
+                    break
                 for neighbor in adjacency.get(current, []):
                     if neighbor not in visited:
                         queue.append(neighbor)
 
             if found_join is None and not any(
-                node_type_map.get(v) in (NodeType.JOIN, NodeType.END)
+                node_type_map.get(v) in (NodeType.JOIN, NodeType.END, NodeType.FORK)
                 for v in visited
             ):
                 errors.append(

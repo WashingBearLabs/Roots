@@ -1,4 +1,4 @@
-"""Tests for fork/join (US-001 branch creation, US-002 parallel execution, US-003 merge_all, US-004 collect, US-005 partial failure, US-002-crash branch persistence, US-003-crash recovery)."""
+"""Tests for fork/join (US-001 branch creation, US-002 parallel execution, US-003 merge_all, US-004 collect, US-005 partial failure, US-002-crash branch persistence, US-003-crash recovery, US-006 nested fork/join guard)."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from roots.agents.invoker import AgentInvoker
 from roots.agents.registry import AgentRegistry
 from roots.core.decision import DecisionEngine
 from roots.core.orchestrator import OrchestrationError, ProcessRunner, deep_merge
+from roots.core.validator import validate_structure
 from roots.core.schema import (
     AgentNodeConfig,
     EdgeDefinition,
@@ -2389,3 +2390,94 @@ class TestCrashRecovery:
         # Branch results should be cleared after successful join
         stored = await sqlite_storage.get_branch_results(run_id, "fork1")
         assert len(stored) == 0
+
+
+def _make_nested_fork_process() -> ProcessDefinition:
+    """Outer fork → [inner fork, branch_b] → join → end (nested fork, schema invalid)."""
+    return ProcessDefinition(
+        id="nested-fork",
+        name="Nested Fork",
+        version="1.0.0",
+        nodes=[
+            NodeDefinition(id="fork1", type=NodeType.FORK, label="Outer Fork", config=ForkNodeConfig()),
+            NodeDefinition(id="inner_fork", type=NodeType.FORK, label="Inner Fork", config=ForkNodeConfig()),
+            NodeDefinition(id="inner_a", type=NodeType.AGENT, label="Inner A", config=AgentNodeConfig(agent="echo", output_key="ia_out")),
+            NodeDefinition(id="inner_b", type=NodeType.AGENT, label="Inner B", config=AgentNodeConfig(agent="echo", output_key="ib_out")),
+            NodeDefinition(id="inner_join", type=NodeType.JOIN, label="Inner Join", config=JoinNodeConfig()),
+            NodeDefinition(id="branch_b", type=NodeType.AGENT, label="Branch B", config=AgentNodeConfig(agent="echo", output_key="b_out")),
+            NodeDefinition(id="join1", type=NodeType.JOIN, label="Outer Join", config=JoinNodeConfig()),
+            NodeDefinition(id="done", type=NodeType.END, label="Done", config=EndNodeConfig(status=EndStatus.COMPLETED)),
+        ],
+        edges=[
+            EdgeDefinition(from_node="fork1", to_node="inner_fork"),
+            EdgeDefinition(from_node="fork1", to_node="branch_b"),
+            EdgeDefinition(from_node="inner_fork", to_node="inner_a"),
+            EdgeDefinition(from_node="inner_fork", to_node="inner_b"),
+            EdgeDefinition(from_node="inner_a", to_node="inner_join"),
+            EdgeDefinition(from_node="inner_b", to_node="inner_join"),
+            EdgeDefinition(from_node="inner_join", to_node="join1"),
+            EdgeDefinition(from_node="branch_b", to_node="join1"),
+            EdgeDefinition(from_node="join1", to_node="done"),
+        ],
+        entry_point="fork1",
+        fork_join_map={"fork1": "join1", "inner_fork": "inner_join"},
+    )
+
+
+class TestNestedForkGuard:
+    """US-006: Nested fork/join guard."""
+
+    async def test_schema_validator_detects_nested_fork(self) -> None:
+        """validate_structure returns an error when a fork branch contains another fork."""
+        proc = _make_nested_fork_process()
+        # Clear fork_join_map so validate_structure builds it fresh
+        proc.fork_join_map = {}
+        errors = validate_structure(proc)
+        nested_errors = [e for e in errors if "nested fork" in e.lower()]
+        assert nested_errors, f"Expected nested fork error, got: {errors}"
+        assert "inner_fork" in nested_errors[0]
+
+    async def test_runtime_guard_catches_bypass(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Runtime _in_fork_branch guard raises when a fork node appears inside a branch.
+
+        This exercises the defense-in-depth path: the process is built programmatically
+        with fork_join_map already populated, bypassing schema validation.
+        """
+        proc = _make_nested_fork_process()
+        # fork_join_map is pre-set so storage/runner accept the nested structure
+        proc, run_id = await _setup_run(sqlite_storage, proc)
+        runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
+
+        # Fork tick: nested fork error is captured as a branch exception (not raised here)
+        await runner.tick()
+
+        # Join tick: branch exception surfaces as OrchestrationError
+        with pytest.raises(OrchestrationError, match="[Nn]ested fork"):
+            await runner.tick()
+
+    async def test_agent_node_in_fork_branch_allowed(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Non-fork nodes (agent, emit, etc.) inside fork branches remain allowed.
+
+        Subprocess runners have their own _in_fork_branch flag, so they are
+        not affected by the guard on the parent runner.
+        """
+        proc, run_id = await _setup_run(sqlite_storage, make_fork_2_branch_process())
+        runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
+        # Full run must complete without OrchestrationError
+        await runner.run_to_completion()
+        from roots.core.state_machine import RunStatus
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        assert run.status == RunStatus.COMPLETED

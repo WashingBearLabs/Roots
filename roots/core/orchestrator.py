@@ -93,6 +93,7 @@ class ProcessRunner:
         self._fork_branches: list[dict[str, Any]] = []
         self._fork_join_node_id: str | None = None
         self._fork_branch_results: list[Any] | None = None
+        self._in_fork_branch: bool = False
 
     async def tick(self) -> bool:
         """Execute one node and return True if the run should continue."""
@@ -987,6 +988,16 @@ class ProcessRunner:
     ) -> dict[str, Any] | None:
         assert isinstance(node.config, ForkNodeConfig)
 
+        # Runtime guard: defense in depth against programmatic process construction
+        # that bypasses schema validation. The schema validator catches nested forks
+        # in YAML/dict-defined processes, but a ProcessDefinition built in code can
+        # reach _handle_fork with a nested fork without ever calling validate_structure.
+        if self._in_fork_branch:
+            raise OrchestrationError(
+                f"Nested fork/join is not supported — fork node '{node.id}' "
+                f"was encountered inside a fork branch"
+            )
+
         # Load process to get outbound edges and fork_join_map
         process = await self._storage.get_process(self._process_id or "")
         if process is None:
@@ -1147,79 +1158,83 @@ class ProcessRunner:
                 "fork/join pairing may be broken"
             )
 
-        visited: set[str] = set()
-        iterations = 0
-        max_iterations = 1000
+        self._in_fork_branch = True
+        try:
+            visited: set[str] = set()
+            iterations = 0
+            max_iterations = 1000
 
-        while current_node_id != join_node_id:
-            if current_node_id in visited:
-                raise OrchestrationError(
-                    f"Cycle detected in fork branch '{branch_id}' "
-                    f"at node '{current_node_id}'"
-                )
-            if iterations >= max_iterations:
-                raise OrchestrationError(
-                    f"Branch '{branch_id}' exceeded {max_iterations} iterations"
-                )
-            visited.add(current_node_id)
-            iterations += 1
-            node = process.get_node(current_node_id)
-            if node is None:
-                raise OrchestrationError(
-                    f"Node '{current_node_id}' not found in process "
-                    f"'{process.id}' (branch {branch_id})"
+            while current_node_id != join_node_id:
+                if current_node_id in visited:
+                    raise OrchestrationError(
+                        f"Cycle detected in fork branch '{branch_id}' "
+                        f"at node '{current_node_id}'"
+                    )
+                if iterations >= max_iterations:
+                    raise OrchestrationError(
+                        f"Branch '{branch_id}' exceeded {max_iterations} iterations"
+                    )
+                visited.add(current_node_id)
+                iterations += 1
+                node = process.get_node(current_node_id)
+                if node is None:
+                    raise OrchestrationError(
+                        f"Node '{current_node_id}' not found in process "
+                        f"'{process.id}' (branch {branch_id})"
+                    )
+
+                # Emit node.entered with branch_id
+                self._event_emitter.emit(
+                    create_event(
+                        EventType.NODE_ENTERED,
+                        run_id=self.run_id,
+                        process_id=self._process_id or "",
+                        node_id=node.id,
+                        node_type=node.type.value,
+                        metadata={"branch_id": branch_id},
+                    )
                 )
 
-            # Emit node.entered with branch_id
-            self._event_emitter.emit(
-                create_event(
-                    EventType.NODE_ENTERED,
-                    run_id=self.run_id,
-                    process_id=self._process_id or "",
-                    node_id=node.id,
-                    node_type=node.type.value,
-                    metadata={"branch_id": branch_id},
+                # Execute the node handler
+                node_start = time.monotonic()
+                output = await self._dispatch_node(node, state)
+
+                # Write output to state if applicable
+                if output is not None and hasattr(node.config, "output_key"):
+                    state[node.config.output_key] = output  # type: ignore[union-attr]
+
+                # Emit node.completed with branch_id and duration
+                elapsed_ms = int((time.monotonic() - node_start) * 1000)
+                self._event_emitter.emit(
+                    create_event(
+                        EventType.NODE_COMPLETED,
+                        run_id=self.run_id,
+                        process_id=self._process_id or "",
+                        node_id=node.id,
+                        node_type=node.type.value,
+                        duration_ms=elapsed_ms,
+                        metadata={"branch_id": branch_id},
+                    )
                 )
+
+                # Advance to next node via edge evaluation
+                edges = process.get_outbound_edges(node.id)
+                if not edges:
+                    raise OrchestrationError(
+                        f"Node '{node.id}' has no outbound edges "
+                        f"(branch {branch_id})"
+                    )
+                next_id = getattr(edges[0], "to_node", None)
+                current_node_id = next_id
+
+            # Record branch timing
+            branch_context["duration_ms"] = int(
+                (time.monotonic() - start_time) * 1000
             )
 
-            # Execute the node handler
-            node_start = time.monotonic()
-            output = await self._dispatch_node(node, state)
-
-            # Write output to state if applicable
-            if output is not None and hasattr(node.config, "output_key"):
-                state[node.config.output_key] = output  # type: ignore[union-attr]
-
-            # Emit node.completed with branch_id and duration
-            elapsed_ms = int((time.monotonic() - node_start) * 1000)
-            self._event_emitter.emit(
-                create_event(
-                    EventType.NODE_COMPLETED,
-                    run_id=self.run_id,
-                    process_id=self._process_id or "",
-                    node_id=node.id,
-                    node_type=node.type.value,
-                    duration_ms=elapsed_ms,
-                    metadata={"branch_id": branch_id},
-                )
-            )
-
-            # Advance to next node via edge evaluation
-            edges = process.get_outbound_edges(node.id)
-            if not edges:
-                raise OrchestrationError(
-                    f"Node '{node.id}' has no outbound edges "
-                    f"(branch {branch_id})"
-                )
-            next_id = getattr(edges[0], "to_node", None)
-            current_node_id = next_id
-
-        # Record branch timing
-        branch_context["duration_ms"] = int(
-            (time.monotonic() - start_time) * 1000
-        )
-
-        return state
+            return state
+        finally:
+            self._in_fork_branch = False
 
     async def _handle_join(
         self, node: NodeDefinition, state: dict[str, Any]
