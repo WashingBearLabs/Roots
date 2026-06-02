@@ -180,16 +180,16 @@ This feature adds an `iterator` node type that reads a list from work_item_state
 - Lock renewed periodically during parallel execution (same as fork handler)
 
 **Acceptance Criteria:**
-- [ ] Parallel mode starts child runs concurrently via `asyncio.create_task()` (not gather)
-- [ ] `max_concurrency` caps concurrent tasks via Semaphore
-- [ ] Uses crash-safe branch storage (persist as each completes)
-- [ ] Recovery: `get_branch_results()` presence for resume detection (same as sequential)
-- [ ] Results preserve input order by `_item_index`
-- [ ] `clear_branch_results` after successful completion only
-- [ ] Lock renewed periodically during parallel execution
-- [ ] Tests: parallel execution; concurrency limit; crash recovery; order preservation
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] Parallel mode starts child runs concurrently via `asyncio.create_task()` (not gather)
+- [x] `max_concurrency` caps concurrent tasks via Semaphore
+- [x] Uses crash-safe branch storage (persist as each completes)
+- [x] Recovery: `get_branch_results()` presence for resume detection (same as sequential)
+- [x] Results preserve input order by `_item_index`
+- [x] `clear_branch_results` after successful completion only
+- [x] Lock renewed periodically during parallel execution
+- [x] Tests: parallel execution; concurrency limit; crash recovery; order preservation
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-007: Parallel iteration failure and constraint handling
 
