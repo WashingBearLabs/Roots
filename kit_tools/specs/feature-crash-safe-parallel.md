@@ -149,13 +149,13 @@ This feature adds per-branch state checkpointing to storage so that the orchestr
 - Subprocess nodes inside fork branches ARE allowed (separate run lifecycle)
 
 **Acceptance Criteria:**
-- [ ] Schema validator detects nested fork/join and raises `ProcessValidationError`
-- [ ] Runtime guard uses `_in_fork_branch` flag with code comment explaining rationale
-- [ ] Error message clearly explains that nested fork/join is not supported
-- [ ] Subprocess nodes inside fork branches remain allowed
-- [ ] Tests: schema validation catches nested fork; runtime guard catches bypass; subprocess in fork branch allowed
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] Schema validator detects nested fork/join and raises `ProcessValidationError`
+- [x] Runtime guard uses `_in_fork_branch` flag with code comment explaining rationale
+- [x] Error message clearly explains that nested fork/join is not supported
+- [x] Subprocess nodes inside fork branches remain allowed
+- [x] Tests: schema validation catches nested fork; runtime guard catches bypass; subprocess in fork branch allowed
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ## Out of Scope
 
