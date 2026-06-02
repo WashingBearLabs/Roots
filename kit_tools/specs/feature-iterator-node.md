@@ -108,17 +108,17 @@ This feature adds an `iterator` node type that reads a list from work_item_state
 - Lifecycle events: `ITERATOR_STARTED`, `ITERATOR_ITEM_COMPLETED`, `ITERATOR_COMPLETED`
 
 **Acceptance Criteria:**
-- [ ] Sequential mode iterates over `items_key` list one at a time
-- [ ] Missing `items_key` raises `OrchestrationError`; non-list value raises `OrchestrationError`
-- [ ] `_subprocess_depth` incremented and checked (against `config.max_depth`)
-- [ ] Each item creates child run with `item_key` and `input_mapping` applied
-- [ ] Default failure behavior: fail iterator on first child failure (`on_item_failure` defaults to `"stop"`)
-- [ ] Results use uniform envelope: `{_item_index, _status, _item_value, output}`
-- [ ] Empty list produces empty result list (no error)
-- [ ] Lifecycle events: `ITERATOR_STARTED`, `ITERATOR_ITEM_COMPLETED`, `ITERATOR_COMPLETED`
-- [ ] Tests: sequential iteration; empty list; validation errors; depth enforcement; default failure; events
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] Sequential mode iterates over `items_key` list one at a time
+- [x] Missing `items_key` raises `OrchestrationError`; non-list value raises `OrchestrationError`
+- [x] `_subprocess_depth` incremented and checked (against `config.max_depth`)
+- [x] Each item creates child run with `item_key` and `input_mapping` applied
+- [x] Default failure behavior: fail iterator on first child failure (`on_item_failure` defaults to `"stop"`)
+- [x] Results use uniform envelope: `{_item_index, _status, _item_value, output}`
+- [x] Empty list produces empty result list (no error)
+- [x] Lifecycle events: `ITERATOR_STARTED`, `ITERATOR_ITEM_COMPLETED`, `ITERATOR_COMPLETED`
+- [x] Tests: sequential iteration; empty list; validation errors; depth enforcement; default failure; events
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-004: Sequential iteration crash recovery and pause cascading
 
