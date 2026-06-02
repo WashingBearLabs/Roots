@@ -11,3 +11,5 @@ kit_tools/specs/.execution-config.json
 kit_tools/specs/.execution-state.json
 kit_tools/.validate_epic_*.json
 .claude/
+kit_tools/.execution-events.jsonl
+kit_tools/.execution-notifications
