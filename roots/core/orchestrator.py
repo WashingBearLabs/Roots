@@ -1436,6 +1436,11 @@ class ProcessRunner:
             for r in existing_branch_results
             if r.status == "completed"
         }
+        failed_by_branch: dict[str, Any] = {
+            r.branch_id: r.result_json
+            for r in existing_branch_results
+            if r.status == "failed"
+        }
 
         # Emit ITERATOR_STARTED
         self._event_emitter.emit(
@@ -1491,6 +1496,7 @@ class ProcessRunner:
         renewal_task = asyncio.create_task(_renewal_loop())
 
         # Sequential iteration: one item at a time
+        failure_count = 0
         results: list[dict[str, Any]] = []
         try:
             for index, item in enumerate(items):
@@ -1499,6 +1505,12 @@ class ProcessRunner:
                 # Crash recovery: skip already-completed items, use cached result
                 if branch_id in completed_by_branch:
                     results.append(completed_by_branch[branch_id])
+                    continue
+
+                # Crash recovery: skip already-failed items, count toward failure limit
+                if branch_id in failed_by_branch:
+                    results.append(failed_by_branch[branch_id])
+                    failure_count += 1
                     continue
 
                 # Check for lock theft before starting next item
@@ -1567,14 +1579,19 @@ class ProcessRunner:
                     return None
 
                 child_failed = completed_child.status == RunStatus.FAILED
-                envelope: dict[str, Any] = {
-                    "_item_index": index,
-                    "_status": "failed" if child_failed else "completed",
-                    "_item_value": item,
-                    "output": dict(completed_child.work_item_state),
-                }
 
                 if child_failed:
+                    error_msg = str(
+                        completed_child.work_item_state.get(
+                            "_error", "child process terminated with failed status"
+                        )
+                    )
+                    envelope: dict[str, Any] = {
+                        "_item_index": index,
+                        "_status": "failed",
+                        "_item_value": item,
+                        "output": {"_error": error_msg},
+                    }
                     await self._storage.save_branch_result(
                         self.run_id, node.id, f"item-{index}", "failed", envelope
                     )
@@ -1607,8 +1624,37 @@ class ProcessRunner:
                             f"Iterator node '{node.id}': item {index} failed "
                             f"(on_item_failure='stop')"
                         )
-                    results.append(envelope)
+                    elif config.on_item_failure == ItemFailureMode.STOP_AFTER_N:
+                        failure_count += 1
+                        results.append(envelope)
+                        if failure_count >= config.max_failures:
+                            self._event_emitter.emit(
+                                create_event(
+                                    EventType.ITERATOR_FAILED,
+                                    run_id=self.run_id,
+                                    process_id=self._process_id or "",
+                                    node_id=node.id,
+                                    metadata={
+                                        "failed_at_index": index,
+                                        "failure_count": failure_count,
+                                        "reason": "max_failures_reached",
+                                    },
+                                )
+                            )
+                            raise OrchestrationError(
+                                f"Iterator node '{node.id}': {failure_count} item(s) "
+                                f"failed (on_item_failure='stop_after_n', "
+                                f"max_failures={config.max_failures})"
+                            )
+                    else:  # CONTINUE
+                        results.append(envelope)
                 else:
+                    envelope = {
+                        "_item_index": index,
+                        "_status": "completed",
+                        "_item_value": item,
+                        "output": dict(completed_child.work_item_state),
+                    }
                     await self._storage.save_branch_result(
                         self.run_id, node.id, f"item-{index}", "completed", envelope
                     )

@@ -128,6 +128,7 @@ def _make_iterator_process(
     output_key: str = "results",
     on_item_failure: ItemFailureMode = ItemFailureMode.STOP,
     max_depth: int = 5,
+    max_failures: int = 1,
     input_mapping: dict[str, str] | None = None,
 ) -> ProcessDefinition:
     """Parent process with one iterator node followed by an end node."""
@@ -149,6 +150,7 @@ def _make_iterator_process(
                     item_key=item_key,
                     on_item_failure=on_item_failure,
                     max_depth=max_depth,
+                    max_failures=max_failures,
                     input_mapping=input_mapping or {},
                 ),
             ),
@@ -776,6 +778,219 @@ class TestIteratorFailureBehavior:
             item_key="item",
         )
         assert config.on_item_failure == ItemFailureMode.STOP
+
+
+# ---- US-005: Failure handling modes ----
+
+
+class TestIteratorFailureModes:
+    """on_item_failure modes: continue, stop, stop_after_n."""
+
+    async def test_failed_envelope_has_error_key(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Failed items use uniform envelope with output._error as str."""
+        parent_proc = _make_iterator_process(
+            "parent", "fail-child",
+            on_item_failure=ItemFailureMode.CONTINUE,
+        )
+        child_proc = _make_failing_child_process("fail-child")
+
+        _, final_run = await _run_iterator_process(
+            sqlite_storage, invoker, decision_engine, emitter,
+            parent_proc, child_proc,
+            work_item={"items": ["x"]},
+        )
+
+        results = final_run.work_item_state.get("results")
+        assert results is not None and len(results) == 1
+        envelope = results[0]
+        assert envelope["_status"] == "failed"
+        assert isinstance(envelope["output"], dict)
+        assert "_error" in envelope["output"]
+        assert isinstance(envelope["output"]["_error"], str)
+
+    async def test_all_fail_with_continue_completes(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """With continue mode, iterator completes even when all items fail."""
+        parent_proc = _make_iterator_process(
+            "parent", "fail-child",
+            on_item_failure=ItemFailureMode.CONTINUE,
+        )
+        child_proc = _make_failing_child_process("fail-child")
+
+        _, final_run = await _run_iterator_process(
+            sqlite_storage, invoker, decision_engine, emitter,
+            parent_proc, child_proc,
+            work_item={"items": ["a", "b", "c"]},
+        )
+
+        assert final_run.status == RunStatus.COMPLETED
+        results = final_run.work_item_state.get("results")
+        assert isinstance(results, list)
+        assert len(results) == 3
+        assert all(r["_status"] == "failed" for r in results)
+        assert all("_error" in r["output"] for r in results)
+
+    async def test_stop_after_n_halts_after_max_failures(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """stop_after_n halts when failure count reaches max_failures."""
+        parent_proc = _make_iterator_process(
+            "parent", "fail-child",
+            on_item_failure=ItemFailureMode.STOP_AFTER_N,
+            max_failures=2,
+        )
+        child_proc = _make_failing_child_process("fail-child")
+
+        await sqlite_storage.save_process(parent_proc)
+        await sqlite_storage.save_process(child_proc)
+        run = await sqlite_storage.create_run(
+            parent_proc.id, {"items": ["a", "b", "c"]}
+        )
+        runner = _make_runner(run.id, sqlite_storage, invoker, decision_engine, emitter)
+
+        with pytest.raises(OrchestrationError, match="stop_after_n|max_failures"):
+            await runner.run_to_completion()
+
+    async def test_stop_after_n_only_creates_n_child_runs(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """stop_after_n creates exactly max_failures child runs when all fail."""
+        parent_proc = _make_iterator_process(
+            "parent", "fail-child",
+            on_item_failure=ItemFailureMode.STOP_AFTER_N,
+            max_failures=2,
+        )
+        child_proc = _make_failing_child_process("fail-child")
+
+        await sqlite_storage.save_process(parent_proc)
+        await sqlite_storage.save_process(child_proc)
+        run = await sqlite_storage.create_run(
+            parent_proc.id, {"items": ["a", "b", "c"]}
+        )
+        runner = _make_runner(run.id, sqlite_storage, invoker, decision_engine, emitter)
+
+        try:
+            await runner.run_to_completion()
+        except OrchestrationError:
+            pass
+
+        child_runs = await sqlite_storage.list_runs(process_id="fail-child")
+        assert len(child_runs) == 2
+
+    async def test_stop_after_n_preserves_completed_results(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """stop_after_n preserves completed branch results in storage on failure."""
+        parent_proc = _make_iterator_process(
+            "parent", "fail-child",
+            on_item_failure=ItemFailureMode.STOP_AFTER_N,
+            max_failures=2,
+        )
+        child_proc = _make_failing_child_process("fail-child")
+
+        await sqlite_storage.save_process(parent_proc)
+        await sqlite_storage.save_process(child_proc)
+        run = await sqlite_storage.create_run(
+            parent_proc.id, {"items": ["a", "b", "c"]}
+        )
+        runner = _make_runner(run.id, sqlite_storage, invoker, decision_engine, emitter)
+
+        try:
+            await runner.run_to_completion()
+        except OrchestrationError:
+            pass
+
+        branches = await sqlite_storage.get_branch_results(run.id, "iter")
+        assert len(branches) == 2
+        assert all(b.status == "failed" for b in branches)
+
+    async def test_stop_after_n_emits_iterator_failed(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        sink: CollectorSink,
+        emitter: EventEmitter,
+    ) -> None:
+        """ITERATOR_FAILED is emitted when stop_after_n limit is reached."""
+        parent_proc = _make_iterator_process(
+            "parent", "fail-child",
+            on_item_failure=ItemFailureMode.STOP_AFTER_N,
+            max_failures=1,
+        )
+        child_proc = _make_failing_child_process("fail-child")
+
+        await sqlite_storage.save_process(parent_proc)
+        await sqlite_storage.save_process(child_proc)
+        run = await sqlite_storage.create_run(parent_proc.id, {"items": ["x"]})
+        runner = _make_runner(run.id, sqlite_storage, invoker, decision_engine, emitter)
+
+        try:
+            await runner.run_to_completion()
+        except OrchestrationError:
+            pass
+
+        await asyncio.sleep(0)
+        failed_events = [e for e in sink.events if e.event == EventType.ITERATOR_FAILED]
+        assert len(failed_events) == 1
+        assert failed_events[0].metadata.get("reason") == "max_failures_reached"
+
+    async def test_stop_after_n_emits_item_failed_per_failure(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        sink: CollectorSink,
+        emitter: EventEmitter,
+    ) -> None:
+        """ITERATOR_ITEM_FAILED emitted for each failed item in stop_after_n mode."""
+        parent_proc = _make_iterator_process(
+            "parent", "fail-child",
+            on_item_failure=ItemFailureMode.STOP_AFTER_N,
+            max_failures=2,
+        )
+        child_proc = _make_failing_child_process("fail-child")
+
+        await sqlite_storage.save_process(parent_proc)
+        await sqlite_storage.save_process(child_proc)
+        run = await sqlite_storage.create_run(
+            parent_proc.id, {"items": ["a", "b", "c"]}
+        )
+        runner = _make_runner(run.id, sqlite_storage, invoker, decision_engine, emitter)
+
+        try:
+            await runner.run_to_completion()
+        except OrchestrationError:
+            pass
+
+        await asyncio.sleep(0)
+        item_failed_events = [
+            e for e in sink.events if e.event == EventType.ITERATOR_ITEM_FAILED
+        ]
+        assert len(item_failed_events) == 2
 
 
 # ---- Branch results persistence tests ----
