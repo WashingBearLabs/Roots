@@ -1047,3 +1047,8 @@
 - Learnings: PAUSED-as-failure error message in parallel mode was generic ('child process terminated with failed status'); updated to clearly mention parallel mode constraint and sequential mode as the fix, satisfying the acceptance criterion for 'clear error message'.; The core failure-mode logic (stop/continue/stop_after_n), ITERATOR_ITEM_FAILED events, and PAUSED-as-failure detection were already implemented from prior attempts. US-007 only needed the clear PAUSED error message and three missing tests.; CheckpointNodeConfig must be added to test imports when testing checkpoint-in-parallel scenarios — it wasn't in the original test_iterator_parallel.py imports.; Pre-existing pyright EdgeDefinition alias errors in test files are expected and do not indicate new regressions.; Verifier note: All functional acceptance criteria for US-007 are met and well-covered by passing tests. The parallel failure-mode logic (stop/continue/stop_after_n) and the checkpoint-as-failure constraint are correctly implemented in orchestrator.py, with PAUSED status folded into failure handling and a clear actionable error message. ITERATOR_ITEM_FAILED emission is correct and tested per-item. The only blemish is pre-existing lint/typecheck debt — none introduced by this story.
 - Committed: feat(iterator-node): US-007 - Parallel iteration failure and constraint handling
 
+### Execution Complete — 2026-06-02T06:35:42Z
+- Stories: 25/25 completed
+- Total attempts: 29
+- Total sessions: 61
+
