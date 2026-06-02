@@ -72,16 +72,16 @@ This feature adds a lightweight callback/subscription mechanism that lets applic
 - Existing EventEmitter tests in `tests/test_emitter.py` (NOT `test_events.py`) must all still pass
 
 **Acceptance Criteria:**
-- [ ] EventEmitter accepts optional `SubscriptionManager` in constructor
-- [ ] Subscription dispatch scheduled via `asyncio.create_task()` (emit stays sync)
-- [ ] Early-return guard updated: `if not self._sinks and not self._subscriptions: return` (subscriptions fire even without sinks)
-- [ ] Exceptions in callbacks are caught and logged (don't break orchestration or other callbacks)
-- [ ] Callbacks that emit events don't cause recursion (naturally handled by task scheduling)
-- [ ] Subscription dispatch uses a separate pending dict from sink tasks (not shared bounded buffer) to prevent sink pressure from shedding subscription tasks
-- [ ] Existing sink behavior unchanged (all current tests in `tests/test_emitter.py` pass)
-- [ ] Tests: callback fires after event; error isolation; callback emitting event doesn't recurse
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] EventEmitter accepts optional `SubscriptionManager` in constructor
+- [x] Subscription dispatch scheduled via `asyncio.create_task()` (emit stays sync)
+- [x] Early-return guard updated: `if not self._sinks and not self._subscriptions: return` (subscriptions fire even without sinks)
+- [x] Exceptions in callbacks are caught and logged (don't break orchestration or other callbacks)
+- [x] Callbacks that emit events don't cause recursion (naturally handled by task scheduling)
+- [x] Subscription dispatch uses a separate pending dict from sink tasks (not shared bounded buffer) to prevent sink pressure from shedding subscription tasks
+- [x] Existing sink behavior unchanged (all current tests in `tests/test_emitter.py` pass)
+- [x] Tests: callback fires after event; error isolation; callback emitting event doesn't recurse
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-003: wait_for() helper on SubscriptionManager
 
