@@ -156,14 +156,14 @@ This feature adds an `iterator` node type that reads a list from work_item_state
 - All failure modes persist completed results in branch storage
 
 **Acceptance Criteria:**
-- [ ] `"continue"` records failed items and processes all remaining; iterator completes
-- [ ] `"stop"` halts on first failure; iterator node fails; completed results preserved
-- [ ] `"stop_after_n"` halts after `max_failures`; completed results preserved
-- [ ] Failed items use uniform envelope: `{_item_index, _status: "failed", _item_value, output: {_error: str}}`
-- [ ] `ITERATOR_ITEM_FAILED` event emitted for each failed item
-- [ ] Tests: continue with failures; stop on first; stop_after_n; all-fail with continue
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] `"continue"` records failed items and processes all remaining; iterator completes
+- [x] `"stop"` halts on first failure; iterator node fails; completed results preserved
+- [x] `"stop_after_n"` halts after `max_failures`; completed results preserved
+- [x] Failed items use uniform envelope: `{_item_index, _status: "failed", _item_value, output: {_error: str}}`
+- [x] `ITERATOR_ITEM_FAILED` event emitted for each failed item
+- [x] Tests: continue with failures; stop on first; stop_after_n; all-fail with continue
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-006: Parallel iteration core handler
 
