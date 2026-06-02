@@ -46,17 +46,17 @@ This feature adds a lightweight callback/subscription mechanism that lets applic
 - Use `EventType` from `roots/events/types.py` for type parameter
 
 **Acceptance Criteria:**
-- [ ] `SubscriptionManager` class in `roots/events/subscriptions.py`
-- [ ] `on(event_type, callback, run_id=None)` registers persistent callback, returns subscription_id string
-- [ ] `once(event_type, callback, run_id=None)` registers one-shot callback, auto-removes after first fire
-- [ ] `off(subscription_id)` removes subscription; returns True if found, False if not
-- [ ] `dispatch(event)` fires all matching callbacks (type match + optional run_id match)
-- [ ] Dispatch snapshots subscriptions before iterating (safe against mutation during callbacks)
-- [ ] Callbacks are async callables accepting `EventEnvelope`; exceptions caught and logged per-callback
-- [ ] on/once/wait_for accept single EventType or list[EventType] for multi-event matching
-- [ ] Tests: register/fire/unsubscribe; once auto-removal; run_id filtering; error in callback doesn't affect others
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] `SubscriptionManager` class in `roots/events/subscriptions.py`
+- [x] `on(event_type, callback, run_id=None)` registers persistent callback, returns subscription_id string
+- [x] `once(event_type, callback, run_id=None)` registers one-shot callback, auto-removes after first fire
+- [x] `off(subscription_id)` removes subscription; returns True if found, False if not
+- [x] `dispatch(event)` fires all matching callbacks (type match + optional run_id match)
+- [x] Dispatch snapshots subscriptions before iterating (safe against mutation during callbacks)
+- [x] Callbacks are async callables accepting `EventEnvelope`; exceptions caught and logged per-callback
+- [x] on/once/wait_for accept single EventType or list[EventType] for multi-event matching
+- [x] Tests: register/fire/unsubscribe; once auto-removal; run_id filtering; error in callback doesn't affect others
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-002: EventEmitter integration with error isolation
 
