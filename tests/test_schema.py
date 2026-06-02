@@ -17,6 +17,8 @@ from roots.core.schema import (
     EndStatus,
     ExecutionMode,
     ForkNodeConfig,
+    ItemFailureMode,
+    IteratorNodeConfig,
     JoinNodeConfig,
     MergeStrategy,
     NodeDefinition,
@@ -30,7 +32,7 @@ from roots.core.schema import (
 
 
 class TestNodeType:
-    def test_all_eight_values(self) -> None:
+    def test_all_nine_values(self) -> None:
         expected = {
             "agent",
             "agent_pool",
@@ -40,6 +42,7 @@ class TestNodeType:
             "join",
             "emit",
             "end",
+            "iterator",
         }
         assert {v.value for v in NodeType} == expected
 
@@ -112,6 +115,13 @@ VALID_CONFIGS: dict[NodeType, dict[str, Any]] = {
     NodeType.JOIN: {},
     NodeType.EMIT: {"event_type": "process.done"},
     NodeType.END: {"status": "completed"},
+    NodeType.ITERATOR: {
+        "items_key": "items",
+        "process_id": "sub_proc",
+        "execution_mode": "sequential",
+        "output_key": "results",
+        "item_key": "item",
+    },
 }
 
 
@@ -670,6 +680,168 @@ class TestEndNodeConfig:
     def test_invalid_status(self) -> None:
         with pytest.raises(ValueError):
             EndNodeConfig(status="unknown")  # type: ignore[arg-type]
+
+
+class TestItemFailureMode:
+    def test_all_values(self) -> None:
+        assert {v.value for v in ItemFailureMode} == {"continue", "stop", "stop_after_n"}
+
+    def test_is_str_enum(self) -> None:
+        assert isinstance(ItemFailureMode.CONTINUE, str)
+        assert ItemFailureMode.CONTINUE == "continue"
+        assert ItemFailureMode.STOP == "stop"
+        assert ItemFailureMode.STOP_AFTER_N == "stop_after_n"
+
+
+class TestIteratorNodeConfig:
+    def test_minimal_valid_config(self) -> None:
+        cfg = IteratorNodeConfig(
+            items_key="items",
+            process_id="sub_proc",
+            execution_mode=ExecutionMode.SEQUENTIAL,
+            output_key="results",
+            item_key="item",
+        )
+        assert cfg.items_key == "items"
+        assert cfg.process_id == "sub_proc"
+        assert cfg.execution_mode == ExecutionMode.SEQUENTIAL
+        assert cfg.output_key == "results"
+        assert cfg.item_key == "item"
+        assert cfg.on_item_failure == ItemFailureMode.STOP
+        assert cfg.max_failures == 1
+        assert cfg.input_mapping == {}
+        assert cfg.output_mapping == {}
+        assert cfg.max_concurrency is None
+        assert cfg.max_depth == 5
+
+    def test_parallel_execution_mode(self) -> None:
+        cfg = IteratorNodeConfig(
+            items_key="items",
+            process_id="sub_proc",
+            execution_mode=ExecutionMode.PARALLEL,
+            output_key="results",
+            item_key="item",
+            max_concurrency=4,
+        )
+        assert cfg.execution_mode == ExecutionMode.PARALLEL
+        assert cfg.max_concurrency == 4
+
+    def test_first_pass_rejected(self) -> None:
+        with pytest.raises(ValueError, match="first_pass.*not supported"):
+            IteratorNodeConfig(
+                items_key="items",
+                process_id="sub_proc",
+                execution_mode=ExecutionMode.FIRST_PASS,
+                output_key="results",
+                item_key="item",
+            )
+
+    def test_input_mapping(self) -> None:
+        cfg = IteratorNodeConfig(
+            items_key="items",
+            process_id="sub_proc",
+            execution_mode=ExecutionMode.SEQUENTIAL,
+            output_key="results",
+            item_key="item",
+            input_mapping={"parent_key": "child_key"},
+        )
+        assert cfg.input_mapping == {"parent_key": "child_key"}
+
+    def test_output_mapping(self) -> None:
+        cfg = IteratorNodeConfig(
+            items_key="items",
+            process_id="sub_proc",
+            execution_mode=ExecutionMode.SEQUENTIAL,
+            output_key="results",
+            item_key="item",
+            output_mapping={"child_out": "result_key"},
+        )
+        assert cfg.output_mapping == {"child_out": "result_key"}
+
+    def test_max_depth_bounds(self) -> None:
+        with pytest.raises(ValueError):
+            IteratorNodeConfig(
+                items_key="items",
+                process_id="sub_proc",
+                execution_mode=ExecutionMode.SEQUENTIAL,
+                output_key="results",
+                item_key="item",
+                max_depth=0,
+            )
+        with pytest.raises(ValueError):
+            IteratorNodeConfig(
+                items_key="items",
+                process_id="sub_proc",
+                execution_mode=ExecutionMode.SEQUENTIAL,
+                output_key="results",
+                item_key="item",
+                max_depth=21,
+            )
+
+    def test_max_depth_boundary_values(self) -> None:
+        cfg_min = IteratorNodeConfig(
+            items_key="items",
+            process_id="sub_proc",
+            execution_mode=ExecutionMode.SEQUENTIAL,
+            output_key="results",
+            item_key="item",
+            max_depth=1,
+        )
+        assert cfg_min.max_depth == 1
+        cfg_max = IteratorNodeConfig(
+            items_key="items",
+            process_id="sub_proc",
+            execution_mode=ExecutionMode.SEQUENTIAL,
+            output_key="results",
+            item_key="item",
+            max_depth=20,
+        )
+        assert cfg_max.max_depth == 20
+
+    def test_on_item_failure_continue(self) -> None:
+        cfg = IteratorNodeConfig(
+            items_key="items",
+            process_id="sub_proc",
+            execution_mode=ExecutionMode.SEQUENTIAL,
+            output_key="results",
+            item_key="item",
+            on_item_failure=ItemFailureMode.CONTINUE,
+        )
+        assert cfg.on_item_failure == ItemFailureMode.CONTINUE
+
+    def test_stop_after_n_with_max_failures(self) -> None:
+        cfg = IteratorNodeConfig(
+            items_key="items",
+            process_id="sub_proc",
+            execution_mode=ExecutionMode.SEQUENTIAL,
+            output_key="results",
+            item_key="item",
+            on_item_failure=ItemFailureMode.STOP_AFTER_N,
+            max_failures=3,
+        )
+        assert cfg.on_item_failure == ItemFailureMode.STOP_AFTER_N
+        assert cfg.max_failures == 3
+
+    def test_config_map_registration(self) -> None:
+        from roots.core.schema import CONFIG_MAP
+        assert NodeType.ITERATOR in CONFIG_MAP
+        assert CONFIG_MAP[NodeType.ITERATOR] is IteratorNodeConfig
+
+    def test_node_definition_parses_iterator_config(self) -> None:
+        node = NodeDefinition(
+            id="iter-1",
+            type=NodeType.ITERATOR,
+            label="Iterate",
+            config={
+                "items_key": "items",
+                "process_id": "sub_proc",
+                "execution_mode": "sequential",
+                "output_key": "results",
+                "item_key": "item",
+            },
+        )
+        assert isinstance(node.config, IteratorNodeConfig)
+        assert node.config.items_key == "items"
 
 
 class TestConfigDiscriminator:

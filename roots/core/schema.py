@@ -21,6 +21,7 @@ class NodeType(StrEnum):
     JOIN = "join"
     EMIT = "emit"
     END = "end"
+    ITERATOR = "iterator"
 
 
 class BackoffStrategy(StrEnum):
@@ -211,6 +212,34 @@ class EndNodeConfig(BaseModel):
     status: EndStatus
 
 
+class ItemFailureMode(StrEnum):
+    CONTINUE = "continue"
+    STOP = "stop"
+    STOP_AFTER_N = "stop_after_n"
+
+
+class IteratorNodeConfig(BaseModel):
+    items_key: str
+    process_id: str
+    execution_mode: ExecutionMode
+    output_key: str
+    on_item_failure: ItemFailureMode = ItemFailureMode.STOP
+    max_failures: int = 1
+    item_key: str
+    input_mapping: dict[str, str] = Field(default_factory=dict)
+    output_mapping: dict[str, str] = Field(default_factory=dict)
+    max_concurrency: int | None = None
+    max_depth: int = Field(default=5, ge=1, le=20)
+
+    @model_validator(mode="after")
+    def validate_execution_mode(self) -> Self:
+        if self.execution_mode == ExecutionMode.FIRST_PASS:
+            raise ValueError(
+                "execution_mode 'first_pass' is not supported for iterator nodes"
+            )
+        return self
+
+
 CONFIG_MAP: dict[NodeType, type[BaseModel]] = {
     NodeType.AGENT: AgentNodeConfig,
     NodeType.AGENT_POOL: AgentPoolNodeConfig,
@@ -220,6 +249,7 @@ CONFIG_MAP: dict[NodeType, type[BaseModel]] = {
     NodeType.JOIN: JoinNodeConfig,
     NodeType.EMIT: EmitNodeConfig,
     NodeType.END: EndNodeConfig,
+    NodeType.ITERATOR: IteratorNodeConfig,
 }
 
 
