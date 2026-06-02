@@ -125,15 +125,15 @@ This feature adds a lightweight callback/subscription mechanism that lets applic
 - **Note:** start_and_wait listens for [RUN_COMPLETED, RUN_FAILED] by default (resolves on either terminal state). If the run fails, the returned EventEnvelope has event=RUN_FAILED — caller checks event type to distinguish success from failure.
 
 **Acceptance Criteria:**
-- [ ] `Roots.on()`, `Roots.once()`, `Roots.off()`, `Roots.wait_for()` delegate to `SubscriptionManager`
-- [ ] `SubscriptionManager` stored as `self._subscriptions` on Roots (not reached through EventEmitter internals)
-- [ ] `Roots.start_and_wait(process_id, work_item, timeout=..., event_type=RUN_COMPLETED)` registers subscription, starts run, triggers execution, and waits (race-free)
-- [ ] `start_and_wait` filters by run_id in callback (registered before run_id is known)
-- [ ] `start_and_wait` returns `(RunRecord, EventEnvelope)` tuple
-- [ ] `start_and_wait` cleans up subscription if `start_run()` throws (no dangling subscription)
-- [ ] Tests: delegation works; start_and_wait race-free; start_and_wait timeout; start_and_wait with failed run
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] `Roots.on()`, `Roots.once()`, `Roots.off()`, `Roots.wait_for()` delegate to `SubscriptionManager`
+- [x] `SubscriptionManager` stored as `self._subscriptions` on Roots (not reached through EventEmitter internals)
+- [x] `Roots.start_and_wait(process_id, work_item, timeout=..., event_type=RUN_COMPLETED)` registers subscription, starts run, triggers execution, and waits (race-free)
+- [x] `start_and_wait` filters by run_id in callback (registered before run_id is known)
+- [x] `start_and_wait` returns `(RunRecord, EventEnvelope)` tuple
+- [x] `start_and_wait` cleans up subscription if `start_run()` throws (no dangling subscription)
+- [x] Tests: delegation works; start_and_wait race-free; start_and_wait timeout; start_and_wait with failed run
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ## Out of Scope
 
