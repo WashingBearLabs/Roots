@@ -1,8 +1,10 @@
-"""Tests for agent and agent_pool node handlers (US-003)."""
+"""Tests for agent and agent_pool node handlers (US-003, US-004)."""
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
@@ -73,6 +75,12 @@ async def counter_agent(input: dict[str, Any]) -> dict[str, Any]:
     """Increments a counter in state, useful for sequential chaining tests."""
     count = input["work_item_state"].get("count", 0)
     return {"output": {"count": count + 1}, "escalate": False}
+
+
+async def slow_pool_agent(input: dict[str, Any]) -> dict[str, Any]:
+    """Agent that sleeps 0.1s — used for lock renewal timing tests."""
+    await asyncio.sleep(0.1)
+    return {"output": {"slow": True}, "escalate": False}
 
 
 async def vote_yes_agent(input: dict[str, Any]) -> dict[str, Any]:
@@ -163,6 +171,7 @@ def registry() -> AgentRegistry:
     reg.register_local("escalating", escalating_agent)
     reg.register_local("failing", failing_agent)
     reg.register_local("counter", counter_agent)
+    reg.register_local("slow_pool", slow_pool_agent)
     reg.register_local("vote_yes", vote_yes_agent)
     reg.register_local("vote_no", vote_no_agent)
     reg.register_local("abstain", abstain_agent)
@@ -694,3 +703,233 @@ class TestAgentPoolVoteAggregation:
         run = await sqlite_storage.get_run(run_id)
         assert run is not None
         assert run.status == "failed"
+
+
+# --- US-004 Parallel Agent Pool Persistence Tests ---
+
+
+class TestAgentPoolParallelPersistence:
+    """US-004: Crash-safe parallel agent_pool — persistence."""
+
+    async def test_parallel_persists_each_agent_result(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Each agent's result is saved to branch storage with stable agent: branch IDs."""
+        proc = make_pool_process(["upper", "reverse"], ExecutionMode.PARALLEL)
+        run_id = await _setup_run(sqlite_storage, proc, {"text": "hello"})
+        runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
+
+        # Intercept clear so we can inspect results after tick completes
+        saved: list[Any] = []
+        orig_clear = sqlite_storage.clear_branch_results
+
+        async def capturing_clear(rid: str, nid: str) -> None:
+            results = await sqlite_storage.get_branch_results(rid, nid)
+            saved.extend(results)
+            return await orig_clear(rid, nid)
+
+        sqlite_storage.clear_branch_results = capturing_clear  # type: ignore[method-assign]
+
+        await runner.tick()  # pool node runs and clears on success
+
+        branch_ids = {r.branch_id for r in saved}
+        assert "agent:upper" in branch_ids
+        assert "agent:reverse" in branch_ids
+        assert all(r.status == "completed" for r in saved)
+
+    async def test_result_round_trip_preserves_escalate_fields(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """BranchResult.result_json preserves escalate and escalation_reason fields."""
+        proc = make_pool_process(["upper", "escalating"], ExecutionMode.PARALLEL)
+        run_id = await _setup_run(sqlite_storage, proc, {"text": "hello"})
+        runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
+
+        # Capture results before clear (escalating agent triggers escalation,
+        # but the pool still calls clear_branch_results after assembling results)
+        saved: list[Any] = []
+        orig_clear = sqlite_storage.clear_branch_results
+
+        async def capturing_clear(rid: str, nid: str) -> None:
+            results = await sqlite_storage.get_branch_results(rid, nid)
+            saved.extend(results)
+            return await orig_clear(rid, nid)
+
+        sqlite_storage.clear_branch_results = capturing_clear  # type: ignore[method-assign]
+
+        await runner.tick()
+
+        by_branch = {r.branch_id: r for r in saved}
+
+        upper_result = by_branch["agent:upper"]
+        assert upper_result.status == "completed"
+        assert upper_result.result_json["escalate"] is False
+        assert upper_result.result_json["escalation_reason"] is None
+
+        escalating_result = by_branch["agent:escalating"]
+        assert escalating_result.status == "completed"
+        assert escalating_result.result_json["escalate"] is True
+        assert escalating_result.result_json["escalation_reason"] == "Agent needs human review"
+
+    async def test_crash_recovery_skips_completed_agent(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Pre-seeded completed agent is skipped on re-entry."""
+        call_log: list[str] = []
+
+        async def tracking_upper(input: dict[str, Any]) -> dict[str, Any]:
+            call_log.append("upper_called")
+            text = input["work_item_state"].get("text", "")
+            return {"output": {"upper": text.upper()}, "escalate": False}
+
+        invoker._registry.register_local("tracking_upper", tracking_upper)
+        invoker._registry.register_local("tracking_reverse", reverse_agent)
+
+        proc = make_pool_process(["tracking_upper", "tracking_reverse"], ExecutionMode.PARALLEL)
+        run_id = await _setup_run(sqlite_storage, proc, {"text": "hello"})
+
+        # Pre-seed tracking_upper as already completed
+        pre_seeded: dict[str, Any] = {
+            "output": {"upper": "RECOVERED"},
+            "escalate": False,
+            "escalation_reason": None,
+        }
+        await sqlite_storage.save_branch_result(
+            run_id, "pool1", "agent:tracking_upper", "completed", pre_seeded
+        )
+
+        runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
+        await runner.run_to_completion()
+
+        # tracking_upper should NOT have been called (recovered from storage)
+        assert "upper_called" not in call_log
+
+        # Run should have completed using recovered result + fresh reverse result
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        assert run.status == "completed"
+        assert run.work_item_state["pool_result"]["upper"] == "RECOVERED"
+
+    async def test_clear_branch_results_after_successful_pool(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Branch results are cleared from storage after successful pool completion."""
+        proc = make_pool_process(["upper", "reverse"], ExecutionMode.PARALLEL)
+        run_id = await _setup_run(sqlite_storage, proc, {"text": "hello"})
+        runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
+
+        await runner.tick()
+
+        after = await sqlite_storage.get_branch_results(run_id, "pool1")
+        assert len(after) == 0
+
+    async def test_branch_results_preserved_on_all_agents_failed(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Branch results are NOT cleared when the pool raises (all agents fail)."""
+        proc = make_pool_process(["failing", "failing"], ExecutionMode.PARALLEL)
+        run_id = await _setup_run(sqlite_storage, proc)
+        runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
+
+        with pytest.raises(OrchestrationError):
+            await runner.tick()
+
+        stored = await sqlite_storage.get_branch_results(run_id, "pool1")
+        assert len(stored) > 0
+        assert all(r.status == "failed" for r in stored)
+
+    async def test_lock_renewal_calls_release_and_acquire_during_gather(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Background renewal task calls release+acquire periodically during agent gather."""
+        proc = make_pool_process(["slow_pool", "slow_pool"], ExecutionMode.PARALLEL)
+        run_id = await _setup_run(sqlite_storage, proc)
+        runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
+
+        acquire_count = 0
+        release_count = 0
+        orig_acquire = sqlite_storage.acquire_run_lock
+        orig_release = sqlite_storage.release_run_lock
+
+        async def counting_acquire(rid: str, oid: str, stale_timeout: int = 300) -> bool:
+            nonlocal acquire_count
+            acquire_count += 1
+            return await orig_acquire(rid, oid, stale_timeout)
+
+        async def counting_release(rid: str, oid: str) -> None:
+            nonlocal release_count
+            release_count += 1
+            return await orig_release(rid, oid)
+
+        sqlite_storage.acquire_run_lock = counting_acquire  # type: ignore[method-assign]
+        sqlite_storage.release_run_lock = counting_release  # type: ignore[method-assign]
+
+        orig_sleep = asyncio.sleep
+
+        async def fast_sleep(t: float) -> None:
+            await orig_sleep(0 if t >= 100 else t)
+
+        with patch("asyncio.sleep", fast_sleep):
+            await runner.tick()
+
+        # tick() acquires once; renewal fires and acquires again → at least 2 total
+        assert acquire_count >= 2
+        # renewal releases once; tick() finally releases once → at least 2 total
+        assert release_count >= 2
+
+    async def test_lock_stolen_raises_orchestration_error(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """When lock is stolen during pool gather, OrchestrationError is raised."""
+        proc = make_pool_process(["slow_pool", "slow_pool"], ExecutionMode.PARALLEL)
+        run_id = await _setup_run(sqlite_storage, proc)
+        runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
+
+        acquire_count = 0
+        orig_acquire = sqlite_storage.acquire_run_lock
+
+        async def stealing_acquire(rid: str, oid: str, stale_timeout: int = 300) -> bool:
+            nonlocal acquire_count
+            acquire_count += 1
+            if acquire_count >= 2:
+                return False
+            return await orig_acquire(rid, oid, stale_timeout)
+
+        sqlite_storage.acquire_run_lock = stealing_acquire  # type: ignore[method-assign]
+
+        orig_sleep = asyncio.sleep
+
+        async def fast_sleep(t: float) -> None:
+            await orig_sleep(0 if t >= 100 else t)
+
+        with patch("asyncio.sleep", fast_sleep):
+            with pytest.raises(OrchestrationError, match="Lock lost during parallel execution"):
+                await runner.tick()

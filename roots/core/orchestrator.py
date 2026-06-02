@@ -608,17 +608,105 @@ class ProcessRunner:
     ) -> dict[str, Any]:
         assert isinstance(node.config, AgentPoolNodeConfig)
         config = node.config
+        pool_node_id = node.id
+        stale_timeout_seconds = 300
 
-        raw = await asyncio.gather(
-            *[self._invoke_pool_agent(node, name, copy.deepcopy(state)) for name in agents],
-            return_exceptions=True,
-        )
+        # Crash recovery: check for already-completed agents in storage
+        existing_results = await self._storage.get_branch_results(self.run_id, pool_node_id)
+        completed_by_branch_id: dict[str, Any] = {}
+        for br in existing_results:
+            if br.status == "completed":
+                completed_by_branch_id[br.branch_id] = br.result_json
+
+        # Determine which agents still need execution (skip completed, retry failed)
+        pending_agents: list[str] = [
+            name for name in agents
+            if f"agent:{name}" not in completed_by_branch_id
+        ]
+
+        async def _invoke_with_persistence(name: str) -> AgentOutput:
+            storage_branch_id = f"agent:{name}"
+            try:
+                result = await self._invoke_pool_agent(node, name, copy.deepcopy(state))
+            except Exception as exc:
+                try:
+                    await self._storage.save_branch_result(
+                        self.run_id, pool_node_id, storage_branch_id,
+                        "failed", str(exc),
+                    )
+                except Exception:
+                    pass
+                raise
+            result_dict: dict[str, Any] = {
+                "output": result.output,
+                "escalate": result.escalate,
+                "escalation_reason": result.escalation_reason,
+            }
+            await self._storage.save_branch_result(
+                self.run_id, pool_node_id, storage_branch_id,
+                "completed", result_dict,
+            )
+            return result
+
+        lock_stolen = False
+        agent_tasks: list[asyncio.Task[Any]] = [
+            asyncio.create_task(_invoke_with_persistence(name))
+            for name in pending_agents
+        ]
+
+        async def _renewal_loop() -> None:
+            nonlocal lock_stolen
+            interval = max(1, stale_timeout_seconds // 2)
+            try:
+                while True:
+                    await asyncio.sleep(interval)
+                    await self._storage.release_run_lock(self.run_id, self._owner_id)
+                    acquired = await self._storage.acquire_run_lock(
+                        self.run_id, self._owner_id,
+                    )
+                    if not acquired:
+                        lock_stolen = True
+                        for task in agent_tasks:
+                            task.cancel()
+                        return
+            except asyncio.CancelledError:
+                pass
+
+        renewal_task = asyncio.create_task(_renewal_loop())
+        try:
+            fresh_results: list[Any] = await asyncio.gather(
+                *agent_tasks, return_exceptions=True
+            )
+        finally:
+            renewal_task.cancel()
+            try:
+                await renewal_task
+            except asyncio.CancelledError:
+                pass
+
+        if lock_stolen:
+            raise OrchestrationError("Lock lost during parallel execution")
+
+        # Reconstruct named_successful in original agent order
+        fresh_by_name: dict[str, Any] = dict(zip(pending_agents, fresh_results))
         named_successful: list[tuple[str, AgentOutput]] = []
-        for name, r in zip(agents, raw):
-            if isinstance(r, BaseException):
-                logger.warning("Agent failed in pool '%s': %s", node.id, r)
+        for name in agents:
+            storage_branch_id = f"agent:{name}"
+            if storage_branch_id in completed_by_branch_id:
+                stored = completed_by_branch_id[storage_branch_id]
+                recovered = AgentOutput(
+                    output=stored["output"],
+                    escalate=stored.get("escalate", False),
+                    escalation_reason=stored.get("escalation_reason"),
+                )
+                named_successful.append((name, recovered))
             else:
-                named_successful.append((name, r))
+                r = fresh_by_name[name]
+                if isinstance(r, BaseException):
+                    logger.warning("Agent failed in pool '%s': %s", node.id, r)
+                else:
+                    named_successful.append((name, r))
+
         if not named_successful:
             raise OrchestrationError(
                 f"All {len(agents)} agents failed in pool '{node.id}'"
@@ -632,11 +720,16 @@ class ProcessRunner:
         if config.aggregation in VOTE_AGGREGATIONS:
             assert config.vote_config is not None
             agents_outputs = [(name, r.output) for name, r in named_successful]
-            return aggregate_votes(agents_outputs, config.aggregation, config.vote_config)
-        merged: dict[str, Any] = {}
-        for _, r in named_successful:
-            merged.update(r.output)
-        return merged
+            final_result = aggregate_votes(agents_outputs, config.aggregation, config.vote_config)
+        else:
+            merged: dict[str, Any] = {}
+            for _, r in named_successful:
+                merged.update(r.output)
+            final_result = merged
+
+        # Clear branch results after successful pool completion only
+        await self._storage.clear_branch_results(self.run_id, pool_node_id)
+        return final_result
 
     async def _pool_sequential(
         self,
