@@ -10,7 +10,7 @@
 > **TEMPLATE_INTENT:** Persistent record of code quality, security, and intent alignment findings from automated validation. Tracks findings across sessions with status tracking and archival.
 
 > Last updated: 2026-06-01
-> Updated by: Claude (validate-implementation — feature-agent-context)
+> Updated by: Claude (validate-implementation — feature-crash-safe-parallel)
 
 ---
 
@@ -36,6 +36,45 @@
 
 <!-- Newest findings at top. Each entry has a unique ID: YYYY-MM-DD-NNN -->
 <!-- Findings are added by /kit-tools:validate-feature -->
+
+### 2026-06-01 — feature-crash-safe-parallel Validation
+
+> Branch: `epic/embedding-enhancements` · Mode: autonomous (epic child) · Validation loops: 1 · **No critical findings.** Tests pass (1449 passed, 106 skipped). Compliance: clean — all six stories (US-001..US-006) genuinely implemented and verified against code, not just checkbox-marked. Security: clean — all new `branch_results` SQL fully parameterized, no secrets, no new deps. Quality: 4 warnings + 2 info (duplicated lock-renewal scaffolding, silent except-pass on checkpoint save, release-then-acquire lock window, duplicated 300s magic number, fork branch-id collision risk, inline result_json contract). Not auto-completing — feature is part of an active epic.
+
+| ID | Category | Severity | File | Status |
+|----|----------|----------|------|--------|
+| 2026-06-01-027 | quality | warning | `roots/core/orchestrator.py` | open |
+| 2026-06-01-028 | quality | warning | `roots/core/orchestrator.py` | open |
+| 2026-06-01-029 | quality | warning | `roots/core/orchestrator.py` | open |
+| 2026-06-01-030 | quality | warning | `roots/core/orchestrator.py` | open |
+| 2026-06-01-031 | quality | info | `roots/core/orchestrator.py` | open |
+| 2026-06-01-032 | quality | info | `roots/core/orchestrator.py` | open |
+| 2026-06-01-033 | security | info | `roots/storage/sqlite.py` | open |
+| 2026-06-01-034 | security | info | `roots/core/orchestrator.py` | open |
+
+**2026-06-01-027** — The background lock-renewal task (`_renewal_loop`) plus the create_task / gather / finally-cancel / lock-stolen-raise scaffolding is duplicated almost verbatim between `_pool_parallel` and `_handle_fork` (~40 lines each, `orchestrator.py:658-686` and `1085-1118`). The only differences are the task-list variable name and the persistence closure. Duplicated concurrency-sensitive logic is a maintenance hazard — a future fix to renewal/cancellation semantics must be applied in two places.
+> Recommendation: Extract a shared helper, e.g. `async def _gather_with_lock_renewal(self, tasks, stale_timeout_seconds) -> tuple[list[Any], bool]` returning (results, lock_stolen), and call it from both handlers.
+
+**2026-06-01-028** — `save_branch_result` failures on the failed-branch persistence path are caught with a bare `except Exception: pass` (`orchestrator.py:638-639` and `1071-1072`), silently discarding any storage error. If checkpoint persistence is itself broken, recovery will silently fail to skip the agent/branch with no diagnostic log line.
+> Recommendation: Log the swallowed exception (`logger.warning`) with run_id/node_id/branch_id context so persistence failures are observable.
+
+**2026-06-01-029** — The renewal loop calls `release_run_lock()` then `acquire_run_lock()` (`orchestrator.py:664-667` and `1091-1096`), momentarily dropping the lock and opening a window where a competing orchestrator or the stale-timeout reaper could steal it between the two calls. This matches the spec's prescribed approach (acquire's WHERE clause cannot refresh `locked_at` in place for the current owner), so it is intentional, but the momentary-drop semantics are non-obvious and undocumented at the call site.
+> Recommendation: Add a code comment explaining the release-then-acquire trade-off, or (preferred) add a storage method that refreshes `locked_at` in place for the current owner (`WHERE locked_by = owner_id`) so the lock is never dropped.
+
+**2026-06-01-030** — Magic number `stale_timeout_seconds = 300` is hard-coded as a local in both `_pool_parallel` and `_handle_fork` (`orchestrator.py:613` and `1035`), duplicating the storage layer's `acquire_run_lock` default (300). The renewal acquire calls do not pass this value, relying on the default matching — an implicit coupling that breaks silently if either side changes.
+> Recommendation: Define a module-level constant (e.g. `RUN_LOCK_STALE_TIMEOUT_SECONDS = 300`) shared by both handlers and pass it explicitly to `acquire_run_lock`.
+
+**2026-06-01-031** — Fork branch IDs are derived from the target node id (`branch:{tgt}`, `orchestrator.py:1051`), and `branch_results` has PRIMARY KEY `(run_id, node_id, branch_id)`. If a fork has two outbound edges pointing to the same target node, both branches map to the same storage `branch_id` and the UPSERT silently overwrites one branch's result, corrupting recovery. The pool path (`agent:{name}`) is safe because agent names are unique; the fork path depends on distinct fork targets, which is not enforced here. (Reviewer-rated info: requires a fork with duplicate-target edges, an unusual topology.)
+> Recommendation: Incorporate the branch index into the storage branch_id (e.g. `branch:{i}:{tgt}`) to guarantee uniqueness, or validate elsewhere that fork edges always have distinct targets.
+
+**2026-06-01-032** — The `{output, escalate, escalation_reason}` `result_json` contract is built/parsed inline at three separate sites (pool success serialization, pool recovery deserialization, join recovery — `orchestrator.py:641-649, 698-702, 1290-1296`). The shape is implicit and spread out, making drift easy.
+> Recommendation: Consider a small helper to serialize/deserialize an `AgentOutput` to/from `result_json` so the field contract lives in one place.
+
+**2026-06-01-033** — `get_branch_results` in SQLite deserializes the stored column unconditionally with `json.loads(r[4])` (`sqlite.py:935`); a malformed or non-JSON value would raise `JSONDecodeError` uncaught during recovery. The PostgreSQL counterpart (`postgres.py:843-845`) guards with `isinstance(rj, str)` first. Data is written only by `save_branch_result` via `json.dumps`, so it is trusted internal state and not an injection vector — defense-in-depth only.
+> Recommendation: Optionally wrap the `json.loads` in try/except so corrupted checkpoint rows degrade gracefully during recovery rather than crashing the run. Not blocking.
+
+**2026-06-01-034** — The failure path persists `str(exc)` into `branch_results.result_json` and re-raises it on join recovery via `RuntimeError(str(br.result_json))` (`orchestrator.py` failure/recovery paths). Exception strings from agent/handler code could embed sensitive content. Stays within the run's own storage (no cross-tenant exposure in the diff) — hardening reminder, not a vulnerability.
+> Recommendation: No code change required. Ensure agent/handler exceptions do not embed credentials or secrets in their message text.
 
 ### 2026-06-01 — feature-agent-context Validation
 
