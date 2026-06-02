@@ -9,6 +9,7 @@ import pytest
 
 from roots.events.emitter import EventEmitter
 from roots.events.sinks import EventSink
+from roots.events.subscriptions import SubscriptionManager
 from roots.events.types import EventEnvelope, EventType, create_event
 
 
@@ -221,3 +222,88 @@ class TestClose:
         await emitter.close()
         # Second close should not raise
         await emitter.close()
+
+
+# --- Subscription integration tests ---
+
+
+class TestSubscriptionIntegration:
+    @pytest.mark.asyncio
+    async def test_callback_fires_after_event(self) -> None:
+        manager = SubscriptionManager()
+        received: list[EventEnvelope] = []
+
+        async def cb(event: EventEnvelope) -> None:
+            received.append(event)
+
+        manager.on(EventType.RUN_STARTED, cb)
+        emitter = EventEmitter(subscriptions=manager)
+
+        event = _make_event()
+        emitter.emit(event)
+        await emitter.close()
+
+        assert len(received) == 1
+        assert received[0] is event
+
+    @pytest.mark.asyncio
+    async def test_subscriptions_fire_without_sinks(self) -> None:
+        """Early-return guard allows subscriptions even when no sinks configured."""
+        manager = SubscriptionManager()
+        received: list[EventEnvelope] = []
+
+        async def cb(event: EventEnvelope) -> None:
+            received.append(event)
+
+        manager.on(EventType.RUN_STARTED, cb)
+        emitter = EventEmitter(subscriptions=manager)  # no sinks
+
+        emitter.emit(_make_event())
+        await emitter.close()
+
+        assert len(received) == 1
+
+    @pytest.mark.asyncio
+    async def test_callback_error_isolation(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Exception in a callback doesn't break sink delivery or other callbacks."""
+        manager = SubscriptionManager()
+        received: list[EventEnvelope] = []
+
+        async def failing_cb(event: EventEnvelope) -> None:
+            raise RuntimeError("boom")
+
+        async def good_cb(event: EventEnvelope) -> None:
+            received.append(event)
+
+        manager.on(EventType.RUN_STARTED, failing_cb)
+        manager.on(EventType.RUN_STARTED, good_cb)
+
+        sink = RecordingSink()
+        emitter = EventEmitter(sinks=[sink], subscriptions=manager)
+
+        with caplog.at_level(logging.WARNING):
+            emitter.emit(_make_event())
+            await emitter.close()
+
+        assert len(received) == 1
+        assert len(sink.events) == 1
+
+    @pytest.mark.asyncio
+    async def test_callback_emitting_does_not_recurse(self) -> None:
+        """A callback that calls emit() schedules a task — no RecursionError."""
+        manager = SubscriptionManager()
+        emitter_ref: list[EventEmitter] = []
+
+        async def reemitting_cb(event: EventEnvelope) -> None:
+            # emit from inside a callback — task-scheduled, not inline
+            emitter_ref[0].emit(_make_event(EventType.RUN_COMPLETED))
+
+        manager.once(EventType.RUN_STARTED, reemitting_cb)
+        emitter = EventEmitter(subscriptions=manager)
+        emitter_ref.append(emitter)
+
+        # Should not raise RecursionError
+        emitter.emit(_make_event(EventType.RUN_STARTED))
+        await emitter.close()  # no crash = success
