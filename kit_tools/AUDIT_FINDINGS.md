@@ -10,7 +10,7 @@
 > **TEMPLATE_INTENT:** Persistent record of code quality, security, and intent alignment findings from automated validation. Tracks findings across sessions with status tracking and archival.
 
 > Last updated: 2026-06-01
-> Updated by: Claude (validate-implementation — feature-run-metadata)
+> Updated by: Claude (validate-implementation — feature-event-subscriptions)
 
 ---
 
@@ -36,6 +36,47 @@
 
 <!-- Newest findings at top. Each entry has a unique ID: YYYY-MM-DD-NNN -->
 <!-- Findings are added by /kit-tools:validate-feature -->
+
+### 2026-06-01 — feature-event-subscriptions Validation
+
+> Branch: `epic/embedding-enhancements` · Mode: autonomous (epic child) · Validation loops: 1 · No critical findings. Tests pass (61 scoped tests: test_subscriptions.py + test_emitter.py + test_roots_subscription_api.py). Compliance clean — all US-001..US-004 criteria met. Not auto-completing — feature is part of an active epic.
+
+| ID | Category | Severity | File | Status |
+|----|----------|----------|------|--------|
+| 2026-06-01-013 | security | warning | `roots/events/subscriptions.py` | open |
+| 2026-06-01-014 | security | warning | `roots/events/emitter.py` | open |
+| 2026-06-01-015 | quality | info | `roots/__init__.py` | open |
+| 2026-06-01-016 | quality | info | `roots/__init__.py` | open |
+| 2026-06-01-017 | quality | info | `roots/events/emitter.py` | open |
+| 2026-06-01-018 | security | info | `roots/events/subscriptions.py` | open |
+| 2026-06-01-019 | security | info | `roots/__init__.py` | open |
+| 2026-06-01-020 | testing | info | test suite | open |
+
+**2026-06-01-013** — `dispatch()` (`subscriptions.py:115-134`) awaits each matching callback sequentially in a for-loop with no per-callback timeout. Because callbacks are caller-supplied (the on/once/wait_for API accepts arbitrary `AsyncCallback`), one slow or non-returning callback blocks delivery to every other subscriber for that event (head-of-line blocking) and indefinitely pins the `_dispatch_subscriptions` task slot in the emitter's `_pending_subscriptions` buffer. Error isolation against *exceptions* is solid, but not against *latency*. Note: the spec lists "Backpressure on callback execution" as out of scope, so this is advisory.
+> Recommendation: Wrap each callback in `asyncio.wait_for` with a bounded per-callback timeout, or dispatch concurrently (`asyncio.gather(return_exceptions=True)` / TaskGroup) so one stuck callback cannot block others; log and shed callbacks that exceed the timeout.
+
+**2026-06-01-014** — `EventEmitter.close()` (`emitter.py:120-125`) calls `asyncio.wait(all_tasks, timeout=timeout)` then unconditionally clears `_pending` and `_pending_subscriptions` without cancelling tasks that did not finish within the timeout. A subscription dispatch task running a hanging callback is dropped from tracking but keeps running detached, leaking work and emitting "Task was destroyed but it is pending" warnings. The newly added subscription buffer inherits this pre-existing sink-path behavior.
+> Recommendation: After `asyncio.wait` times out, cancel the still-pending tasks (iterate the not-done set, `task.cancel()`, optionally await with `return_when=ALL_COMPLETED`) before clearing the dicts — mirroring the explicit Future cancellation already done in `SubscriptionManager.close()`.
+
+**2026-06-01-015** — `start_and_wait` (`roots/__init__.py:132-156`) uses single-element lists (`run_holder`, `sub_id_holder`) as mutable closure cells so the `_on_terminal` callback can read `run.id` and the subscription id. This "list-as-cell" idiom obscures intent and forces index access like `run_holder[0].id`.
+> Recommendation: Use `nonlocal` variables in the closure, or capture `sub_id` directly since it is known before the closure is defined. Removes the holder lists and `[0]` indexing.
+
+**2026-06-01-016** — `off(sub_id)` is called in three places for the same subscription in `start_and_wait` (`roots/__init__.py:135-156`): inside `_on_terminal` on success, in the `except` block on `start_run` failure, and in the `finally`. `off()` is idempotent so this is safe but redundant — the `_on_terminal` call is unnecessary since the `finally` always cleans up.
+> Recommendation: Drop the `off()` inside `_on_terminal` and rely on the `finally`, keeping the explicit `off()` in the `start_run` except path. Reduces cleanup paths to reason about.
+
+**2026-06-01-017** — Subscription dispatch tasks share the same shedding policy as sinks (`emitter.py:100-112`, `242-253`): when `_pending_subscriptions` reaches `max_pending` (100), the oldest dispatch task is cancelled. Because `wait_for`/`start_and_wait` resolution runs through these dispatch tasks, a saturated subscription buffer could cancel an in-flight dispatch and drop an awaited terminal event — the consequence (a caller's `wait_for` hangs until timeout) is less obvious than a dropped sink delivery.
+> Recommendation: No code change required for this feature; document in GOTCHAS that subscription dispatch is also subject to buffer shedding, since the failure mode (a hung `wait_for`) is non-obvious.
+
+**2026-06-01-018** — Subscriptions accumulate in the unbounded `self._subscriptions` dict (`subscriptions.py:35-69`) with no cap and no expiry for persistent `on()` subscriptions. A caller that registers in a loop without `off()` grows memory without limit, and every dispatch iterates a full snapshot (O(n) per event). This is an in-process trusted API, so a footgun rather than a remote DoS. `once()`/`wait_for()` already self-clean (good).
+> Recommendation: Consider an optional max-subscriptions cap with a clear error on exceed, and/or documentation emphasizing that `on()` subscriptions must be paired with `off()`.
+
+**2026-06-01-019** — In `start_and_wait` (`roots/__init__.py:135-156`), if the terminal event fires while `run_holder` is still empty (run not yet appended), the callback's `if run_holder and ...` guard silently drops the event; for an extremely fast-completing run this could in theory cause a spurious timeout rather than returning the result. Not a security vulnerability — `execute_run` is awaited only after `run_holder` is populated, so the window is narrow.
+> Recommendation: Optionally set `run_holder` (or capture `run.id`) before awaiting `execute_run` to eliminate the empty-holder window. Current ordering is acceptable.
+
+**2026-06-01-020** — Scoped test suite: 61 passed, 0 failures (0.79s) across `tests/test_subscriptions.py`, `tests/test_emitter.py`, `tests/test_roots_subscription_api.py`. Compliance review confirmed all US-001..US-004 acceptance criteria met and `EventEnvelope` exported from `roots/__init__.py`.
+> Note: All scoped tests pass.
+
+---
 
 ### 2026-06-01 — feature-run-metadata Validation
 
