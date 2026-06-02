@@ -122,16 +122,16 @@ This feature adds an optional metadata dict to runs with filtering operators tha
 - Add custom Pydantic validator on `RunCreateRequest.metadata` to reject nested dicts/arrays at the API boundary (return 422, not 500 from storage layer)
 
 **Acceptance Criteria:**
-- [ ] `RunCreateRequest` accepts optional `metadata` dict
-- [ ] `RunResponse` includes `metadata` field
-- [ ] `GET /runs` accepts `metadata_filter` query parameter (JSON-encoded string)
-- [ ] `GET /runs/{id}` returns metadata in response
-- [ ] Invalid JSON in `metadata_filter` returns HTTP 422 with descriptive error
-- [ ] Nested dict/array values in metadata rejected at API boundary with HTTP 422 (not propagated to storage)
-- [ ] `POST /runs` passes metadata through to `Roots.start_run`
-- [ ] Tests: POST with metadata; POST without metadata; GET list with filter; GET single run; invalid JSON returns 422
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] `RunCreateRequest` accepts optional `metadata` dict
+- [x] `RunResponse` includes `metadata` field
+- [x] `GET /runs` accepts `metadata_filter` query parameter (JSON-encoded string)
+- [x] `GET /runs/{id}` returns metadata in response
+- [x] Invalid JSON in `metadata_filter` returns HTTP 422 with descriptive error
+- [x] Nested dict/array values in metadata rejected at API boundary with HTTP 422 (not propagated to storage)
+- [x] `POST /runs` passes metadata through to `Roots.start_run`
+- [x] Tests: POST with metadata; POST without metadata; GET list with filter; GET single run; invalid JSON returns 422
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ## Out of Scope
 
