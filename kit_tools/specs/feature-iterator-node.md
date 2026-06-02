@@ -203,14 +203,14 @@ This feature adds an `iterator` node type that reads a list from work_item_state
 - Emit `ITERATOR_ITEM_FAILED` events for each failed item
 
 **Acceptance Criteria:**
-- [ ] `on_item_failure` `"stop"` cancels remaining in-flight tasks
-- [ ] `on_item_failure` `"continue"` lets all tasks finish regardless of failures
-- [ ] `on_item_failure` `"stop_after_n"` cancels when threshold hit
-- [ ] Child checkpoint in parallel mode treated as failure with clear error message (documented constraint — use sequential for checkpoints)
-- [ ] `ITERATOR_ITEM_FAILED` events emitted
-- [ ] Tests: stop cancellation; continue with failures; stop_after_n; checkpoint-as-failure error
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] `on_item_failure` `"stop"` cancels remaining in-flight tasks
+- [x] `on_item_failure` `"continue"` lets all tasks finish regardless of failures
+- [x] `on_item_failure` `"stop_after_n"` cancels when threshold hit
+- [x] Child checkpoint in parallel mode treated as failure with clear error message (documented constraint — use sequential for checkpoints)
+- [x] `ITERATOR_ITEM_FAILED` events emitted
+- [x] Tests: stop cancellation; continue with failures; stop_after_n; checkpoint-as-failure error
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ## Out of Scope
 
