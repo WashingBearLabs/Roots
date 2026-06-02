@@ -16,6 +16,7 @@ from roots.core.orchestrator import Orchestrator, OrchestrationError
 from roots.core.validator import load_process_yaml
 from roots.events.emitter import EventEmitter
 from roots.events.sinks import EventSink, StdoutSink, FileSink, HttpSink
+from roots.events.subscriptions import SubscriptionManager
 from roots.events.types import EventType, create_event  # noqa: F401
 from roots.storage.base import RunRecord, StorageBackend
 from roots.storage.postgres import PostgresBackend
@@ -62,7 +63,10 @@ class Roots:
             llm_callable=llm_callable,
             llm_config=llm_config,
         )
-        self._event_emitter = EventEmitter(sinks=event_sinks or [])
+        self._subscription_manager = SubscriptionManager()
+        self._event_emitter = EventEmitter(
+            sinks=event_sinks or [], subscriptions=self._subscription_manager
+        )
         self._orchestrator = Orchestrator(
             storage,
             self._agent_registry,

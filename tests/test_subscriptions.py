@@ -1,7 +1,8 @@
-"""Tests for SubscriptionManager (US-001)."""
+"""Tests for SubscriptionManager (US-001, US-003)."""
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import pytest
@@ -281,3 +282,155 @@ class TestDispatchSafety:
         await manager.dispatch(_make_event())
 
         assert count == 1
+
+
+class TestWaitFor:
+    async def test_happy_path_returns_event(self) -> None:
+        """wait_for returns the EventEnvelope when the matching event fires."""
+        manager = SubscriptionManager()
+        event = _make_event()
+
+        task = asyncio.create_task(manager.wait_for(EventType.RUN_STARTED, timeout=1.0))
+        await asyncio.sleep(0)  # let task start and register subscription
+        await manager.dispatch(event)
+        result = await task
+
+        assert result is event
+
+    async def test_timeout_raises_timeout_error(self) -> None:
+        """wait_for raises asyncio.TimeoutError when timeout expires."""
+        manager = SubscriptionManager()
+
+        with pytest.raises(asyncio.TimeoutError):
+            await manager.wait_for(EventType.RUN_STARTED, timeout=0.01)
+
+    async def test_cleanup_on_timeout(self) -> None:
+        """Subscription and pending tracking removed after timeout."""
+        manager = SubscriptionManager()
+
+        with pytest.raises(asyncio.TimeoutError):
+            await manager.wait_for(EventType.RUN_STARTED, timeout=0.01)
+
+        assert len(manager._subscriptions) == 0
+        assert len(manager._pending_wait_for) == 0
+
+    async def test_cleanup_on_cancellation(self) -> None:
+        """Subscription and pending tracking removed when task is cancelled."""
+        manager = SubscriptionManager()
+
+        async def do_wait() -> EventEnvelope:
+            return await manager.wait_for(EventType.RUN_STARTED, timeout=10.0)
+
+        task = asyncio.create_task(do_wait())
+        await asyncio.sleep(0)  # let task start
+        task.cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert len(manager._subscriptions) == 0
+        assert len(manager._pending_wait_for) == 0
+
+    async def test_run_id_filter(self) -> None:
+        """wait_for filters events by run_id."""
+        manager = SubscriptionManager()
+        event_a = _make_event(run_id="run-A")
+        event_b = _make_event(run_id="run-B")
+
+        task = asyncio.create_task(
+            manager.wait_for(EventType.RUN_STARTED, run_id="run-A", timeout=1.0)
+        )
+        await asyncio.sleep(0)
+
+        await manager.dispatch(event_b)  # wrong run_id — must not resolve
+        await manager.dispatch(event_a)  # correct run_id — resolves
+        result = await task
+
+        assert result is event_a
+
+    async def test_concurrent_different_run_ids(self) -> None:
+        """Multiple concurrent wait_for calls for different run_ids each resolve correctly."""
+        manager = SubscriptionManager()
+        event_a = _make_event(run_id="run-A")
+        event_b = _make_event(run_id="run-B")
+        results: dict[str, EventEnvelope] = {}
+
+        async def wait_a() -> None:
+            results["a"] = await manager.wait_for(EventType.RUN_STARTED, run_id="run-A", timeout=1.0)
+
+        async def wait_b() -> None:
+            results["b"] = await manager.wait_for(EventType.RUN_STARTED, run_id="run-B", timeout=1.0)
+
+        task_a = asyncio.create_task(wait_a())
+        task_b = asyncio.create_task(wait_b())
+        await asyncio.sleep(0)  # let both tasks register subscriptions
+
+        await manager.dispatch(event_a)
+        await manager.dispatch(event_b)
+        await task_a
+        await task_b
+
+        assert results["a"] is event_a
+        assert results["b"] is event_b
+
+
+class TestSubscriptionManagerClose:
+    async def test_close_cancels_pending_futures(self) -> None:
+        """close() cancels all pending wait_for futures."""
+        manager = SubscriptionManager()
+
+        async def do_wait() -> EventEnvelope:
+            return await manager.wait_for(EventType.RUN_STARTED, timeout=30.0)
+
+        task = asyncio.create_task(do_wait())
+        await asyncio.sleep(0)  # let task register subscription
+
+        await manager.close()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert len(manager._pending_wait_for) == 0
+
+    async def test_close_calls_off_for_each_pending(self) -> None:
+        """close() removes subscriptions for pending wait_for calls."""
+        manager = SubscriptionManager()
+
+        async def do_wait() -> EventEnvelope:
+            return await manager.wait_for(EventType.RUN_STARTED, timeout=30.0)
+
+        task = asyncio.create_task(do_wait())
+        await asyncio.sleep(0)
+
+        assert len(manager._subscriptions) == 1
+        await manager.close()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert len(manager._subscriptions) == 0
+
+
+class TestRootsCloseWaitFor:
+    async def test_roots_close_cancels_pending_wait_for(self) -> None:
+        """Roots.close() cancels pending wait_for futures via EventEmitter chain."""
+        from roots import Roots
+        from roots.storage.sqlite import SqliteBackend
+
+        backend = SqliteBackend(":memory:")
+        await backend.initialize()
+        roots = Roots(storage=backend)
+        manager = roots._subscription_manager
+
+        async def do_wait() -> EventEnvelope:
+            return await manager.wait_for(EventType.RUN_STARTED, timeout=30.0)
+
+        task = asyncio.create_task(do_wait())
+        await asyncio.sleep(0)  # let task register subscription
+
+        await roots.close()
+
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert len(manager._pending_wait_for) == 0

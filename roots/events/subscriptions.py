@@ -30,6 +30,7 @@ class SubscriptionManager:
 
     def __init__(self) -> None:
         self._subscriptions: dict[str, Subscription] = {}
+        self._pending_wait_for: dict[str, asyncio.Future[EventEnvelope]] = {}
 
     def _register(
         self,
@@ -78,8 +79,16 @@ class SubscriptionManager:
         self,
         event_type: EventType | list[EventType],
         run_id: str | None = None,
+        *,
+        timeout: float,
     ) -> EventEnvelope:
-        """Await the next matching event and return it."""
+        """Await the next matching event and return it.
+
+        Args:
+            event_type: Event type(s) to wait for.
+            run_id: Optional run ID filter.
+            timeout: Maximum seconds to wait; raises asyncio.TimeoutError on expiry.
+        """
         loop = asyncio.get_running_loop()
         future: asyncio.Future[EventEnvelope] = loop.create_future()
 
@@ -87,8 +96,21 @@ class SubscriptionManager:
             if not future.done():
                 future.set_result(event)
 
-        self.once(event_type, _resolve, run_id=run_id)
-        return await future
+        sub_id = self.once(event_type, _resolve, run_id=run_id)
+        self._pending_wait_for[sub_id] = future
+        try:
+            return await asyncio.wait_for(future, timeout=timeout)
+        finally:
+            self.off(sub_id)
+            self._pending_wait_for.pop(sub_id, None)
+
+    async def close(self) -> None:
+        """Cancel all pending wait_for futures and clean up their subscriptions."""
+        for sub_id, future in list(self._pending_wait_for.items()):
+            self.off(sub_id)
+            if not future.done():
+                future.cancel()
+        self._pending_wait_for.clear()
 
     async def dispatch(self, event: EventEnvelope) -> None:
         """Fire all matching callbacks for the given event."""

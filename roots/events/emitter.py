@@ -119,9 +119,9 @@ class EventEmitter:
         """
         self._cleanup_completed()
         all_tasks = list(self._pending.values()) + list(self._pending_subscriptions.values())
-        if not all_tasks:
-            return
-
-        await asyncio.wait(all_tasks, timeout=timeout)
+        if all_tasks:
+            await asyncio.wait(all_tasks, timeout=timeout)
         self._pending.clear()
         self._pending_subscriptions.clear()
+        if self._subscriptions is not None:
+            await self._subscriptions.close()
