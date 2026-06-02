@@ -10,7 +10,7 @@
 > **TEMPLATE_INTENT:** Persistent record of code quality, security, and intent alignment findings from automated validation. Tracks findings across sessions with status tracking and archival.
 
 > Last updated: 2026-06-01
-> Updated by: Claude (validate-implementation — feature-event-subscriptions)
+> Updated by: Claude (validate-implementation — feature-agent-context)
 
 ---
 
@@ -36,6 +36,39 @@
 
 <!-- Newest findings at top. Each entry has a unique ID: YYYY-MM-DD-NNN -->
 <!-- Findings are added by /kit-tools:validate-feature -->
+
+### 2026-06-01 — feature-agent-context Validation
+
+> Branch: `epic/embedding-enhancements` · Mode: autonomous (epic child) · Validation loops: 1 · **No critical findings.** Tests pass (1415 passed, 98 skipped). Compliance: US-001..US-003 fully met; US-004 criteria literally met (logic + tests) but lock-management intent inert in production — see 2026-06-01-021. Not auto-completing — feature is part of an active epic.
+
+| ID | Category | Severity | File | Status |
+|----|----------|----------|------|--------|
+| 2026-06-01-021 | compliance | warning | `roots/agents/invoker.py`, `roots/core/orchestrator.py` | open |
+| 2026-06-01-022 | quality | info | `roots/agents/types.py`, `roots/agents/invoker.py` | open |
+| 2026-06-01-023 | security | info | `roots/agents/context.py` | open |
+| 2026-06-01-024 | security | info | `roots/agents/context.py` | open |
+| 2026-06-01-025 | quality | info | `tests/test_agent_context.py` | open |
+| 2026-06-01-026 | testing | info | test suite | open |
+
+**2026-06-01-021** — US-004 lock release/reacquire is dead code in real orchestrated runs (raised independently by all three reviewers — quality, security, compliance — and confirmed by direct inspection). `AgentInvoker.invoke()` (`invoker.py:105-110`) unconditionally constructs `InvocationContext(owner_id="", subprocess_depth=0)`, and `ProcessRunner` — which holds `self._owner_id` (`orchestrator.py:87`) — calls `self._agent_invoker.invoke(config.agent, agent_input)` at `orchestrator.py:494` and `581` without passing it. Because `AgentContext.execute_run` guards the lock release/reacquire block with `if self._owner_id:` (`context.py:91-106`), the parent-lock hand-off and lock-stealing detection never run in production; they are exercised only by unit tests that build `AgentContext` directly with `owner_id="test-owner"`. The depth guard is unaffected and works. Acceptance criteria are literally satisfied (logic present + tests pass), but US-004's intent — preventing stale parent locks during agent-initiated child execution — is not realized on the actual execution path. Severity warning, not critical: no current production path injects context AND calls `execute_run` under contention (the lock block is inert rather than wrong), and the full suite passes.
+> Recommendation: Thread the lock owner through invocation — add an `owner_id` parameter to `AgentInvoker.invoke` (and propagate via `InvocationContext`), and pass `ProcessRunner.self._owner_id` at the two call sites (`orchestrator.py:494`, `581`). Until that lands, document explicitly that context-injected agents have no lock management. Recommend addressing before the epic completes, since this is the core safety guarantee of US-004.
+
+**2026-06-01-022** — `InvocationContext.subprocess_depth` (`types.py`) is carried as a field but never read: the invoker always sets it to `0` (`invoker.py:108`) and `AgentContext.execute_run` reads `_subprocess_depth` fresh from storage (`context.py:77`), which is the spec's designated single source of truth. The field is currently inert dead state.
+> Recommendation: Either remove the unused `subprocess_depth` field from `InvocationContext`, or note in the docstring that it is reserved for future use. No functional impact.
+
+**2026-06-01-023** — `current_depth = int(parent_state.get("_subprocess_depth", 0))` (`context.py:77`) reads from mutable run state; a malformed persisted value (non-numeric string) would raise a raw `ValueError`/`TypeError` rather than a clean `OrchestrationError`. Verified the depth cap itself cannot be evaded — `execute_run` overwrites the child's `_subprocess_depth` to `parent_depth+1` after `start_run`, and agent output is nested under `output_key`, so accumulation holds. Residual risk is only a confusing error type.
+> Recommendation: Wrap the `int()` coercion in try/except and raise `OrchestrationError` with a clear message, or validate the persisted depth before comparison.
+
+**2026-06-01-024** — `AgentContext` methods (`execute_run`/`start_run`/`get_run`/`resolve_checkpoint`, `context.py:47-124`) accept an arbitrary `run_id`, so a context-enabled agent can drive any run in the store by ID, not just runs in its own subtree. This matches Roots' existing single-tenant trust model (no per-run/tenant ownership exists in `storage/base.py`), so it is not a new authorization gap. The API surface is correctly narrowed: no admin/mutation methods exposed, and `resolve_checkpoint` omits `redirect_to` so agents cannot redirect runs to arbitrary nodes.
+> Recommendation: If Roots ever becomes multi-tenant or runs untrusted agent code, scope run access to the agent's own run subtree (validate target `run_id` is a descendant of the current run). No change required today; noted for awareness.
+
+**2026-06-01-025** — Duplicated assertion in `tests/test_agent_context.py:855-856`: `assert "5" in msg` appears twice (comment `# current == max`). The second assertion is a no-op copy — because current and max are both 5 in this scenario, it does not independently verify that the error message includes distinct current and max values.
+> Recommendation: Use a scenario where current != max (e.g. current=6, max=5) or assert on both numbers so the test verifies the message reports distinct current and max depths.
+
+**2026-06-01-026** — Full test suite: 1415 passed, 98 skipped, 0 failures (21.4s). Agent-context suites `tests/test_agent_context.py` (488 lines) and `tests/test_agent_context_injection.py` (351 lines) included. PostgreSQL parametrizations skip (no `ROOTS_POSTGRES_DSN`).
+> Note: All tests pass.
+
+---
 
 ### 2026-06-01 — feature-event-subscriptions Validation
 
