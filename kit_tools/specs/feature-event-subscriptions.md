@@ -98,14 +98,14 @@ This feature adds a lightweight callback/subscription mechanism that lets applic
 - Roots.close() must cancel all pending wait_for Futures and call off() for each (prevents hanging coroutines on shutdown)
 
 **Acceptance Criteria:**
-- [ ] `wait_for(event_type, run_id=None, timeout=...)` returns `EventEnvelope` when event fires
-- [ ] `timeout` is required (no default); raises `asyncio.TimeoutError` on expiry
-- [ ] Subscription cleaned up on timeout AND on cancellation (try/finally with off())
-- [ ] Multiple concurrent `wait_for` calls for different runs work correctly
-- [ ] Pending wait_for Futures cancelled on Roots.close()
-- [ ] Tests: happy path; timeout; cancellation cleanup; concurrent waits
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] `wait_for(event_type, run_id=None, timeout=...)` returns `EventEnvelope` when event fires
+- [x] `timeout` is required (no default); raises `asyncio.TimeoutError` on expiry
+- [x] Subscription cleaned up on timeout AND on cancellation (try/finally with off())
+- [x] Multiple concurrent `wait_for` calls for different runs work correctly
+- [x] Pending wait_for Futures cancelled on Roots.close()
+- [x] Tests: happy path; timeout; cancellation cleanup; concurrent waits
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-004: Roots class subscription API
 
