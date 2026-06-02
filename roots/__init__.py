@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import Any, Callable
 
@@ -16,13 +17,15 @@ from roots.core.orchestrator import Orchestrator, OrchestrationError
 from roots.core.validator import load_process_yaml
 from roots.events.emitter import EventEmitter
 from roots.events.sinks import EventSink, StdoutSink, FileSink, HttpSink
-from roots.events.subscriptions import SubscriptionManager
-from roots.events.types import EventType, create_event  # noqa: F401
+from roots.events.subscriptions import AsyncCallback, SubscriptionManager
+from roots.events.types import EventEnvelope, EventType, create_event  # noqa: F401
 from roots.storage.base import RunRecord, StorageBackend
 from roots.storage.postgres import PostgresBackend
 from roots.storage.sqlite import SqliteBackend
 
 __version__ = "0.1.0"
+
+_TERMINAL_EVENT_TYPES: list[EventType] = [EventType.RUN_COMPLETED, EventType.RUN_FAILED]
 
 __all__ = [
     "Roots",
@@ -164,6 +167,103 @@ class Roots:
     async def execute_run(self, run_id: str) -> None:
         """Execute a run to completion."""
         await self._orchestrator.execute_run(run_id)
+
+    # --- Event subscription API ---
+
+    def on(
+        self,
+        event_type: EventType | list[EventType],
+        callback: AsyncCallback,
+        run_id: str | None = None,
+    ) -> str:
+        """Register a persistent event subscription; returns subscription_id."""
+        return self._subscription_manager.on(event_type, callback, run_id=run_id)
+
+    def once(
+        self,
+        event_type: EventType | list[EventType],
+        callback: AsyncCallback,
+        run_id: str | None = None,
+    ) -> str:
+        """Register a one-shot event subscription; auto-removes after first fire."""
+        return self._subscription_manager.once(event_type, callback, run_id=run_id)
+
+    def off(self, subscription_id: str) -> bool:
+        """Remove an event subscription; returns True if found."""
+        return self._subscription_manager.off(subscription_id)
+
+    async def wait_for(
+        self,
+        event_type: EventType | list[EventType],
+        run_id: str | None = None,
+        *,
+        timeout: float,
+    ) -> EventEnvelope:
+        """Await the next matching event and return it.
+
+        Args:
+            event_type: Event type(s) to listen for.
+            run_id: Optional run ID filter.
+            timeout: Maximum seconds to wait; raises asyncio.TimeoutError on expiry.
+        """
+        return await self._subscription_manager.wait_for(
+            event_type, run_id=run_id, timeout=timeout
+        )
+
+    async def start_and_wait(
+        self,
+        process_id: str,
+        work_item: dict[str, Any],
+        event_type: EventType | list[EventType] | None = None,
+        *,
+        timeout: float,
+        metadata: dict[str, Any] | None = None,
+    ) -> tuple[RunRecord, EventEnvelope]:
+        """Start a run and await a terminal event; returns (RunRecord, EventEnvelope).
+
+        Race-free: subscribes before calling start_run so no terminal event is missed.
+        Filters by run_id in the callback (run_id is unknown at subscription time).
+        Listens for RUN_COMPLETED and RUN_FAILED by default.
+        Check event.event to distinguish success (RUN_COMPLETED) from failure (RUN_FAILED).
+
+        Args:
+            process_id: Process to run.
+            work_item: Initial work item state.
+            event_type: Event type(s) to wait for; defaults to [RUN_COMPLETED, RUN_FAILED].
+            timeout: Maximum seconds to wait for the event; raises asyncio.TimeoutError.
+            metadata: Optional run metadata.
+        """
+        event_types: EventType | list[EventType] = (
+            _TERMINAL_EVENT_TYPES if event_type is None else event_type
+        )
+
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[EventEnvelope] = loop.create_future()
+        run_holder: list[RunRecord] = []
+        sub_id_holder: list[str] = []
+
+        async def _on_terminal(event: EventEnvelope) -> None:
+            if run_holder and event.run_id == run_holder[0].id and not future.done():
+                future.set_result(event)
+                self._subscription_manager.off(sub_id_holder[0])
+
+        # Subscribe before start_run — ensures we never miss the terminal event
+        sub_id = self._subscription_manager.on(event_types, _on_terminal)
+        sub_id_holder.append(sub_id)
+
+        try:
+            run = await self.start_run(process_id, work_item, metadata=metadata)
+            run_holder.append(run)
+        except Exception:
+            self._subscription_manager.off(sub_id)
+            raise
+
+        try:
+            await self.execute_run(run.id)
+            result = await asyncio.wait_for(future, timeout=timeout)
+            return run, result
+        finally:
+            self._subscription_manager.off(sub_id)
 
     async def get_run(self, run_id: str) -> RunRecord | None:
         """Get a run by ID."""
