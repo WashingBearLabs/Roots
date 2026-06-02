@@ -87,15 +87,15 @@ This feature adds per-branch state checkpointing to storage so that the orchestr
 - Merge strategies (`MERGE_ALL`, `COLLECT`) must work identically with recovered data
 
 **Acceptance Criteria:**
-- [ ] Fork handler detects completed branches via `get_branch_results` and skips them
-- [ ] Failed branches are re-executed on recovery (not skipped)
-- [ ] Join handler loads from storage when `_fork_branch_results` is None (crash at join node)
-- [ ] Join resolves fork node ID via `fork_join_map` inverse for storage lookup
-- [ ] `clear_branch_results` called after successful join only (not on failure — preserves progress for next recovery attempt)
-- [ ] Merge strategies produce correct results with recovered data
-- [ ] Crash-recovery integration test: simulate crash mid-fork, verify partial recovery and correct join
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] Fork handler detects completed branches via `get_branch_results` and skips them
+- [x] Failed branches are re-executed on recovery (not skipped)
+- [x] Join handler loads from storage when `_fork_branch_results` is None (crash at join node)
+- [x] Join resolves fork node ID via `fork_join_map` inverse for storage lookup
+- [x] `clear_branch_results` called after successful join only (not on failure — preserves progress for next recovery attempt)
+- [x] Merge strategies produce correct results with recovered data
+- [x] Crash-recovery integration test: simulate crash mid-fork, verify partial recovery and correct join
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-004: Crash-safe parallel agent_pool — persistence
 
