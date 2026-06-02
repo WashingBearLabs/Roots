@@ -47,14 +47,14 @@ This feature adds per-branch state checkpointing to storage so that the orchestr
 - Add `branch_results` to PostgreSQL TRUNCATE in test cleanup (`tests/conftest.py:56-58`)
 
 **Acceptance Criteria:**
-- [ ] `StorageBackend` has abstract methods: `save_branch_result`, `get_branch_results`, `clear_branch_results`
-- [ ] `BranchResult` dataclass with `run_id`, `node_id`, `branch_id`, `status`, `result_json`, `created_at`
-- [ ] SQLite and PostgreSQL implementations with `branch_results` table
-- [ ] `save_branch_result` is idempotent (UPSERT semantics)
-- [ ] `get_branch_results` returns all branches for `(run_id, node_id)`, ordered by branch_id
-- [ ] Tests: save/get/clear round-trip; UPSERT overwrites; clear removes all; test cleanup includes branch_results
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] `StorageBackend` has abstract methods: `save_branch_result`, `get_branch_results`, `clear_branch_results`
+- [x] `BranchResult` dataclass with `run_id`, `node_id`, `branch_id`, `status`, `result_json`, `created_at`
+- [x] SQLite and PostgreSQL implementations with `branch_results` table
+- [x] `save_branch_result` is idempotent (UPSERT semantics)
+- [x] `get_branch_results` returns all branches for `(run_id, node_id)`, ordered by branch_id
+- [x] Tests: save/get/clear round-trip; UPSERT overwrites; clear removes all; test cleanup includes branch_results
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-002: Crash-safe fork — branch persistence
 
