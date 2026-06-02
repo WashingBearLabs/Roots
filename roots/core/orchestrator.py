@@ -25,6 +25,7 @@ from roots.core.schema import (
     EndNodeConfig,
     ExecutionMode,
     ForkNodeConfig,
+    ItemFailureMode,
     IteratorNodeConfig,
     JoinNodeConfig,
     MergeStrategy,
@@ -1399,9 +1400,166 @@ class ProcessRunner:
         self, node: NodeDefinition, state: dict[str, Any]
     ) -> dict[str, Any] | None:
         assert isinstance(node.config, IteratorNodeConfig)
-        raise OrchestrationError(
-            f"Iterator node '{node.id}': execution not yet implemented"
+        config = node.config
+
+        # Validate items_key exists and is a list
+        if config.items_key not in state:
+            raise OrchestrationError(
+                f"Iterator node '{node.id}': items_key '{config.items_key}' "
+                f"not found in run state"
+            )
+        items = state[config.items_key]
+        if not isinstance(items, list):
+            raise OrchestrationError(
+                f"Iterator node '{node.id}': state['{config.items_key}'] "
+                f"must be a list, got {type(items).__name__}"
+            )
+
+        # Get subprocess depth from current run metadata; enforce max_depth
+        run = await self._storage.get_run(self.run_id)
+        if run is None:
+            raise OrchestrationError(f"Run '{self.run_id}' not found")
+        current_depth = int((run.metadata or {}).get("_subprocess_depth", 0))
+        child_depth = current_depth + 1
+        if child_depth > config.max_depth:
+            raise OrchestrationError(
+                f"Iterator node '{node.id}': maximum subprocess depth "
+                f"{config.max_depth} exceeded (current depth {current_depth})"
+            )
+
+        # Emit ITERATOR_STARTED
+        self._event_emitter.emit(
+            create_event(
+                EventType.ITERATOR_STARTED,
+                run_id=self.run_id,
+                process_id=self._process_id or "",
+                node_id=node.id,
+                metadata={"items_count": len(items)},
+            )
         )
+
+        # Empty list: write empty results and emit ITERATOR_COMPLETED
+        if not items:
+            state[config.output_key] = []
+            self._event_emitter.emit(
+                create_event(
+                    EventType.ITERATOR_COMPLETED,
+                    run_id=self.run_id,
+                    process_id=self._process_id or "",
+                    node_id=node.id,
+                    metadata={"items_count": 0, "results_count": 0},
+                )
+            )
+            return None
+
+        # Sequential iteration: one item at a time
+        results: list[dict[str, Any]] = []
+        for index, item in enumerate(items):
+            # Build child work_item with item_key and input_mapping
+            child_work_item: dict[str, Any] = {
+                config.item_key: item,
+                **{
+                    child_k: state[parent_k]
+                    for parent_k, child_k in config.input_mapping.items()
+                    if parent_k in state
+                },
+            }
+
+            # Create child run with parent linkage and incremented depth
+            child_run = await self._storage.create_run(
+                config.process_id,
+                child_work_item,
+                metadata={
+                    "parent_run_id": self.run_id,
+                    "parent_node_id": node.id,
+                    "_subprocess_depth": child_depth,
+                },
+            )
+
+            # Execute child via inner tick loop
+            child_runner = ProcessRunner(
+                run_id=child_run.id,
+                storage=self._storage,
+                agent_invoker=self._agent_invoker,
+                decision_engine=self._decision_engine,
+                event_emitter=self._event_emitter,
+                owner_id=self._owner_id,
+            )
+            await child_runner.run_to_completion()
+
+            # Read child final state
+            completed_child = await self._storage.get_run(child_run.id)
+            if completed_child is None:
+                raise OrchestrationError(
+                    f"Iterator node '{node.id}': child run '{child_run.id}' "
+                    "not found after completion"
+                )
+
+            child_failed = completed_child.status == RunStatus.FAILED
+            envelope: dict[str, Any] = {
+                "_item_index": index,
+                "_status": "failed" if child_failed else "completed",
+                "_item_value": item,
+                "output": dict(completed_child.work_item_state),
+            }
+
+            if child_failed:
+                await self._storage.save_branch_result(
+                    self.run_id, node.id, f"item-{index}", "failed", envelope
+                )
+                self._event_emitter.emit(
+                    create_event(
+                        EventType.ITERATOR_ITEM_FAILED,
+                        run_id=self.run_id,
+                        process_id=self._process_id or "",
+                        node_id=node.id,
+                        metadata={"item_index": index, "child_run_id": child_run.id},
+                    )
+                )
+                if config.on_item_failure == ItemFailureMode.STOP:
+                    self._event_emitter.emit(
+                        create_event(
+                            EventType.ITERATOR_FAILED,
+                            run_id=self.run_id,
+                            process_id=self._process_id or "",
+                            node_id=node.id,
+                            metadata={
+                                "failed_at_index": index,
+                                "reason": "item_failure",
+                            },
+                        )
+                    )
+                    raise OrchestrationError(
+                        f"Iterator node '{node.id}': item {index} failed "
+                        f"(on_item_failure='stop')"
+                    )
+                results.append(envelope)
+            else:
+                await self._storage.save_branch_result(
+                    self.run_id, node.id, f"item-{index}", "completed", envelope
+                )
+                self._event_emitter.emit(
+                    create_event(
+                        EventType.ITERATOR_ITEM_COMPLETED,
+                        run_id=self.run_id,
+                        process_id=self._process_id or "",
+                        node_id=node.id,
+                        metadata={"item_index": index, "child_run_id": child_run.id},
+                    )
+                )
+                results.append(envelope)
+
+        state[config.output_key] = results
+        self._event_emitter.emit(
+            create_event(
+                EventType.ITERATOR_COMPLETED,
+                run_id=self.run_id,
+                process_id=self._process_id or "",
+                node_id=node.id,
+                metadata={"items_count": len(items), "results_count": len(results)},
+            )
+        )
+        return None
 
 
 class Orchestrator:
