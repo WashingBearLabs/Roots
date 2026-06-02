@@ -110,13 +110,13 @@ This feature adds per-branch state checkpointing to storage so that the orchestr
 - `clear_branch_results` after SUCCESSFUL pool completion only (not on failure). Failed attempts leave branch_results in storage so the next recovery attempt can skip already-completed agents. This is the entire point of checkpointing.
 
 **Acceptance Criteria:**
-- [ ] Parallel agent_pool persists each agent result to branch storage with stable branch IDs
-- [ ] Lock renewed periodically during parallel execution via background task (prevents expiry without full release)
-- [ ] `BranchResult.result_json` preserves `escalate` and `escalation_reason` fields
-- [ ] `clear_branch_results` called after successful pool completion only (not on failure — preserves progress for next recovery attempt)
-- [ ] Tests: normal persistence; result round-trip with escalate flag
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] Parallel agent_pool persists each agent result to branch storage with stable branch IDs
+- [x] Lock renewed periodically during parallel execution via background task (prevents expiry without full release)
+- [x] `BranchResult.result_json` preserves `escalate` and `escalation_reason` fields
+- [x] `clear_branch_results` called after successful pool completion only (not on failure — preserves progress for next recovery attempt)
+- [x] Tests: normal persistence; result round-trip with escalate flag
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-005: Crash-safe parallel agent_pool — recovery
 
