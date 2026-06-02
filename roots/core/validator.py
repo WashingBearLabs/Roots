@@ -5,17 +5,21 @@ from __future__ import annotations
 import warnings
 from collections import deque
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import yaml
 from pydantic import ValidationError
 
 from roots.core.schema import (
     DecisionNodeConfig,
+    IteratorNodeConfig,
     NodeType,
     OnExhaustion,
     ProcessDefinition,
 )
+
+if TYPE_CHECKING:
+    from roots.storage.base import StorageBackend
 
 
 class ProcessValidationError(Exception):
@@ -200,6 +204,58 @@ def validate_structure(process: ProcessDefinition) -> list[str]:
                     f"'{node.retry.fallback_edge}' does not reference "
                     f"a valid node"
                 )
+
+    # Iterator static self-reference check
+    for node in process.nodes:
+        if node.type == NodeType.ITERATOR and isinstance(
+            node.config, IteratorNodeConfig
+        ):
+            if node.config.process_id == process.id:
+                errors.append(
+                    f"Iterator node '{node.id}': process_id references "
+                    f"the containing process '{process.id}' "
+                    f"— circular reference not allowed"
+                )
+
+    return errors
+
+
+async def validate_subprocess_references(
+    process: ProcessDefinition,
+    storage: StorageBackend,
+) -> list[str]:
+    """Detect transitive cycles through iterator process_id references.
+
+    Performs a BFS over all processes reachable via iterator nodes.
+    Returns a list of error strings for any cycles detected.
+    """
+    errors: list[str] = []
+    visited: set[str] = {process.id}
+    queue: deque[tuple[ProcessDefinition, list[str]]] = deque(
+        [(process, [process.id])]
+    )
+
+    while queue:
+        current, path = queue.popleft()
+        for node in current.nodes:
+            if node.type != NodeType.ITERATOR or not isinstance(
+                node.config, IteratorNodeConfig
+            ):
+                continue
+            ref_id = node.config.process_id
+            if ref_id in path:
+                errors.append(
+                    f"Iterator node '{node.id}' in process '{current.id}': "
+                    f"cycle detected: {' -> '.join(path + [ref_id])}"
+                )
+                continue
+            if ref_id in visited:
+                continue
+            visited.add(ref_id)
+            ref_proc = await storage.get_process(ref_id)
+            if ref_proc is None:
+                continue
+            queue.append((ref_proc, path + [ref_id]))
 
     return errors
 

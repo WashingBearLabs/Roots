@@ -41,6 +41,13 @@ class EventType(StrEnum):
     ESCALATION_TRIGGERED = "roots.escalation.triggered"
     ESCALATION_RESOLVED = "roots.escalation.resolved"
 
+    # Iterator lifecycle
+    ITERATOR_STARTED = "roots.iterator.started"
+    ITERATOR_ITEM_COMPLETED = "roots.iterator.item.completed"
+    ITERATOR_ITEM_FAILED = "roots.iterator.item.failed"
+    ITERATOR_COMPLETED = "roots.iterator.completed"
+    ITERATOR_FAILED = "roots.iterator.failed"
+
 
 class EventEnvelope(BaseModel):
     event: str

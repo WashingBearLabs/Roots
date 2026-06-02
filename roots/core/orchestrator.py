@@ -25,11 +25,13 @@ from roots.core.schema import (
     EndNodeConfig,
     ExecutionMode,
     ForkNodeConfig,
+    IteratorNodeConfig,
     JoinNodeConfig,
     MergeStrategy,
     NodeDefinition,
     NodeType,
 )
+from roots.core.validator import validate_subprocess_references
 from roots.core.state_machine import RunStatus
 from roots.events.emitter import EventEmitter
 from roots.events.types import EventEnvelope, EventType, create_event
@@ -426,6 +428,7 @@ class ProcessRunner:
             NodeType.END: self._handle_end,
             NodeType.FORK: self._handle_fork,
             NodeType.JOIN: self._handle_join,
+            NodeType.ITERATOR: self._handle_iterator,
         }
         handler = handlers.get(node.type)
         if handler is None:
@@ -1392,6 +1395,14 @@ class ProcessRunner:
 
         return None
 
+    async def _handle_iterator(
+        self, node: NodeDefinition, state: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        assert isinstance(node.config, IteratorNodeConfig)
+        raise OrchestrationError(
+            f"Iterator node '{node.id}': execution not yet implemented"
+        )
+
 
 class Orchestrator:
     """Manages multiple ProcessRunners for concurrent run handling."""
@@ -1422,6 +1433,12 @@ class Orchestrator:
         if process is None:
             raise OrchestrationError(
                 f"Process '{process_id}' not found"
+            )
+        ref_errors = await validate_subprocess_references(process, self._storage)
+        if ref_errors:
+            raise OrchestrationError(
+                f"Process '{process_id}' has invalid subprocess references: "
+                + "; ".join(ref_errors)
             )
         run = await self._storage.create_run(
             process_id, work_item, process.version, metadata=metadata

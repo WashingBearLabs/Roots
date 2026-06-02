@@ -13,8 +13,8 @@ from roots.events.types import EventEnvelope, EventType, create_event
 
 
 class TestEventType:
-    def test_all_18_event_types_defined(self) -> None:
-        assert len(EventType) == 19
+    def test_all_event_types_defined(self) -> None:
+        assert len(EventType) == 24
 
     def test_run_events(self) -> None:
         assert EventType.RUN_STARTED == "roots.run.started"
