@@ -79,14 +79,14 @@ This feature adds an `iterator` node type that reads a list from work_item_state
 - Ensure `Orchestrator.start_run()` calls `validate_subprocess_references()` which now includes iterator references
 
 **Acceptance Criteria:**
-- [ ] Iterator added to node dispatch dict in orchestrator
-- [ ] Static self-reference check at `validator.py:200-209` includes `NodeType.ITERATOR`
-- [ ] Transitive cycle detection at `validator.py:214-252` follows iterator `process_id` references
-- [ ] Iterator event types added to EventType enum
-- [ ] `Orchestrator.start_run` validates iterator references transitively
-- [ ] Tests: dispatch works; cycle detection catches iterator→iterator; event types exist
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] Iterator added to node dispatch dict in orchestrator
+- [x] Static self-reference check at `validator.py:200-209` includes `NodeType.ITERATOR`
+- [x] Transitive cycle detection at `validator.py:214-252` follows iterator `process_id` references
+- [x] Iterator event types added to EventType enum
+- [x] `Orchestrator.start_run` validates iterator references transitively
+- [x] Tests: dispatch works; cycle detection catches iterator→iterator; event types exist
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-003: Sequential iteration core handler
 
