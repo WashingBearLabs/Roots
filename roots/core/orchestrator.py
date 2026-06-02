@@ -34,7 +34,7 @@ from roots.core.state_machine import RunStatus
 from roots.events.emitter import EventEmitter
 from roots.events.types import EventEnvelope, EventType, create_event
 from roots.core.retry import RetryExhaustedError, RetryRoutedError, execute_with_retry
-from roots.storage.base import BranchResult, RunRecord, StorageBackend
+from roots.storage.base import BranchResult, RunRecord, StorageBackend, StorageError
 
 logger = logging.getLogger(__name__)
 
@@ -795,18 +795,23 @@ class ProcessRunner:
         """Flag escalation and create an escalation record.
 
         The tick loop reads ``_escalated`` and writes PAUSED status atomically.
+        If a pending escalation already exists (StorageError on duplicate), the
+        creation is skipped — the run was already escalated on the prior attempt.
         """
         self._escalated = True
-        await create_escalation_from_error(
-            storage=self._storage,
-            run_id=self.run_id,
-            node_id=node.id,
-            trigger=trigger,
-            reason=reason,
-            work_item_state=state,
-            emitter=self._event_emitter,
-            process_id=self._process_id or "",
-        )
+        try:
+            await create_escalation_from_error(
+                storage=self._storage,
+                run_id=self.run_id,
+                node_id=node.id,
+                trigger=trigger,
+                reason=reason,
+                work_item_state=state,
+                emitter=self._event_emitter,
+                process_id=self._process_id or "",
+            )
+        except StorageError:
+            pass
 
     # --- Decision, Checkpoint, Emit, End Handlers (US-004) ---
 

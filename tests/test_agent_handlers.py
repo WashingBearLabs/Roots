@@ -933,3 +933,157 @@ class TestAgentPoolParallelPersistence:
         with patch("asyncio.sleep", fast_sleep):
             with pytest.raises(OrchestrationError, match="Lock lost during parallel execution"):
                 await runner.tick()
+
+
+# --- US-005 Crash Recovery Tests ---
+
+
+class TestAgentPoolCrashRecovery:
+    """US-005: Crash-safe parallel agent_pool — recovery."""
+
+    async def test_failed_agent_retried_on_recovery(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Failed agents in storage are re-executed on recovery (not skipped like completed)."""
+        call_log: list[str] = []
+
+        async def tracking_upper(input: dict[str, Any]) -> dict[str, Any]:
+            call_log.append("upper_called")
+            text = input["work_item_state"].get("text", "")
+            return {"output": {"upper": text.upper()}, "escalate": False}
+
+        invoker._registry.register_local("tracking_upper_retry", tracking_upper)
+
+        proc = make_pool_process(["tracking_upper_retry", "reverse"], ExecutionMode.PARALLEL)
+        run_id = await _setup_run(sqlite_storage, proc, {"text": "hello"})
+
+        # Pre-seed tracking_upper_retry as FAILED (should be re-executed)
+        await sqlite_storage.save_branch_result(
+            run_id, "pool1", "agent:tracking_upper_retry", "failed", "previous transient error"
+        )
+
+        runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
+        await runner.run_to_completion()
+
+        # Failed agent SHOULD have been called (re-executed, not skipped)
+        assert "upper_called" in call_log
+
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        assert run.status == "completed"
+        assert run.work_item_state["pool_result"]["upper"] == "HELLO"
+
+    async def test_escalation_dedup_on_recovery(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """When escalating agent result is recovered from storage and a pending escalation
+        already exists, StorageError from create_escalation is caught — run stays paused."""
+        proc = make_pool_process(["escalating", "reverse"], ExecutionMode.PARALLEL)
+        run_id = await _setup_run(sqlite_storage, proc, {"text": "hi"})
+
+        # Pre-seed the escalating agent as already completed (from a prior run attempt)
+        pre_seeded: dict[str, Any] = {
+            "output": {"status": "needs_review"},
+            "escalate": True,
+            "escalation_reason": "Agent needs human review",
+        }
+        await sqlite_storage.save_branch_result(
+            run_id, "pool1", "agent:escalating", "completed", pre_seeded
+        )
+
+        # Pre-create a pending escalation record (as if the prior run attempt already escalated)
+        await sqlite_storage.create_escalation(
+            run_id=run_id,
+            node_id="pool1",
+            trigger_type="agent_explicit_signal",
+            reason="Agent needs human review",
+            work_item_snapshot={},
+        )
+
+        # Now run (recovery): escalating agent comes from storage with escalate=True,
+        # _trigger_escalation is called, StorageError should be caught not re-raised
+        runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
+        # Should NOT raise StorageError or any other exception
+        await runner.tick()
+
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        # Run should be paused (escalated), not failed
+        assert run.status == "paused"
+
+    async def test_vote_aggregation_with_recovered_results(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Vote aggregation produces correct result when some votes are recovered from storage."""
+        # Register uniquely-named vote agents so pre-seeding works with stable keys
+        async def vote_yes_a(input: dict[str, Any]) -> dict[str, Any]:
+            return {"output": {"decision": "yes"}, "escalate": False}
+
+        async def vote_yes_b(input: dict[str, Any]) -> dict[str, Any]:
+            return {"output": {"decision": "yes"}, "escalate": False}
+
+        invoker._registry.register_local("vote_yes_a", vote_yes_a)
+        invoker._registry.register_local("vote_yes_b", vote_yes_b)
+
+        proc = ProcessDefinition(
+            id="vote-recovery-proc",
+            name="Vote Recovery Process",
+            version="1.0.0",
+            nodes=[
+                NodeDefinition(
+                    id="pool1",
+                    type=NodeType.AGENT_POOL,
+                    label="Pool 1",
+                    config=AgentPoolNodeConfig(
+                        agents=["vote_yes_a", "vote_yes_b", "vote_no"],
+                        execution_mode=ExecutionMode.PARALLEL,
+                        aggregation=Aggregation.MAJORITY_VOTE,
+                        output_key="pool_result",
+                        vote_config=VoteConfig(vote_key="decision"),
+                    ),
+                ),
+                NodeDefinition(
+                    id="done",
+                    type=NodeType.END,
+                    label="Done",
+                    config=EndNodeConfig(status=EndStatus.COMPLETED),
+                ),
+            ],
+            edges=[EdgeDefinition(from_node="pool1", to_node="done")],
+            entry_point="pool1",
+        )
+        run_id = await _setup_run(sqlite_storage, proc)
+
+        # Pre-seed vote_yes_a as completed (recovered from storage)
+        pre_seeded: dict[str, Any] = {
+            "output": {"decision": "yes"},
+            "escalate": False,
+            "escalation_reason": None,
+        }
+        await sqlite_storage.save_branch_result(
+            run_id, "pool1", "agent:vote_yes_a", "completed", pre_seeded
+        )
+
+        runner = _make_runner(run_id, sqlite_storage, invoker, decision_engine, emitter)
+        await runner.run_to_completion()
+
+        run = await sqlite_storage.get_run(run_id)
+        assert run is not None
+        assert run.status == "completed"
+        result = run.work_item_state["pool_result"]
+        # 2 yes (vote_yes_a recovered + vote_yes_b fresh) vs 1 no → majority = "yes"
+        assert result["winning_value"] == "yes"
+        assert result["strategy"] == "majority_vote"
+        assert result["participating_agents"] == 3
