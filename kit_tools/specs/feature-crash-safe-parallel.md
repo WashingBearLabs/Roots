@@ -129,14 +129,14 @@ This feature adds per-branch state checkpointing to storage so that the orchestr
 - Vote aggregation (`aggregate_votes`) and merge_all must produce correct results with recovered data
 
 **Acceptance Criteria:**
-- [ ] On recovery, completed agents loaded from storage and not re-invoked
-- [ ] Failed agents are re-executed (same as fork semantics)
-- [ ] Recovered results normalized to `AgentOutput`-compatible format
-- [ ] Vote aggregation and merge_all produce correct results with recovered data
-- [ ] Escalation de-duplication: catch StorageError from create_escalation (existing duplicate detection) — no double-escalation on recovery
-- [ ] Tests: recovery with partial agents; escalation round-trip; vote aggregation with recovered results
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] On recovery, completed agents loaded from storage and not re-invoked
+- [x] Failed agents are re-executed (same as fork semantics)
+- [x] Recovered results normalized to `AgentOutput`-compatible format
+- [x] Vote aggregation and merge_all produce correct results with recovered data
+- [x] Escalation de-duplication: catch StorageError from create_escalation (existing duplicate detection) — no double-escalation on recovery
+- [x] Tests: recovery with partial agents; escalation round-trip; vote aggregation with recovered results
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-006: Nested fork/join guard
 
