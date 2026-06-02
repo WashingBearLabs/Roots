@@ -1467,13 +1467,16 @@ class ProcessRunner:
             )
             return None
 
-        # Paused child state (for cascading pause / resume)
+        # Paused child state (sequential mode only — for cascading pause / resume)
         paused_child_run_id: str | None = state.get("_iterator_paused_child_run_id")
         paused_item_index: int | None = state.get("_iterator_paused_item_index")
 
-        # Lock renewal: keep parent lock alive during potentially long child execution
+        # Lock renewal: keep parent lock alive during potentially long child execution.
+        # item_tasks_container is populated by the parallel path so the renewal loop can
+        # cancel in-flight tasks when the lock is stolen.
         stale_timeout_seconds = 300
         lock_stolen = False
+        item_tasks_container: list[asyncio.Task[None]] = []
 
         async def _renewal_loop() -> None:
             nonlocal lock_stolen
@@ -1489,145 +1492,128 @@ class ProcessRunner:
                     )
                     if not acquired:
                         lock_stolen = True
+                        for t in item_tasks_container:
+                            t.cancel()
                         return
             except asyncio.CancelledError:
                 pass
 
         renewal_task = asyncio.create_task(_renewal_loop())
 
-        # Sequential iteration: one item at a time
         failure_count = 0
         results: list[dict[str, Any]] = []
         try:
-            for index, item in enumerate(items):
-                branch_id = f"item-{index}"
+            if config.execution_mode == ExecutionMode.SEQUENTIAL:
+                # Sequential iteration: one item at a time
+                for index, item in enumerate(items):
+                    branch_id = f"item-{index}"
 
-                # Crash recovery: skip already-completed items, use cached result
-                if branch_id in completed_by_branch:
-                    results.append(completed_by_branch[branch_id])
-                    continue
+                    # Crash recovery: skip already-completed items, use cached result
+                    if branch_id in completed_by_branch:
+                        results.append(completed_by_branch[branch_id])
+                        continue
 
-                # Crash recovery: skip already-failed items, count toward failure limit
-                if branch_id in failed_by_branch:
-                    results.append(failed_by_branch[branch_id])
-                    failure_count += 1
-                    continue
+                    # Crash recovery: skip already-failed items, count toward failure limit
+                    if branch_id in failed_by_branch:
+                        results.append(failed_by_branch[branch_id])
+                        failure_count += 1
+                        continue
 
-                # Check for lock theft before starting next item
-                if lock_stolen:
-                    raise OrchestrationError(
-                        f"Iterator node '{node.id}': lock lost during execution"
-                    )
-
-                # Build child work_item with item_key and input_mapping
-                child_work_item: dict[str, Any] = {
-                    config.item_key: item,
-                    **{
-                        child_k: state[parent_k]
-                        for parent_k, child_k in config.input_mapping.items()
-                        if parent_k in state
-                    },
-                }
-
-                # Resume a paused child or create a new child run
-                if paused_child_run_id is not None and paused_item_index == index:
-                    child_run_id = paused_child_run_id
-                    state.pop("_iterator_paused_child_run_id", None)
-                    state.pop("_iterator_paused_item_index", None)
-                    paused_child_run_id = None
-                    paused_item_index = None
-                else:
-                    child_run = await self._storage.create_run(
-                        config.process_id,
-                        child_work_item,
-                        metadata={
-                            "parent_run_id": self.run_id,
-                            "parent_node_id": node.id,
-                            "_subprocess_depth": child_depth,
-                        },
-                    )
-                    child_run_id = child_run.id
-
-                # Execute child via inner tick loop
-                child_runner = ProcessRunner(
-                    run_id=child_run_id,
-                    storage=self._storage,
-                    agent_invoker=self._agent_invoker,
-                    decision_engine=self._decision_engine,
-                    event_emitter=self._event_emitter,
-                    owner_id=self._owner_id,
-                )
-                await child_runner.run_to_completion()
-
-                # Read child final state
-                completed_child = await self._storage.get_run(child_run_id)
-                if completed_child is None:
-                    raise OrchestrationError(
-                        f"Iterator node '{node.id}': child run '{child_run_id}' "
-                        "not found after completion"
-                    )
-
-                # Cascade pause to parent if child paused at a checkpoint
-                if completed_child.status == RunStatus.PAUSED:
-                    state["_iterator_paused_child_run_id"] = child_run_id
-                    state["_iterator_paused_item_index"] = index
-                    await self._trigger_escalation(
-                        node, state,
-                        f"Child run '{child_run_id}' paused at item {index}",
-                        EscalationTrigger.SUBPROCESS_PAUSED,
-                    )
-                    return None
-
-                child_failed = completed_child.status == RunStatus.FAILED
-
-                if child_failed:
-                    error_msg = str(
-                        completed_child.work_item_state.get(
-                            "_error", "child process terminated with failed status"
+                    # Check for lock theft before starting next item
+                    if lock_stolen:
+                        raise OrchestrationError(
+                            f"Iterator node '{node.id}': lock lost during execution"
                         )
-                    )
-                    envelope: dict[str, Any] = {
-                        "_item_index": index,
-                        "_status": "failed",
-                        "_item_value": item,
-                        "output": {"_error": error_msg},
+
+                    # Build child work_item with item_key and input_mapping
+                    child_work_item: dict[str, Any] = {
+                        config.item_key: item,
+                        **{
+                            child_k: state[parent_k]
+                            for parent_k, child_k in config.input_mapping.items()
+                            if parent_k in state
+                        },
                     }
-                    await self._storage.save_branch_result(
-                        self.run_id, node.id, f"item-{index}", "failed", envelope
-                    )
-                    self._event_emitter.emit(
-                        create_event(
-                            EventType.ITERATOR_ITEM_FAILED,
-                            run_id=self.run_id,
-                            process_id=self._process_id or "",
-                            node_id=node.id,
+
+                    # Resume a paused child or create a new child run
+                    if paused_child_run_id is not None and paused_item_index == index:
+                        child_run_id = paused_child_run_id
+                        state.pop("_iterator_paused_child_run_id", None)
+                        state.pop("_iterator_paused_item_index", None)
+                        paused_child_run_id = None
+                        paused_item_index = None
+                    else:
+                        child_run = await self._storage.create_run(
+                            config.process_id,
+                            child_work_item,
                             metadata={
-                                "item_index": index,
-                                "child_run_id": child_run_id,
+                                "parent_run_id": self.run_id,
+                                "parent_node_id": node.id,
+                                "_subprocess_depth": child_depth,
                             },
                         )
+                        child_run_id = child_run.id
+
+                    # Execute child via inner tick loop
+                    child_runner = ProcessRunner(
+                        run_id=child_run_id,
+                        storage=self._storage,
+                        agent_invoker=self._agent_invoker,
+                        decision_engine=self._decision_engine,
+                        event_emitter=self._event_emitter,
+                        owner_id=self._owner_id,
                     )
-                    if config.on_item_failure == ItemFailureMode.STOP:
+                    await child_runner.run_to_completion()
+
+                    # Read child final state
+                    completed_child = await self._storage.get_run(child_run_id)
+                    if completed_child is None:
+                        raise OrchestrationError(
+                            f"Iterator node '{node.id}': child run '{child_run_id}' "
+                            "not found after completion"
+                        )
+
+                    # Cascade pause to parent if child paused at a checkpoint
+                    if completed_child.status == RunStatus.PAUSED:
+                        state["_iterator_paused_child_run_id"] = child_run_id
+                        state["_iterator_paused_item_index"] = index
+                        await self._trigger_escalation(
+                            node, state,
+                            f"Child run '{child_run_id}' paused at item {index}",
+                            EscalationTrigger.SUBPROCESS_PAUSED,
+                        )
+                        return None
+
+                    child_failed = completed_child.status == RunStatus.FAILED
+
+                    if child_failed:
+                        error_msg = str(
+                            completed_child.work_item_state.get(
+                                "_error", "child process terminated with failed status"
+                            )
+                        )
+                        envelope: dict[str, Any] = {
+                            "_item_index": index,
+                            "_status": "failed",
+                            "_item_value": item,
+                            "output": {"_error": error_msg},
+                        }
+                        await self._storage.save_branch_result(
+                            self.run_id, node.id, f"item-{index}", "failed", envelope
+                        )
                         self._event_emitter.emit(
                             create_event(
-                                EventType.ITERATOR_FAILED,
+                                EventType.ITERATOR_ITEM_FAILED,
                                 run_id=self.run_id,
                                 process_id=self._process_id or "",
                                 node_id=node.id,
                                 metadata={
-                                    "failed_at_index": index,
-                                    "reason": "item_failure",
+                                    "item_index": index,
+                                    "child_run_id": child_run_id,
                                 },
                             )
                         )
-                        raise OrchestrationError(
-                            f"Iterator node '{node.id}': item {index} failed "
-                            f"(on_item_failure='stop')"
-                        )
-                    elif config.on_item_failure == ItemFailureMode.STOP_AFTER_N:
-                        failure_count += 1
-                        results.append(envelope)
-                        if failure_count >= config.max_failures:
+                        if config.on_item_failure == ItemFailureMode.STOP:
                             self._event_emitter.emit(
                                 create_event(
                                     EventType.ITERATOR_FAILED,
@@ -1636,41 +1622,301 @@ class ProcessRunner:
                                     node_id=node.id,
                                     metadata={
                                         "failed_at_index": index,
-                                        "failure_count": failure_count,
-                                        "reason": "max_failures_reached",
+                                        "reason": "item_failure",
                                     },
                                 )
                             )
                             raise OrchestrationError(
-                                f"Iterator node '{node.id}': {failure_count} item(s) "
-                                f"failed (on_item_failure='stop_after_n', "
-                                f"max_failures={config.max_failures})"
+                                f"Iterator node '{node.id}': item {index} failed "
+                                f"(on_item_failure='stop')"
                             )
-                    else:  # CONTINUE
-                        results.append(envelope)
-                else:
-                    envelope = {
-                        "_item_index": index,
-                        "_status": "completed",
-                        "_item_value": item,
-                        "output": dict(completed_child.work_item_state),
-                    }
-                    await self._storage.save_branch_result(
-                        self.run_id, node.id, f"item-{index}", "completed", envelope
-                    )
-                    self._event_emitter.emit(
-                        create_event(
-                            EventType.ITERATOR_ITEM_COMPLETED,
-                            run_id=self.run_id,
-                            process_id=self._process_id or "",
-                            node_id=node.id,
+                        elif config.on_item_failure == ItemFailureMode.STOP_AFTER_N:
+                            failure_count += 1
+                            results.append(envelope)
+                            if failure_count >= config.max_failures:
+                                self._event_emitter.emit(
+                                    create_event(
+                                        EventType.ITERATOR_FAILED,
+                                        run_id=self.run_id,
+                                        process_id=self._process_id or "",
+                                        node_id=node.id,
+                                        metadata={
+                                            "failed_at_index": index,
+                                            "failure_count": failure_count,
+                                            "reason": "max_failures_reached",
+                                        },
+                                    )
+                                )
+                                raise OrchestrationError(
+                                    f"Iterator node '{node.id}': {failure_count} item(s) "
+                                    f"failed (on_item_failure='stop_after_n', "
+                                    f"max_failures={config.max_failures})"
+                                )
+                        else:  # CONTINUE
+                            results.append(envelope)
+                    else:
+                        completed_envelope: dict[str, Any] = {
+                            "_item_index": index,
+                            "_status": "completed",
+                            "_item_value": item,
+                            "output": dict(completed_child.work_item_state),
+                        }
+                        await self._storage.save_branch_result(
+                            self.run_id, node.id, f"item-{index}", "completed",
+                            completed_envelope
+                        )
+                        self._event_emitter.emit(
+                            create_event(
+                                EventType.ITERATOR_ITEM_COMPLETED,
+                                run_id=self.run_id,
+                                process_id=self._process_id or "",
+                                node_id=node.id,
+                                metadata={
+                                    "item_index": index,
+                                    "child_run_id": child_run_id,
+                                },
+                            )
+                        )
+                        results.append(completed_envelope)
+
+            else:
+                # Parallel iteration: all items run concurrently via asyncio.create_task()
+                semaphore: asyncio.Semaphore | None = (
+                    asyncio.Semaphore(config.max_concurrency)
+                    if config.max_concurrency is not None
+                    else None
+                )
+                results_by_index: dict[int, dict[str, Any]] = {}
+                halt_event = asyncio.Event()
+                halt_error: OrchestrationError | None = None
+                iter_failed_emitted = False
+
+                # Pre-populate crash-recovered items
+                for idx in range(len(items)):
+                    bid = f"item-{idx}"
+                    if bid in completed_by_branch:
+                        results_by_index[idx] = completed_by_branch[bid]
+                    elif bid in failed_by_branch:
+                        results_by_index[idx] = failed_by_branch[bid]
+                        failure_count += 1
+
+                async def _run_parallel_item(index: int, item: Any) -> None:
+                    nonlocal failure_count, halt_error, iter_failed_emitted
+
+                    if halt_event.is_set() or lock_stolen:
+                        return
+
+                    if semaphore is not None:
+                        await semaphore.acquire()
+                    try:
+                        if halt_event.is_set() or lock_stolen:
+                            return
+
+                        child_work_item: dict[str, Any] = {
+                            config.item_key: item,
+                            **{
+                                child_k: state[parent_k]
+                                for parent_k, child_k in config.input_mapping.items()
+                                if parent_k in state
+                            },
+                        }
+
+                        child_run = await self._storage.create_run(
+                            config.process_id,
+                            child_work_item,
                             metadata={
-                                "item_index": index,
-                                "child_run_id": child_run_id,
+                                "parent_run_id": self.run_id,
+                                "parent_node_id": node.id,
+                                "_subprocess_depth": child_depth,
                             },
                         )
+                        p_child_run_id = child_run.id
+
+                        p_child_runner = ProcessRunner(
+                            run_id=p_child_run_id,
+                            storage=self._storage,
+                            agent_invoker=self._agent_invoker,
+                            decision_engine=self._decision_engine,
+                            event_emitter=self._event_emitter,
+                            owner_id=self._owner_id,
+                        )
+                        await p_child_runner.run_to_completion()
+
+                        p_completed_child = await self._storage.get_run(p_child_run_id)
+                        if p_completed_child is None:
+                            raise OrchestrationError(
+                                f"Iterator node '{node.id}': child run "
+                                f"'{p_child_run_id}' not found after completion"
+                            )
+
+                        # Treat PAUSED as failure (parallel pause cascade unsupported)
+                        p_child_failed = p_completed_child.status in (
+                            RunStatus.FAILED, RunStatus.PAUSED
+                        )
+
+                        if p_child_failed:
+                            p_error_msg = str(
+                                p_completed_child.work_item_state.get(
+                                    "_error",
+                                    "child process terminated with failed status",
+                                )
+                            )
+                            p_envelope: dict[str, Any] = {
+                                "_item_index": index,
+                                "_status": "failed",
+                                "_item_value": item,
+                                "output": {"_error": p_error_msg},
+                            }
+                            await self._storage.save_branch_result(
+                                self.run_id, node.id, f"item-{index}",
+                                "failed", p_envelope
+                            )
+                            self._event_emitter.emit(
+                                create_event(
+                                    EventType.ITERATOR_ITEM_FAILED,
+                                    run_id=self.run_id,
+                                    process_id=self._process_id or "",
+                                    node_id=node.id,
+                                    metadata={
+                                        "item_index": index,
+                                        "child_run_id": p_child_run_id,
+                                    },
+                                )
+                            )
+
+                            if config.on_item_failure == ItemFailureMode.STOP:
+                                if not iter_failed_emitted:
+                                    iter_failed_emitted = True
+                                    self._event_emitter.emit(
+                                        create_event(
+                                            EventType.ITERATOR_FAILED,
+                                            run_id=self.run_id,
+                                            process_id=self._process_id or "",
+                                            node_id=node.id,
+                                            metadata={
+                                                "failed_at_index": index,
+                                                "reason": "item_failure",
+                                            },
+                                        )
+                                    )
+                                if halt_error is None:
+                                    halt_error = OrchestrationError(
+                                        f"Iterator node '{node.id}': item {index} "
+                                        f"failed (on_item_failure='stop')"
+                                    )
+                                halt_event.set()
+                            elif config.on_item_failure == ItemFailureMode.STOP_AFTER_N:
+                                failure_count += 1
+                                results_by_index[index] = p_envelope
+                                if failure_count >= config.max_failures:
+                                    if not iter_failed_emitted:
+                                        iter_failed_emitted = True
+                                        self._event_emitter.emit(
+                                            create_event(
+                                                EventType.ITERATOR_FAILED,
+                                                run_id=self.run_id,
+                                                process_id=self._process_id or "",
+                                                node_id=node.id,
+                                                metadata={
+                                                    "failed_at_index": index,
+                                                    "failure_count": failure_count,
+                                                    "reason": "max_failures_reached",
+                                                },
+                                            )
+                                        )
+                                    if halt_error is None:
+                                        halt_error = OrchestrationError(
+                                            f"Iterator node '{node.id}': "
+                                            f"{failure_count} item(s) failed "
+                                            f"(on_item_failure='stop_after_n', "
+                                            f"max_failures={config.max_failures})"
+                                        )
+                                    halt_event.set()
+                            else:  # CONTINUE
+                                results_by_index[index] = p_envelope
+                        else:
+                            p_completed_envelope: dict[str, Any] = {
+                                "_item_index": index,
+                                "_status": "completed",
+                                "_item_value": item,
+                                "output": dict(p_completed_child.work_item_state),
+                            }
+                            await self._storage.save_branch_result(
+                                self.run_id, node.id, f"item-{index}",
+                                "completed", p_completed_envelope
+                            )
+                            self._event_emitter.emit(
+                                create_event(
+                                    EventType.ITERATOR_ITEM_COMPLETED,
+                                    run_id=self.run_id,
+                                    process_id=self._process_id or "",
+                                    node_id=node.id,
+                                    metadata={
+                                        "item_index": index,
+                                        "child_run_id": p_child_run_id,
+                                    },
+                                )
+                            )
+                            results_by_index[index] = p_completed_envelope
+                    finally:
+                        if semaphore is not None:
+                            semaphore.release()
+
+                # Create tasks for items not already recovered
+                pending_item_tasks: list[asyncio.Task[None]] = [
+                    asyncio.create_task(_run_parallel_item(i, items[i]))
+                    for i in range(len(items))
+                    if (
+                        f"item-{i}" not in completed_by_branch
+                        and f"item-{i}" not in failed_by_branch
                     )
-                    results.append(envelope)
+                ]
+                item_tasks_container.extend(pending_item_tasks)
+
+                # Wait for completion; cancel remaining tasks when halt triggers
+                remaining_tasks: list[asyncio.Task[None]] = list(pending_item_tasks)
+                while remaining_tasks:
+                    done_set, still_pending = await asyncio.wait(
+                        remaining_tasks, return_when=asyncio.FIRST_COMPLETED
+                    )
+                    remaining_tasks = list(still_pending)
+
+                    for t in done_set:
+                        if not t.cancelled():
+                            exc = t.exception()
+                            if exc is not None:
+                                for p in remaining_tasks:
+                                    p.cancel()
+                                if remaining_tasks:
+                                    await asyncio.gather(
+                                        *remaining_tasks, return_exceptions=True
+                                    )
+                                raise exc
+
+                    if halt_event.is_set() or lock_stolen:
+                        for p in remaining_tasks:
+                            p.cancel()
+                        if remaining_tasks:
+                            await asyncio.gather(
+                                *remaining_tasks, return_exceptions=True
+                            )
+                        remaining_tasks = []
+                        break
+
+                # Assemble results in original index order
+                results = [
+                    results_by_index[i]
+                    for i in range(len(items))
+                    if i in results_by_index
+                ]
+
+                if halt_error is not None:
+                    raise halt_error
+
+                if lock_stolen:
+                    raise OrchestrationError(
+                        f"Iterator node '{node.id}': lock lost during execution"
+                    )
 
         finally:
             renewal_task.cancel()
