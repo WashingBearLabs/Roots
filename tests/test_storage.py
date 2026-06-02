@@ -71,6 +71,74 @@ async def test_metadata_rejects_list_value(storage: StorageBackend) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Metadata Filter Operators — US-002
+# ---------------------------------------------------------------------------
+
+
+async def test_list_runs_filter_eq_string(storage: StorageBackend) -> None:
+    await storage.create_run("proc-1", {}, metadata={"env": "staging"})
+    await storage.create_run("proc-1", {}, metadata={"env": "prod"})
+    await storage.create_run("proc-1", {})
+
+    runs = await storage.list_runs(metadata_filter={"env": {"$eq": "staging"}})
+    assert len(runs) == 1
+    assert runs[0].metadata == {"env": "staging"}
+
+
+async def test_list_runs_filter_eq_numeric(storage: StorageBackend) -> None:
+    await storage.create_run("proc-1", {}, metadata={"count": 5})
+    await storage.create_run("proc-1", {}, metadata={"count": 10})
+    await storage.create_run("proc-1", {})
+
+    runs = await storage.list_runs(metadata_filter={"count": {"$eq": 5}})
+    assert len(runs) == 1
+    assert runs[0].metadata is not None
+    assert runs[0].metadata["count"] == 5
+
+
+async def test_list_runs_filter_in(storage: StorageBackend) -> None:
+    await storage.create_run("proc-1", {}, metadata={"env": "staging"})
+    await storage.create_run("proc-1", {}, metadata={"env": "prod"})
+    await storage.create_run("proc-1", {}, metadata={"env": "dev"})
+
+    runs = await storage.list_runs(
+        metadata_filter={"env": {"$in": ["staging", "prod"]}}
+    )
+    assert len(runs) == 2
+    envs = {r.metadata["env"] for r in runs if r.metadata}
+    assert envs == {"staging", "prod"}
+
+
+async def test_list_runs_filter_exists(storage: StorageBackend) -> None:
+    await storage.create_run("proc-1", {}, metadata={"tag": "x"})
+    await storage.create_run("proc-1", {}, metadata={"other": "y"})
+    await storage.create_run("proc-1", {})
+
+    runs = await storage.list_runs(metadata_filter={"tag": {"$exists": True}})
+    assert len(runs) == 1
+    assert runs[0].metadata == {"tag": "x"}
+
+
+async def test_list_runs_filter_shorthand(storage: StorageBackend) -> None:
+    await storage.create_run("proc-1", {}, metadata={"epic_id": "abc"})
+    await storage.create_run("proc-1", {}, metadata={"epic_id": "def"})
+
+    runs = await storage.list_runs(metadata_filter={"epic_id": "abc"})
+    assert len(runs) == 1
+    assert runs[0].metadata == {"epic_id": "abc"}
+
+
+async def test_list_runs_filter_invalid_key_raises(storage: StorageBackend) -> None:
+    with pytest.raises(ValueError, match="invalid"):
+        await storage.list_runs(metadata_filter={"bad-key": "value"})
+
+
+async def test_metadata_write_invalid_key_raises(storage: StorageBackend) -> None:
+    with pytest.raises(ValueError, match="invalid"):
+        await storage.create_run("proc-1", {}, metadata={"bad-key": "value"})
+
+
+# ---------------------------------------------------------------------------
 # History Events
 # ---------------------------------------------------------------------------
 

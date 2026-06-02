@@ -26,6 +26,7 @@ from roots.storage.base import (
     StorageError,
     WebhookRecord,
     validate_metadata,
+    validate_metadata_key,
 )
 
 _SCHEMA_SQL = """\
@@ -142,6 +143,49 @@ def _serialize_process(process: ProcessDefinition) -> str:
         if isinstance(node.config, BaseModel):
             data["nodes"][i]["config"] = node.config.model_dump(mode="json")
     return json.dumps(data)
+
+
+def _build_sqlite_metadata_clauses(
+    metadata_filter: dict[str, Any],
+    params: list[Any],
+) -> list[str]:
+    clauses: list[str] = []
+    for key, raw_condition in metadata_filter.items():
+        validate_metadata_key(key)
+        ops: dict[str, Any]
+        if not isinstance(raw_condition, dict):
+            ops = {"$eq": raw_condition}
+        else:
+            ops = raw_condition
+        for op, value in ops.items():
+            if op == "$eq":
+                if isinstance(value, bool):
+                    clauses.append(f"json_extract(metadata_json, '$.{key}') = ?")
+                    params.append(1 if value else 0)
+                elif isinstance(value, (int, float)):
+                    clauses.append(
+                        f"CAST(json_extract(metadata_json, '$.{key}') AS NUMERIC)"
+                        f" = CAST(? AS NUMERIC)"
+                    )
+                    params.append(value)
+                else:
+                    clauses.append(f"json_extract(metadata_json, '$.{key}') = ?")
+                    params.append(value)
+            elif op == "$in":
+                if not isinstance(value, list):
+                    raise ValueError(
+                        f"$in operator requires a list, got {type(value).__name__}"
+                    )
+                placeholders = ", ".join("?" * len(value))
+                clauses.append(
+                    f"json_extract(metadata_json, '$.{key}') IN ({placeholders})"
+                )
+                params.extend(value)
+            elif op == "$exists":
+                clauses.append(f"json_type(metadata_json, '$.{key}') IS NOT NULL")
+            else:
+                raise ValueError(f"Unknown metadata operator: '{op}'")
+    return clauses
 
 
 class SqliteBackend(StorageBackend):
@@ -388,12 +432,13 @@ class SqliteBackend(StorageBackend):
         self,
         process_id: str | None = None,
         status: str | None = None,
+        metadata_filter: dict[str, Any] | None = None,
     ) -> list[RunRecord]:
         query = (
             "SELECT id, process_id, status, current_node_id, "
             "work_item_state_json, created_at, updated_at, process_version, metadata_json FROM runs"
         )
-        params: list[str] = []
+        params: list[Any] = []
         clauses: list[str] = []
         if process_id is not None:
             clauses.append("process_id = ?")
@@ -401,6 +446,8 @@ class SqliteBackend(StorageBackend):
         if status is not None:
             clauses.append("status = ?")
             params.append(status)
+        if metadata_filter is not None:
+            clauses.extend(_build_sqlite_metadata_clauses(metadata_filter, params))
         if clauses:
             query += " WHERE " + " AND ".join(clauses)
         cursor = await self.db.execute(query, params)

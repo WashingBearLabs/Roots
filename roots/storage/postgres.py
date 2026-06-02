@@ -26,6 +26,7 @@ from roots.storage.base import (
     StorageError,
     WebhookRecord,
     validate_metadata,
+    validate_metadata_key,
 )
 
 _SCHEMA_SQL = """\
@@ -148,6 +149,46 @@ def _serialize_process(process: ProcessDefinition) -> str:
         if isinstance(node.config, BaseModel):
             data["nodes"][i]["config"] = node.config.model_dump(mode="json")
     return json.dumps(data)
+
+
+def _build_pg_metadata_clauses(
+    metadata_filter: dict[str, Any],
+    params: list[Any],
+) -> list[str]:
+    clauses: list[str] = []
+    for key, raw_condition in metadata_filter.items():
+        validate_metadata_key(key)
+        ops: dict[str, Any]
+        if not isinstance(raw_condition, dict):
+            ops = {"$eq": raw_condition}
+        else:
+            ops = raw_condition
+        for op, value in ops.items():
+            if op == "$eq":
+                if isinstance(value, bool):
+                    params.append("true" if value else "false")
+                    clauses.append(f"metadata->>'{key}' = ${len(params)}")
+                elif isinstance(value, (int, float)):
+                    params.append(value)
+                    clauses.append(f"(metadata->>'{key}')::numeric = ${len(params)}")
+                else:
+                    params.append(value)
+                    clauses.append(f"metadata->>'{key}' = ${len(params)}")
+            elif op == "$in":
+                if not isinstance(value, list):
+                    raise ValueError(
+                        f"$in operator requires a list, got {type(value).__name__}"
+                    )
+                sub: list[str] = []
+                for v in value:
+                    params.append(str(v) if not isinstance(v, str) else v)
+                    sub.append(f"${len(params)}")
+                clauses.append(f"metadata->>'{key}' IN ({', '.join(sub)})")
+            elif op == "$exists":
+                clauses.append(f"metadata ? '{key}'")
+            else:
+                raise ValueError(f"Unknown metadata operator: '{op}'")
+    return clauses
 
 
 class PostgresBackend(StorageBackend):
@@ -439,6 +480,7 @@ class PostgresBackend(StorageBackend):
         self,
         process_id: str | None = None,
         status: str | None = None,
+        metadata_filter: dict[str, Any] | None = None,
     ) -> list[RunRecord]:
         query = (
             "SELECT id, process_id, status, current_node_id, "
@@ -452,6 +494,8 @@ class PostgresBackend(StorageBackend):
         if status is not None:
             params.append(status)
             clauses.append(f"status = ${len(params)}")
+        if metadata_filter is not None:
+            clauses.extend(_build_pg_metadata_clauses(metadata_filter, params))
         if clauses:
             query += " WHERE " + " AND ".join(clauses)
         async with self.pool.acquire() as conn:

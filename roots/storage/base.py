@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import abc
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -19,10 +20,22 @@ class StorageError(Exception):
 
 # --- Data Models ---
 
+_KEY_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+
+def validate_metadata_key(key: str) -> None:
+    """Validate that a metadata key matches the allowed identifier pattern."""
+    if not _KEY_RE.match(key):
+        raise ValueError(
+            f"Metadata key '{key}' is invalid — keys must match "
+            r"^[a-zA-Z_][a-zA-Z0-9_]*$"
+        )
+
 
 def validate_metadata(metadata: dict[str, Any]) -> None:
-    """Validate that all metadata values are JSON scalar types."""
+    """Validate that metadata keys are safe identifiers and values are JSON scalars."""
     for key, value in metadata.items():
+        validate_metadata_key(key)
         if not isinstance(value, (str, int, float, bool, type(None))):
             raise ValueError(
                 f"Metadata value for key '{key}' must be a JSON scalar "
@@ -195,6 +208,7 @@ class StorageBackend(abc.ABC):
         self,
         process_id: str | None = None,
         status: str | None = None,
+        metadata_filter: dict[str, Any] | None = None,
     ) -> list[RunRecord]: ...
 
     # --- Work Item ---
