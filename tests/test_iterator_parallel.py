@@ -1,4 +1,4 @@
-"""Tests for iterator parallel execution core handler (US-006)."""
+"""Tests for iterator parallel execution core handler (US-006, US-007)."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from roots.core.decision import DecisionEngine
 from roots.core.orchestrator import OrchestrationError, ProcessRunner
 from roots.core.schema import (
     AgentNodeConfig,
+    CheckpointNodeConfig,
     EdgeDefinition,
     EndNodeConfig,
     EndStatus,
@@ -86,6 +87,31 @@ def _make_failing_child_process(proc_id: str) -> ProcessDefinition:
             )
         ],
         edges=[],
+    )
+
+
+def _make_checkpoint_child_process(proc_id: str) -> ProcessDefinition:
+    """Child process with a checkpoint node — always pauses on first run."""
+    return ProcessDefinition(
+        id=proc_id,
+        name="Checkpoint Child",
+        version="1.0.0",
+        entry_point="cp",
+        nodes=[
+            NodeDefinition(
+                id="cp",
+                type=NodeType.CHECKPOINT,
+                label="Checkpoint",
+                config=CheckpointNodeConfig(prompt="Review item"),
+            ),
+            NodeDefinition(
+                id="done",
+                type=NodeType.END,
+                label="Done",
+                config=EndNodeConfig(status=EndStatus.COMPLETED),
+            ),
+        ],
+        edges=[EdgeDefinition(from_node="cp", to_node="done")],
     )
 
 
@@ -737,3 +763,96 @@ class TestIteratorParallelFailureModes:
         failed_events = [e for e in sink.events if e.event == EventType.ITERATOR_FAILED]
         assert len(failed_events) == 1
         assert failed_events[0].metadata.get("reason") == "max_failures_reached"
+
+
+# ---- Constraints: checkpoint-as-failure and ITERATOR_ITEM_FAILED events ----
+
+
+class TestIteratorParallelConstraints:
+    """US-007: checkpoint children treated as failure; ITERATOR_ITEM_FAILED events emitted."""
+
+    async def test_checkpoint_child_treated_as_failure_with_clear_message(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        sink: CollectorSink,
+        emitter: EventEmitter,
+    ) -> None:
+        """Child run pausing at checkpoint in parallel mode → failure with clear error."""
+        parent_proc = _make_parallel_iterator_process(
+            "parent", "cp-child",
+            on_item_failure=ItemFailureMode.CONTINUE,
+        )
+        child_proc = _make_checkpoint_child_process("cp-child")
+
+        _, final_run = await _run_parallel_process(
+            sqlite_storage, invoker, decision_engine, emitter,
+            parent_proc, child_proc,
+            work_item={"items": ["x"]},
+        )
+
+        results = final_run.work_item_state.get("results")
+        assert results is not None and len(results) == 1
+        envelope = results[0]
+        assert envelope["_status"] == "failed"
+        error_msg = envelope["output"]["_error"]
+        assert isinstance(error_msg, str)
+        # Must mention parallel mode and suggest sequential as the fix
+        assert "parallel" in error_msg.lower()
+        assert "sequential" in error_msg.lower()
+
+    async def test_checkpoint_child_emits_item_failed_event(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        sink: CollectorSink,
+        emitter: EventEmitter,
+    ) -> None:
+        """ITERATOR_ITEM_FAILED is emitted when child pauses at checkpoint in parallel mode."""
+        parent_proc = _make_parallel_iterator_process(
+            "parent", "cp-child",
+            on_item_failure=ItemFailureMode.CONTINUE,
+        )
+        child_proc = _make_checkpoint_child_process("cp-child")
+
+        await _run_parallel_process(
+            sqlite_storage, invoker, decision_engine, emitter,
+            parent_proc, child_proc,
+            work_item={"items": ["x"]},
+        )
+        await asyncio.sleep(0)
+
+        item_failed = [e for e in sink.events if e.event == EventType.ITERATOR_ITEM_FAILED]
+        assert len(item_failed) == 1
+        assert item_failed[0].metadata.get("item_index") == 0
+
+    async def test_iterator_item_failed_events_emitted_for_each_failure(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        sink: CollectorSink,
+        emitter: EventEmitter,
+    ) -> None:
+        """ITERATOR_ITEM_FAILED emitted once per failed item in CONTINUE mode."""
+        parent_proc = _make_parallel_iterator_process(
+            "parent", "fail-child",
+            on_item_failure=ItemFailureMode.CONTINUE,
+        )
+        child_proc = _make_failing_child_process("fail-child")
+
+        await _run_parallel_process(
+            sqlite_storage, invoker, decision_engine, emitter,
+            parent_proc, child_proc,
+            work_item={"items": ["a", "b", "c"]},
+        )
+        await asyncio.sleep(0)
+
+        item_failed_events = [
+            e for e in sink.events if e.event == EventType.ITERATOR_ITEM_FAILED
+        ]
+        assert len(item_failed_events) == 3
+        indices = {e.metadata.get("item_index") for e in item_failed_events}
+        assert indices == {0, 1, 2}

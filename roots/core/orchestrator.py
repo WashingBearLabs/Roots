@@ -1755,12 +1755,18 @@ class ProcessRunner:
                         )
 
                         if p_child_failed:
-                            p_error_msg = str(
-                                p_completed_child.work_item_state.get(
-                                    "_error",
-                                    "child process terminated with failed status",
+                            if p_completed_child.status == RunStatus.PAUSED:
+                                p_error_msg = (
+                                    "child run paused (checkpoint/pause not supported "
+                                    "in parallel iterator mode; use sequential mode)"
                                 )
-                            )
+                            else:
+                                p_error_msg = str(
+                                    p_completed_child.work_item_state.get(
+                                        "_error",
+                                        "child process terminated with failed status",
+                                    )
+                                )
                             p_envelope: dict[str, Any] = {
                                 "_item_index": index,
                                 "_status": "failed",
