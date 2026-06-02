@@ -9,8 +9,8 @@
 
 > **TEMPLATE_INTENT:** Persistent record of code quality, security, and intent alignment findings from automated validation. Tracks findings across sessions with status tracking and archival.
 
-> Last updated: 2026-05-13
-> Updated by: Claude (validate-implementation — feature-decision-history)
+> Last updated: 2026-06-01
+> Updated by: Claude (validate-implementation — feature-run-metadata)
 
 ---
 
@@ -36,6 +36,63 @@
 
 <!-- Newest findings at top. Each entry has a unique ID: YYYY-MM-DD-NNN -->
 <!-- Findings are added by /kit-tools:validate-feature -->
+
+### 2026-06-01 — feature-run-metadata Validation
+
+> Branch: `epic/embedding-enhancements` · Mode: autonomous (epic child) · Validation loops: 1 · No critical findings. Tests pass (1327 passed, 98 skipped). Not auto-completing — feature is part of an active epic.
+
+| ID | Category | Severity | File | Status |
+|----|----------|----------|------|--------|
+| 2026-06-01-001 | quality | warning | `roots/storage/postgres.py`, `roots/storage/sqlite.py` | open |
+| 2026-06-01-002 | quality | warning | `roots/storage/postgres.py`, `roots/storage/sqlite.py` | open |
+| 2026-06-01-003 | security | warning | `roots/api/routers/runs.py`, `roots/storage/base.py` | open |
+| 2026-06-01-004 | security | warning | `roots/api/routers/runs.py` | open |
+| 2026-06-01-005 | quality | info | `roots/storage/postgres.py`, `roots/storage/sqlite.py` | open |
+| 2026-06-01-006 | quality | info | `roots/api/models.py`, `roots/storage/base.py` | open |
+| 2026-06-01-007 | quality | info | `roots/storage/postgres.py` | open |
+| 2026-06-01-008 | security | info | `roots/api/routers/runs.py` | open |
+| 2026-06-01-009 | security | info | `roots/storage/postgres.py`, `roots/storage/sqlite.py` | open |
+| 2026-06-01-010 | compliance | info | `roots/storage/sqlite.py`, `roots/storage/postgres.py` | open |
+| 2026-06-01-011 | compliance | info | feature spec | open |
+| 2026-06-01-012 | testing | info | test suite | open |
+
+**2026-06-01-001** — `_build_pg_metadata_clauses` (`postgres.py:222-261`) and `_build_sqlite_metadata_clauses` (`sqlite.py:399-441`) are structurally near-identical: same operator dispatch, shorthand-to-`$eq` normalization, key validation, and duplicated error-message strings. Only the emitted SQL fragments differ. Drift between them is the root cause of finding 002.
+> Recommendation: Extract the shared control flow (operator iteration, shorthand normalization, validation, `$in` non-list check, unknown-operator error) into a backend-agnostic helper in `storage/base.py` that delegates to small per-backend SQL-fragment callbacks; at minimum hoist shared error strings/operator literals into constants.
+
+**2026-06-01-002** — Cross-backend parity gap in the `$in` operator for non-string scalar values (raised independently by the quality, security, and compliance reviewers). PostgreSQL coerces each `$in` element with `str(v)` and compares against text (`metadata->>'key'`): a stored boolean `True` yields `'true'` but `str(True)` is `'True'`, so `{"flag": {"$in": [true]}}` matches nothing on Postgres, while `$eq` special-cases bool/numeric. SQLite uses `params.extend(value)` (raw values), differing again. `$eq` enforces numeric/bool parity but `$in` does not. Tests only cover string `$in` (`tests/test_storage.py:740-750, 818-837`), so the gap is uncaught. The spec mandates numeric parity only for `$eq` (US-002 criterion 5), so this is not a criterion violation, but it is a latent correctness bug.
+> Recommendation: Normalize `$in` elements per-element with the same type-aware logic as `$eq` (bool→`'true'`/`'false'`, numeric cast) in both backends, and add `$in` tests covering boolean and numeric values to lock in parity.
+
+**2026-06-01-003** — No bound on `metadata_filter` complexity (availability/DoS). `list_runs` (`runs.py:66-91`) `json.loads()` an arbitrary attacker-controlled filter string and passes it to the clause builders, which emit one clause per key and one placeholder per `$in` element. A filter with thousands of keys or a large `$in` array produces a very large WHERE clause/parameter list. `validate_metadata` (`base.py`) similarly caps neither key count nor value length at write time.
+> Recommendation: Cap `metadata_filter` size before/after parsing (e.g. ≤32 keys, `$in` length ≤100, max filter-string length) and apply a comparable key-count/value-length cap in `validate_metadata`.
+
+**2026-06-01-004** — The new `metadata_filter` query param and `metadata` body field are exposed on `list_runs`/`create_run` (`runs.py:41-91`), which carry no auth/authz (only `Depends(get_roots)`). This matches the pre-existing posture of these routes, but the feature now lets any caller attach arbitrary metadata and enumerate/filter all runs across the store. If runs ever become multi-tenant, `metadata_filter` is a cross-tenant enumeration primitive.
+> Recommendation: When the planned auth layer lands (see open finding 2026-03-24-082), scope `list_runs`/`metadata_filter` to the caller's authorized runs/tenant. No code change required today; documented as a known exposure.
+
+**2026-06-01-005** — Operator tokens `"$eq"`, `"$in"`, `"$exists"` are repeated as bare literals across both clause builders with no single source of truth, making it easy to add an operator in one backend and forget the other.
+> Recommendation: Define the supported-operator set as constants (or a frozenset) in `storage/base.py` and reference from both backends.
+
+**2026-06-01-006** — Two divergent metadata validators. The API-layer `RunCreateRequest.validate_metadata_scalars` (`models.py:61-72`) rejects only dict/list values and does not check key format; the storage-layer `validate_metadata` (`base.py:167-175`) rejects non-scalars AND enforces the key regex. Error wording also differs ("must be a scalar" vs "must be a JSON scalar"). Storage is the real backstop, but duplicated-yet-divergent validation is a maintenance hazard.
+> Recommendation: Have the API validator delegate to `storage.base.validate_metadata` so key-format and scalar rules (and messages) stay consistent at both layers.
+
+**2026-06-01-007** — The `$eq`-null Postgres clause `"(metadata ? '{key}') AND (metadata->>'{key}') IS NULL"` (`postgres.py:237`) packs two interpolations and mixed operators on one dense line. Interpolation is safe (key regex runs first), but the line is hard to scan.
+> Recommendation: Add a brief inline comment explaining the JSONB presence-plus-null-value semantics and/or split the condition across lines.
+
+**2026-06-01-008** — The 422 detail for an invalid filter interpolates the raw `json.JSONDecodeError` message (`runs.py:78-81`), reflecting a fragment of attacker input. Low risk (Starlette JSON-encodes the body, no HTML/XSS context), but it is minor input reflection / parser-internal leakage.
+> Recommendation: Return a generic "Invalid JSON in metadata_filter" without embedding the parser exception.
+
+**2026-06-01-009** — Verification note (no defect): SQL injection via metadata keys is correctly mitigated. In both clause builders `validate_metadata_key(key)` (regex `^[a-zA-Z_][a-zA-Z0-9_]*$`) is the first statement in the per-key loop and raises before any f-string interpolation; every key-interpolating fragment runs only after validation. Operator strings are compared, never interpolated, and all values use parameterized placeholders (`$N`/`?`).
+> Recommendation: Optional hardening — add a regression test asserting a key like `a' OR '1'='1` raises `ValueError` in the clause builders directly.
+
+**2026-06-01-010** — US-001 criterion 6 requires `get_run()`, `list_runs()`, AND `get_child_runs()` to return metadata. `get_run`/`list_runs` are correctly updated in both backends, but `get_child_runs()` does not exist anywhere in the codebase (confirmed via grep; it is an unchecked deliverable in the later `feature-subprocess-schema.md`). This is a spec-sequencing artifact, not a code gap in this branch.
+> Recommendation: No action for this feature. When `feature-subprocess-schema` implements `get_child_runs()`, ensure its `RunRecord` construction SELECTs the metadata column (already added by this branch's migration).
+
+**2026-06-01-011** — The spec's implementation hints (lines 44, 171) assert two `create_run` call sites in `orchestrator.py` (user-facing line 1362, subprocess line 1238). Only one call site exists (line ~1171, the user-facing path), which the diff correctly updates. The referenced subprocess site does not exist.
+> Recommendation: No action required; spec hint referenced a non-existent call site. All actual call sites are covered.
+
+**2026-06-01-012** — Full test suite: 1327 passed, 98 skipped, 0 failures (22.6s). Feature suites: `tests/test_storage.py` + `tests/test_run_routes.py` = 84 passed, 65 skipped. PostgreSQL parametrizations skip (no `ROOTS_POSTGRES_DSN`), so Postgres metadata paths are verified by code inspection only, not execution. One pre-existing `DeprecationWarning` (`HTTP_422_UNPROCESSABLE_ENTITY`).
+> Note: All tests pass. Postgres execution coverage is environmental gap, not a defect.
+
+---
 
 ### 2026-05-13 — feature-decision-history Validation
 
