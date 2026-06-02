@@ -67,14 +67,14 @@ This feature adds per-branch state checkpointing to storage so that the orchestr
 - Failed branches are persisted with error details and re-executed on recovery (transient errors)
 
 **Acceptance Criteria:**
-- [ ] Fork handler persists each branch result to storage (using fork node ID and target-node-derived branch ID)
-- [ ] Lock renewed periodically during parallel execution via background task (prevents expiry without full release)
-- [ ] Background renewal task cancelled after gather completes; if renewal ever fails (lock stolen), cancel all branch tasks and raise OrchestrationError
-- [ ] Failed branches persisted with error details
-- [ ] Existing fork/join tests continue to pass
-- [ ] Tests: normal persistence; lock renewal during gather; lock-stolen cancels branches
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] Fork handler persists each branch result to storage (using fork node ID and target-node-derived branch ID)
+- [x] Lock renewed periodically during parallel execution via background task (prevents expiry without full release)
+- [x] Background renewal task cancelled after gather completes; if renewal ever fails (lock stolen), cancel all branch tasks and raise OrchestrationError
+- [x] Failed branches persisted with error details
+- [x] Existing fork/join tests continue to pass
+- [x] Tests: normal persistence; lock renewal during gather; lock-stolen cancels branches
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-003: Crash-safe fork — recovery on re-entry
 
