@@ -1,4 +1,4 @@
-"""Tests for fork/join (US-001 branch creation, US-002 parallel execution, US-003 merge_all, US-004 collect, US-005 partial failure)."""
+"""Tests for fork/join (US-001 branch creation, US-002 parallel execution, US-003 merge_all, US-004 collect, US-005 partial failure, US-002-crash branch persistence)."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import asyncio
 import copy
 import time
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
@@ -1879,3 +1880,148 @@ class TestPartialFailureHandling:
         await runner.tick()  # fork
         with pytest.raises(OrchestrationError, match="All branches failed"):
             await runner.tick()  # join
+
+
+# --- US-002 (crash-safe) Tests ---
+
+
+class TestCrashSafeForkPersistence:
+    """US-002 (crash-safe): Fork handler persists branch results to storage."""
+
+    async def test_fork_persists_completed_branch_results_to_storage(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Completed branch results are persisted using fork node ID and target-node-derived branch IDs."""
+        proc, run_id = await _setup_run(
+            sqlite_storage, make_fork_2_branch_process()
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        await runner.tick()  # fork tick executes branches
+
+        results = await sqlite_storage.get_branch_results(run_id, "fork1")
+        assert len(results) == 2
+        branch_ids = {r.branch_id for r in results}
+        assert branch_ids == {"branch:branch_a", "branch:branch_b"}
+        for r in results:
+            assert r.status == "completed"
+            assert r.node_id == "fork1"
+            assert r.run_id == run_id
+            assert isinstance(r.result_json, dict)
+
+    async def test_fork_persists_failed_branch_with_error_details(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Failed branches persisted with status='failed' and error details."""
+        proc, run_id = await _setup_run(
+            sqlite_storage, make_fork_one_failing_process()
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        # fork tick captures exceptions in results (return_exceptions=True)
+        await runner.tick()
+
+        results = await sqlite_storage.get_branch_results(run_id, "fork1")
+        assert len(results) == 2
+
+        failed = [r for r in results if r.status == "failed"]
+        completed = [r for r in results if r.status == "completed"]
+        assert len(failed) == 1
+        assert len(completed) == 1
+        assert "branch failure" in str(failed[0].result_json)
+
+    async def test_lock_renewal_calls_release_and_acquire_during_gather(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Background renewal task calls release+acquire periodically during gather."""
+        proc, run_id = await _setup_run(
+            sqlite_storage, make_fork_slow_branches_process()
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        acquire_count = 0
+        release_count = 0
+        orig_acquire = sqlite_storage.acquire_run_lock
+        orig_release = sqlite_storage.release_run_lock
+
+        async def counting_acquire(rid: str, oid: str, stale_timeout: int = 300) -> bool:
+            nonlocal acquire_count
+            acquire_count += 1
+            return await orig_acquire(rid, oid, stale_timeout)
+
+        async def counting_release(rid: str, oid: str) -> None:
+            nonlocal release_count
+            release_count += 1
+            return await orig_release(rid, oid)
+
+        sqlite_storage.acquire_run_lock = counting_acquire  # type: ignore[method-assign]
+        sqlite_storage.release_run_lock = counting_release  # type: ignore[method-assign]
+
+        orig_sleep = asyncio.sleep
+
+        async def fast_sleep(t: float) -> None:
+            # Make renewal intervals (>= 100s) fire immediately; leave small sleeps intact
+            await orig_sleep(0 if t >= 100 else t)
+
+        with patch("asyncio.sleep", fast_sleep):
+            await runner.tick()
+
+        # tick() acquires once; renewal fires and acquires again → at least 2 total
+        assert acquire_count >= 2
+        # renewal releases once; tick() finally releases once → at least 2 total
+        assert release_count >= 2
+
+    async def test_lock_stolen_cancels_branches_and_raises_orchestration_error(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """When lock is stolen during gather, branches are cancelled and OrchestrationError is raised."""
+        proc, run_id = await _setup_run(
+            sqlite_storage, make_fork_slow_branches_process()
+        )
+        runner = _make_runner(
+            run_id, sqlite_storage, invoker, decision_engine, emitter
+        )
+
+        acquire_count = 0
+        orig_acquire = sqlite_storage.acquire_run_lock
+
+        async def stealing_acquire(rid: str, oid: str, stale_timeout: int = 300) -> bool:
+            nonlocal acquire_count
+            acquire_count += 1
+            if acquire_count >= 2:
+                # Simulate lock stolen: reacquire fails
+                return False
+            return await orig_acquire(rid, oid, stale_timeout)
+
+        sqlite_storage.acquire_run_lock = stealing_acquire  # type: ignore[method-assign]
+
+        orig_sleep = asyncio.sleep
+
+        async def fast_sleep(t: float) -> None:
+            await orig_sleep(0 if t >= 100 else t)
+
+        with patch("asyncio.sleep", fast_sleep):
+            with pytest.raises(OrchestrationError, match="Lock lost during parallel execution"):
+                await runner.tick()

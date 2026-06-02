@@ -904,9 +904,11 @@ class ProcessRunner:
 
         # Create branch contexts with deep copies of state
         branches: list[dict[str, Any]] = []
+        target_node_ids: list[str | None] = []
         for i, edge in enumerate(edges):
             branch_state = copy.deepcopy(state)
             to_node = getattr(edge, "to_node", None)
+            target_node_ids.append(to_node)
             branches.append({
                 "branch_id": f"branch-{i}",
                 "entry_node_id": to_node,
@@ -920,14 +922,70 @@ class ProcessRunner:
         self._fork_branches = branches
         self._fork_join_node_id = join_node_id
 
-        # Execute all branches concurrently
-        results = await asyncio.gather(
-            *[
-                self._execute_branch(ctx, join_node_id, process)
-                for ctx in branches
-            ],
-            return_exceptions=True,
-        )
+        fork_node_id = node.id
+        stale_timeout_seconds = 300
+
+        async def _execute_with_persistence(
+            ctx: dict[str, Any], target_node_id: str | None
+        ) -> dict[str, Any]:
+            storage_branch_id = f"branch:{target_node_id}"
+            try:
+                result = await self._execute_branch(ctx, join_node_id, process)
+            except Exception as exc:
+                try:
+                    await self._storage.save_branch_result(
+                        self.run_id, fork_node_id, storage_branch_id,
+                        "failed", str(exc),
+                    )
+                except Exception:
+                    pass
+                raise
+            await self._storage.save_branch_result(
+                self.run_id, fork_node_id, storage_branch_id,
+                "completed", result,
+            )
+            return result
+
+        lock_stolen = False
+        branch_tasks: list[asyncio.Task[Any]] = [
+            asyncio.create_task(_execute_with_persistence(ctx, tgt))
+            for ctx, tgt in zip(branches, target_node_ids)
+        ]
+
+        async def _renewal_loop() -> None:
+            nonlocal lock_stolen
+            interval = max(1, stale_timeout_seconds // 2)
+            try:
+                while True:
+                    await asyncio.sleep(interval)
+                    await self._storage.release_run_lock(
+                        self.run_id, self._owner_id
+                    )
+                    acquired = await self._storage.acquire_run_lock(
+                        self.run_id, self._owner_id,
+                    )
+                    if not acquired:
+                        lock_stolen = True
+                        for task in branch_tasks:
+                            task.cancel()
+                        return
+            except asyncio.CancelledError:
+                pass
+
+        renewal_task = asyncio.create_task(_renewal_loop())
+        try:
+            results: list[Any] = await asyncio.gather(
+                *branch_tasks, return_exceptions=True
+            )
+        finally:
+            renewal_task.cancel()
+            try:
+                await renewal_task
+            except asyncio.CancelledError:
+                pass
+
+        if lock_stolen:
+            raise OrchestrationError("Lock lost during parallel execution")
 
         # Store branch results for the join node
         self._fork_branch_results = results
