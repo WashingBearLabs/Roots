@@ -20,6 +20,16 @@ class StorageError(Exception):
 # --- Data Models ---
 
 
+def validate_metadata(metadata: dict[str, Any]) -> None:
+    """Validate that all metadata values are JSON scalar types."""
+    for key, value in metadata.items():
+        if not isinstance(value, (str, int, float, bool, type(None))):
+            raise ValueError(
+                f"Metadata value for key '{key}' must be a JSON scalar "
+                f"(str, int, float, bool, or None), got {type(value).__name__}"
+            )
+
+
 @dataclass
 class RunRecord:
     id: str
@@ -30,6 +40,7 @@ class RunRecord:
     created_at: datetime
     updated_at: datetime
     process_version: str | None = None
+    metadata: dict[str, Any] | None = None
 
 
 @dataclass
@@ -167,6 +178,8 @@ class StorageBackend(abc.ABC):
         process_id: str,
         work_item_state: dict[str, Any],
         process_version: str | None = None,
+        *,
+        metadata: dict[str, Any] | None = None,
     ) -> RunRecord: ...
 
     @abc.abstractmethod

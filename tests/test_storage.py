@@ -18,6 +18,59 @@ if TYPE_CHECKING:
 
 
 # ---------------------------------------------------------------------------
+# Run Metadata — US-001
+# ---------------------------------------------------------------------------
+
+
+async def test_create_run_with_metadata_roundtrip(storage: StorageBackend) -> None:
+    meta = {"env": "staging", "version": 3, "debug": True, "score": 1.5}
+    run = await storage.create_run("proc-1", {}, metadata=meta)
+    assert run.metadata == meta
+
+    fetched = await storage.get_run(run.id)
+    assert fetched is not None
+    assert fetched.metadata == meta
+
+
+async def test_create_run_metadata_none_stores_and_retrieves(storage: StorageBackend) -> None:
+    run = await storage.create_run("proc-1", {})
+    assert run.metadata is None
+
+    fetched = await storage.get_run(run.id)
+    assert fetched is not None
+    assert fetched.metadata is None
+
+
+async def test_list_runs_includes_metadata(storage: StorageBackend) -> None:
+    meta = {"tag": "smoke-test"}
+    await storage.create_run("proc-1", {}, metadata=meta)
+    await storage.create_run("proc-1", {})
+
+    runs = await storage.list_runs(process_id="proc-1")
+    assert len(runs) == 2
+    with_meta = [r for r in runs if r.metadata is not None]
+    without_meta = [r for r in runs if r.metadata is None]
+    assert len(with_meta) == 1
+    assert with_meta[0].metadata == meta
+    assert len(without_meta) == 1
+
+
+async def test_metadata_migration_is_idempotent(storage: StorageBackend) -> None:
+    # Calling initialize() a second time must not raise (idempotent migration).
+    await storage.initialize()
+
+
+async def test_metadata_rejects_nested_dict(storage: StorageBackend) -> None:
+    with pytest.raises(ValueError, match="JSON scalar"):
+        await storage.create_run("proc-1", {}, metadata={"nested": {"key": "value"}})
+
+
+async def test_metadata_rejects_list_value(storage: StorageBackend) -> None:
+    with pytest.raises(ValueError, match="JSON scalar"):
+        await storage.create_run("proc-1", {}, metadata={"tags": ["a", "b"]})
+
+
+# ---------------------------------------------------------------------------
 # History Events
 # ---------------------------------------------------------------------------
 

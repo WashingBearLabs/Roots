@@ -149,10 +149,13 @@ class Roots:
         return registered_names
 
     async def start_run(
-        self, process_id: str, work_item: dict[str, Any]
+        self,
+        process_id: str,
+        work_item: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
     ) -> RunRecord:
         """Create a new run for a process."""
-        return await self._orchestrator.start_run(process_id, work_item)
+        return await self._orchestrator.start_run(process_id, work_item, metadata=metadata)
 
     async def execute_run(self, run_id: str) -> None:
         """Execute a run to completion."""

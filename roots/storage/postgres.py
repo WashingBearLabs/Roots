@@ -25,6 +25,7 @@ from roots.storage.base import (
     StorageBackend,
     StorageError,
     WebhookRecord,
+    validate_metadata,
 )
 
 _SCHEMA_SQL = """\
@@ -171,6 +172,9 @@ class PostgresBackend(StorageBackend):
             await conn.execute(_SCHEMA_SQL)
             await conn.execute(
                 "ALTER TABLE runs ADD COLUMN IF NOT EXISTS process_version TEXT"
+            )
+            await conn.execute(
+                "ALTER TABLE runs ADD COLUMN IF NOT EXISTS metadata JSONB"
             )
 
     async def close(self) -> None:
@@ -348,15 +352,19 @@ class PostgresBackend(StorageBackend):
         process_id: str,
         work_item_state: dict[str, Any],
         process_version: str | None = None,
+        *,
+        metadata: dict[str, Any] | None = None,
     ) -> RunRecord:
+        if metadata is not None:
+            validate_metadata(metadata)
         run_id = f"run-{uuid4()}"
         now = utcnow()
         async with self.pool.acquire() as conn:
             await conn.execute(
                 """INSERT INTO runs
                    (id, process_id, status, current_node_id, work_item_state_json,
-                    created_at, updated_at, process_version)
-                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8)""",
+                    created_at, updated_at, process_version, metadata)
+                   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)""",
                 run_id,
                 process_id,
                 "pending",
@@ -365,6 +373,7 @@ class PostgresBackend(StorageBackend):
                 now,
                 now,
                 process_version,
+                json.dumps(metadata) if metadata is not None else None,
             )
         return RunRecord(
             id=run_id,
@@ -375,13 +384,14 @@ class PostgresBackend(StorageBackend):
             created_at=now,
             updated_at=now,
             process_version=process_version,
+            metadata=metadata,
         )
 
     async def get_run(self, run_id: str) -> RunRecord | None:
         async with self.pool.acquire() as conn:
             row = await conn.fetchrow(
                 "SELECT id, process_id, status, current_node_id, work_item_state_json, "
-                "created_at, updated_at, process_version FROM runs WHERE id = $1",
+                "created_at, updated_at, process_version, metadata FROM runs WHERE id = $1",
                 run_id,
             )
         if row is None:
@@ -389,6 +399,9 @@ class PostgresBackend(StorageBackend):
         wis = row["work_item_state_json"]
         if isinstance(wis, str):
             wis = json.loads(wis)
+        meta = row["metadata"]
+        if isinstance(meta, str):
+            meta = json.loads(meta)
         return RunRecord(
             id=row["id"],
             process_id=row["process_id"],
@@ -398,6 +411,7 @@ class PostgresBackend(StorageBackend):
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             process_version=row["process_version"],
+            metadata=meta,
         )
 
     async def update_run_status(
@@ -428,7 +442,7 @@ class PostgresBackend(StorageBackend):
     ) -> list[RunRecord]:
         query = (
             "SELECT id, process_id, status, current_node_id, "
-            "work_item_state_json, created_at, updated_at, process_version FROM runs"
+            "work_item_state_json, created_at, updated_at, process_version, metadata FROM runs"
         )
         params: list[Any] = []
         clauses: list[str] = []
@@ -447,6 +461,9 @@ class PostgresBackend(StorageBackend):
             wis = r["work_item_state_json"]
             if isinstance(wis, str):
                 wis = json.loads(wis)
+            meta = r["metadata"]
+            if isinstance(meta, str):
+                meta = json.loads(meta)
             result.append(
                 RunRecord(
                     id=r["id"],
@@ -457,6 +474,7 @@ class PostgresBackend(StorageBackend):
                     created_at=r["created_at"],
                     updated_at=r["updated_at"],
                     process_version=r["process_version"],
+                    metadata=meta,
                 )
             )
         return result

@@ -1157,7 +1157,10 @@ class Orchestrator:
         self.owner_id = f"orchestrator-{uuid4()}"
 
     async def start_run(
-        self, process_id: str, work_item: dict[str, Any]
+        self,
+        process_id: str,
+        work_item: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
     ) -> RunRecord:
         """Create a new run for a process with pending status."""
         process = await self._storage.get_process(process_id)
@@ -1165,7 +1168,9 @@ class Orchestrator:
             raise OrchestrationError(
                 f"Process '{process_id}' not found"
             )
-        run = await self._storage.create_run(process_id, work_item, process.version)
+        run = await self._storage.create_run(
+            process_id, work_item, process.version, metadata=metadata
+        )
         await self._storage.update_run_status(
             run.id, RunStatus.PENDING, process.entry_point
         )
