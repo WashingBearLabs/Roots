@@ -866,3 +866,10 @@
 4. feature-crash-safe-parallel (6 stories)
 5. feature-iterator-node (7 stories)
 
+
+## Run: epic/embedding-enhancements — 2026-06-02
+- **Epic:** embedding-enhancements
+- **Branch:** epic/embedding-enhancements
+- **Mode:** guarded (max 3 retries)
+- **Feature Specs:** 5 total
+
