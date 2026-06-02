@@ -74,15 +74,15 @@ This feature adds an optional metadata dict to runs with filtering operators tha
 - Cross-backend tests in `tests/test_storage.py` using the parameterized `storage` fixture (see `conftest.py:36-61`)
 
 **Acceptance Criteria:**
-- [ ] Operators supported: `$eq`, `$in`, `$exists`
-- [ ] Shorthand: bare values treated as `$eq` (e.g., `{"epic_id": "abc"}` equals `{"epic_id": {"$eq": "abc"}}`)
-- [ ] `$exists` defined as key presence (true even when value is JSON null); SQLite uses `json_type()` for correct null handling
-- [ ] Metadata keys validated: `^[a-zA-Z_][a-zA-Z0-9_]*$` — invalid keys rejected on write and in filter parsing (prevents SQL injection)
-- [ ] Numeric `$eq` uses CAST on SQLite for correct cross-backend comparison (e.g., `{"count": 5}` matches identically on both backends)
-- [ ] StorageBackend.list_runs accepts optional `metadata_filter` parameter (abstract + both implementations updated in lockstep)
-- [ ] Tests: each operator on both backends; shorthand syntax; numeric `$eq` cross-backend
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] Operators supported: `$eq`, `$in`, `$exists`
+- [x] Shorthand: bare values treated as `$eq` (e.g., `{"epic_id": "abc"}` equals `{"epic_id": {"$eq": "abc"}}`)
+- [x] `$exists` defined as key presence (true even when value is JSON null); SQLite uses `json_type()` for correct null handling
+- [x] Metadata keys validated: `^[a-zA-Z_][a-zA-Z0-9_]*$` — invalid keys rejected on write and in filter parsing (prevents SQL injection)
+- [x] Numeric `$eq` uses CAST on SQLite for correct cross-backend comparison (e.g., `{"count": 5}` matches identically on both backends)
+- [x] StorageBackend.list_runs accepts optional `metadata_filter` parameter (abstract + both implementations updated in lockstep)
+- [x] Tests: each operator on both backends; shorthand syntax; numeric `$eq` cross-backend
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-003: Metadata filter validation and edge cases
 
