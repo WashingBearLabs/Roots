@@ -97,15 +97,15 @@ This feature adds an optional metadata dict to runs with filtering operators tha
 - Cross-backend consistency test in `test_storage.py` using the parameterized `storage` fixture (see `conftest.py:36-61`)
 
 **Acceptance Criteria:**
-- [ ] Unknown operators raise `ValueError` with operator name
-- [ ] `$in` with non-list value raises `ValueError`
-- [ ] Runs with NULL metadata excluded from positive filter matches
-- [ ] `$eq` with null value uses `json_type()` (same as `$exists`) for correct cross-backend behavior
-- [ ] Shared key validation utility used by both write path and filter path (single function, no drift)
-- [ ] Cross-backend consistency test in `test_storage.py` using parameterized fixture
-- [ ] Tests: unknown operator error; `$in` validation; NULL exclusion; `$eq` null; cross-backend parity
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] Unknown operators raise `ValueError` with operator name
+- [x] `$in` with non-list value raises `ValueError`
+- [x] Runs with NULL metadata excluded from positive filter matches
+- [x] `$eq` with null value uses `json_type()` (same as `$exists`) for correct cross-backend behavior
+- [x] Shared key validation utility used by both write path and filter path (single function, no drift)
+- [x] Cross-backend consistency test in `test_storage.py` using parameterized fixture
+- [x] Tests: unknown operator error; `$in` validation; NULL exclusion; `$eq` null; cross-backend parity
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-004: REST API metadata integration
 
