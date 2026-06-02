@@ -132,16 +132,16 @@ This feature adds an `iterator` node type that reads a list from work_item_state
 - Lock renewed periodically during child tick execution
 
 **Acceptance Criteria:**
-- [ ] Completed items persisted to branch storage (`save_branch_result` per item)
-- [ ] Crash recovery: use `get_branch_results()` presence to detect resume (NOT a state flag — aligns with fork/join pattern)
-- [ ] On fresh execution, `get_branch_results` returns empty → start from beginning
-- [ ] On resume, skip items with completed results, continue from first incomplete
-- [ ] `clear_branch_results` after successful completion only (preserves progress on failure)
-- [ ] Child run pause cascades to parent (`SUBPROCESS_PAUSED` escalation)
-- [ ] Lock renewed periodically during child tick execution
-- [ ] Tests: crash recovery with partial completion; pause cascade and resume; lock renewal
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] Completed items persisted to branch storage (`save_branch_result` per item)
+- [x] Crash recovery: use `get_branch_results()` presence to detect resume (NOT a state flag — aligns with fork/join pattern)
+- [x] On fresh execution, `get_branch_results` returns empty → start from beginning
+- [x] On resume, skip items with completed results, continue from first incomplete
+- [x] `clear_branch_results` after successful completion only (preserves progress on failure)
+- [x] Child run pause cascades to parent (`SUBPROCESS_PAUSED` escalation)
+- [x] Lock renewed periodically during child tick execution
+- [x] Tests: crash recovery with partial completion; pause cascade and resume; lock renewal
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-005: Sequential iteration — failure handling modes
 
