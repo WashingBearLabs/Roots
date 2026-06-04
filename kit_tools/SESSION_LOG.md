@@ -43,6 +43,59 @@
 
 <!-- Newest sessions at top -->
 
+## 2026-06-01/02 — Embedding Enhancements Epic (Complete)
+
+**Duration:** ~8 hours (planning + execution + validation)
+**Focus:** Epic: embedding-enhancements — 25 stories across 5 feature specs
+
+### Accomplished
+- Created docs/INTEGRATION_GUIDE.md (agent-facing library documentation)
+- Planned embedding-enhancements epic (5 specs, initially 18 stories → refined to 25)
+- Ran 3 rounds of multi-agent spec validation (75 reviewer invocations)
+- Launched guarded autonomous execution (Sonnet impl, Opus verify)
+- All 25 stories completed: 29 attempts, 86% first-attempt pass rate
+- Post-implementation validation: 0 critical, 15 warnings → all addressed
+- Integration guide updated with all new capabilities
+- PR #3 created and updated: https://github.com/WashingBearLabs/Roots/pull/3
+
+### Features Shipped
+1. **Run Metadata** — metadata dict on runs with $eq/$in/$exists filtering
+2. **Event Subscriptions** — on/once/off/wait_for/start_and_wait
+3. **Agent Context** — AgentContext with execute_run, needs_context opt-in
+4. **Crash-Safe Parallel** — per-branch storage, lock renewal, join recovery
+5. **Iterator Node** — 10th node type, sequential + parallel, failure handling
+
+### Key Decisions
+- Range operators ($gt/$lt) deferred (cross-backend type coercion unresolved)
+- emit() stays sync — subscriptions via asyncio.create_task with separate buffer
+- Roots owns single AgentInvoker (passed to Orchestrator)
+- _subprocess_depth in work_item_state is single depth mechanism
+- Branch IDs from target node/agent name (not positional)
+- Lock renewal during gather (not full release)
+- clear_branch_results on success only
+- Iterator parallel uses create_task + cancel (not gather)
+
+### Documentation Updated
+- [x] docs/INTEGRATION_GUIDE.md — Full update with 5 new capabilities
+- [x] kit_tools/roadmap/MILESTONES.md — Epic marked complete
+- [x] kit_tools/roadmap/BACKLOG.md — Epic added, fork/join debt addressed
+- [x] kit_tools/specs/epic-embedding-enhancements.md — status: completed
+- [x] kit_tools/specs/archive/ — All 5 feature specs archived
+
+### Open Items
+- [ ] Merge PR #3 to main
+- [ ] Update SYNOPSIS.md test count (1173 → 1550) and node type count (8 → 10)
+- [ ] Update CODE_ARCH.md with new modules (context.py, subscriptions.py)
+- [ ] Plan next epic (Root Registry T3.8 or Poppy integration)
+
+### Stats
+- Tests: 1,441 → 1,550 (+109 new)
+- Total sessions spawned: 61 (24 impl, 23 verify, 4 validation + supervisory)
+- Validation rounds: 3 pre-execution + 1 post-execution
+- Audit findings: 43 logged (0 critical remaining)
+
+---
+
 ## 2026-05-25 — Recovered Orphaned Scratchpad
 
 **Duration:** Unknown (recovered from orphaned SESSION_SCRATCH.md)
