@@ -98,6 +98,30 @@ class ProcessRunner:
         self._fork_branch_results: list[Any] | None = None
         self._in_fork_branch: bool = False
 
+    async def _externally_terminal(self) -> bool:
+        """Re-read the run and report whether it was moved to a terminal state.
+
+        A node can take arbitrarily long to execute. While it runs, an external
+        actor (e.g. a cancel request) may flip the run to ``CANCELLED`` — or it
+        may have reached ``FAILED``/``COMPLETED`` by some other path. The tick
+        loop holds the orchestration lock, not a row lock on status, so such a
+        write lands underneath us.
+
+        Callers must check this immediately before persisting a post-node status
+        and stop (``return False``) if it returns True. Otherwise the post-node
+        ``update_run_atomically`` would either overwrite the terminal status with
+        ``RUNNING``/next (losing the cancel) or trip the transition guard
+        (e.g. cancelled → running) with a confusing failure trail.
+        """
+        current = await self._storage.get_run(self.run_id)
+        if current is None:
+            return True
+        return current.status in (
+            RunStatus.CANCELLED,
+            RunStatus.FAILED,
+            RunStatus.COMPLETED,
+        )
+
     async def tick(self) -> bool:
         """Execute one node and return True if the run should continue."""
         try:
@@ -218,6 +242,8 @@ class ProcessRunner:
                         },
                     )
                 )
+                if await self._externally_terminal():
+                    return False
                 await self._storage.update_run_atomically(
                     self.run_id,
                     work_item_state=state,
@@ -232,6 +258,8 @@ class ProcessRunner:
                     self.run_id, "failed", node.id,
                     {"error": exc.last_error, "attempts": exc.max_attempts},
                 )
+                if await self._externally_terminal():
+                    return False
                 await self._storage.update_run_atomically(
                     self.run_id,
                     work_item_state=state,
@@ -269,6 +297,8 @@ class ProcessRunner:
                     self.run_id, "failed", node.id,
                     {"error": str(exc)},
                 )
+                if await self._externally_terminal():
+                    return False
                 await self._storage.update_run_atomically(
                     self.run_id,
                     work_item_state=state,
@@ -315,6 +345,8 @@ class ProcessRunner:
                     self.run_id, "failed", node.id,
                     {"error_key": error_key, "error": str(error_value)},
                 )
+                if await self._externally_terminal():
+                    return False
                 await self._storage.update_run_atomically(
                     self.run_id,
                     work_item_state=state,
@@ -359,7 +391,11 @@ class ProcessRunner:
             else:
                 next_node_id, status = self._resolve_next(node, output, process)
 
-            # Step 9: Persist atomically
+            # Step 9: Persist atomically — unless an external actor moved the run
+            # to a terminal state (e.g. cancelled) while this node ran, in which
+            # case bail so that status sticks instead of being overwritten.
+            if await self._externally_terminal():
+                return False
             await self._storage.update_run_atomically(
                 self.run_id,
                 work_item_state=state,

@@ -10,7 +10,7 @@ import pytest
 from roots.agents.registry import AgentRegistry
 from roots.agents.invoker import AgentInvoker
 from roots.core.decision import DecisionEngine
-from roots.core.orchestrator import Orchestrator, OrchestrationError
+from roots.core.orchestrator import Orchestrator, OrchestrationError, ProcessRunner
 from roots.core.schema import (
     AgentNodeConfig,
     EdgeDefinition,
@@ -259,6 +259,76 @@ class TestRunLoop:
         completed_run = await sqlite_storage.get_run(run.id)
         assert completed_run is not None
         assert completed_run.status == RunStatus.COMPLETED
+
+
+class TestMidNodeCancel:
+    async def test_external_cancel_mid_node_sticks(
+        self,
+        sqlite_storage: StorageBackend,
+        registry: AgentRegistry,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """A cancel landing while a node runs must survive the post-node persist.
+
+        The node's handler flips the run to CANCELLED (simulating an external
+        cancel request). The post-node persist must NOT overwrite that with
+        RUNNING/next — the run stays CANCELLED and does not advance.
+        """
+
+        async def cancelling_agent(input: dict[str, Any]) -> dict[str, Any]:
+            await sqlite_storage.update_run_status(
+                input["run_id"], RunStatus.CANCELLED, "step1"
+            )
+            return {"output": {"done": True}, "escalate": False}
+
+        registry.register_local("canceller", cancelling_agent)
+
+        proc = ProcessDefinition(
+            id="cancel-proc",
+            name="Cancel Proc",
+            version="1.0.0",
+            nodes=[
+                NodeDefinition(
+                    id="step1",
+                    type=NodeType.AGENT,
+                    label="Step 1",
+                    config=AgentNodeConfig(agent="canceller", output_key="out"),
+                ),
+                NodeDefinition(
+                    id="done",
+                    type=NodeType.END,
+                    label="Done",
+                    config=EndNodeConfig(status=EndStatus.COMPLETED),
+                ),
+            ],
+            edges=[EdgeDefinition(from_node="step1", to_node="done")],
+            entry_point="step1",
+        )
+        await sqlite_storage.save_process(proc)
+
+        orch = Orchestrator(
+            sqlite_storage, AgentInvoker(registry), decision_engine, emitter
+        )
+        run = await orch.start_run("cancel-proc", {"input": "x"})
+
+        runner = ProcessRunner(
+            run.id,
+            sqlite_storage,
+            AgentInvoker(registry),
+            decision_engine,
+            emitter,
+            owner_id="test-owner",
+        )
+        # First tick: pending -> running, step1 executes and cancels mid-node.
+        should_continue = await runner.tick()
+
+        assert should_continue is False
+        final = await sqlite_storage.get_run(run.id)
+        assert final is not None
+        assert final.status == RunStatus.CANCELLED
+        # Must not have advanced to the End node.
+        assert final.current_node_id != "done"
 
 
 class TestStartExecuteCompletedFlow:
