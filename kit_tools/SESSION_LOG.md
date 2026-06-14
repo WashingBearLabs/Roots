@@ -72,7 +72,7 @@
 ## 2026-06-08 — Clean Cancellation + Embedding Epic Merge
 
 **Duration:** ~1 hour
-**Focus:** Standalone enhancement — honor an external run cancellation that lands mid-node (Poppy builder support). Plus merging the completed embedding-enhancements epic to `main`.
+**Focus:** Standalone enhancement — honor an external run cancellation that lands mid-node (downstream builder support). Plus merging the completed embedding-enhancements epic to `main`.
 
 ### Accomplished
 - **Clean cancellation guard** in `ProcessRunner.tick()` (commit `57dd754`): added `_externally_terminal()` helper that re-reads the run and reports whether it reached a terminal state (CANCELLED/FAILED/COMPLETED, or deleted). Called immediately before each of the 5 post-node persists; if terminal, the tick returns False (stop) instead of overwriting. Fixes an external mid-node cancel being clobbered by the post-node persist (or tripping the cancelled→running transition guard).
@@ -92,7 +92,7 @@
 - Other active branches untouched: `epic/process-composition`, `epic/library-refinements`.
 
 ### Notes
-User opted to keep doc changes minimal this session ("just log it"). The Poppy use case has a zero-Roots-change fallback (cooperative cancel polling in Poppy); this guard is the nice-to-have for prompt cancellation.
+User opted to keep doc changes minimal this session ("just log it"). The downstream use case has a zero-Roots-change fallback (cooperative cancel polling on the consumer side); this guard is the nice-to-have for prompt cancellation.
 
 ---
 
@@ -139,7 +139,7 @@ User opted to keep doc changes minimal this session ("just log it"). The Poppy u
 - [ ] Merge PR #3 to main
 - [ ] Update SYNOPSIS.md test count (1173 → 1550) and node type count (8 → 10)
 - [ ] Update CODE_ARCH.md with new modules (context.py, subscriptions.py)
-- [ ] Plan next epic (Root Registry T3.8 or Poppy integration)
+- [ ] Plan next epic (Root Registry T3.8 or downstream integration)
 
 ### Stats
 - Tests: 1,441 → 1,550 (+109 new)
@@ -155,7 +155,7 @@ User opted to keep doc changes minimal this session ("just log it"). The Poppy u
 **Focus:** Library Refinements + Process Composition epics
 
 ### Accomplished
-- Captured Poppy integration feedback (py.typed done, error_key backlogged)
+- Captured downstream integration feedback (py.typed done, error_key backlogged)
 - Implemented T3.9 agent node error_key detection (schema, orchestrator, 9 tests)
 - Planned library-refinements epic (9 stories, 3 specs)
 - Validated library-refinements epic (all 3 specs passed, stories grew from 9 to 12 after splits)

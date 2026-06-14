@@ -7,7 +7,7 @@
 -->
 # PRODUCT_VISION.md
 
-> Last updated: 2026-06-13
+> Last updated: 2026-06-14
 > Updated by: Claude
 
 ---
@@ -144,7 +144,7 @@ Roots is an AI-native process orchestration framework that provides the connecti
 - **Status:** Deferred
 
 #### T3.6 -- Visual Process Editor
-- **Description:** Consumer-built visual editor consuming the headless graph API. Roots is UI-agnostic — any framework works. The reference implementation (built by consumers like Acorn) renders node/edge JSON and translates user gestures into mutation API calls.
+- **Description:** Consumer-built visual editor consuming the headless graph API. Roots is UI-agnostic — any framework works. A reference implementation (built by a downstream consumer) renders node/edge JSON and translates user gestures into mutation API calls.
 - **Feature Spec(s):** --
 - **Status:** Deferred
 
@@ -224,7 +224,7 @@ Roots is an AI-native process orchestration framework that provides the connecti
 
 ### Design Principles
 - **Orchestration state is never derived from the event stream.** The storage backend is the source of truth. Events are side effects of state transitions. A consumer with no observability pipeline runs fine.
-- **No Poppy-specific or consumer-specific code in this repo.** The architecture doc references Poppy/Acorn as illustrative examples only. Roots is a standalone framework.
+- **No consumer-specific code in this repo.** The architecture doc references downstream consumers as illustrative examples only. Roots is a standalone framework.
 
 ### Tooling
 - Testing: pytest with pytest-asyncio; SQLite in-memory for storage backend tests

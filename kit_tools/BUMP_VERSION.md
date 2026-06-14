@@ -79,10 +79,10 @@ None. `roots/api/app.py` and `pyproject.toml` both derive the version from
 
 ### External repo — WashingBearLabs site
 
-> Assumes the WashingBearLabs repo is a sibling clone at `../WashingBearLabs`. If it
-> lives elsewhere, adjust the paths. These edits are committed and pushed **in the
-> WashingBearLabs repo**, separately from this repo (a push to its `main` auto-deploys
-> via Cloudflare Pages).
+> Assumes the Washing Bear Labs site repo is a sibling clone at `../WashingBearLabs`.
+> If it lives elsewhere, adjust the paths. These edits are committed and pushed in the
+> site repo, separately from this repo (a push to its `main` branch deploys the live
+> site).
 
 | File | What to update |
 |------|----------------|
