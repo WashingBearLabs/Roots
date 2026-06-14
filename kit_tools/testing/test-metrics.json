@@ -1,0 +1,209 @@
+{
+  "meta": {
+    "created_at": "2026-06-02T01:53:20Z",
+    "last_updated": "2026-06-02T06:30:33Z",
+    "total_verifications": 27
+  },
+  "tests": {
+    "tests/test_orchestrator.py": {
+      "runs": 14,
+      "passes": 14,
+      "failures": 0,
+      "timeouts": 0,
+      "total_duration_s": 4.95,
+      "last_run": "2026-06-02T06:30:33Z",
+      "last_failure": null,
+      "last_story_id": "US-007"
+    },
+    "tests/test_postgres.py": {
+      "runs": 4,
+      "passes": 4,
+      "failures": 0,
+      "timeouts": 0,
+      "total_duration_s": 0.4,
+      "last_run": "2026-06-02T03:58:27Z",
+      "last_failure": null,
+      "last_story_id": "US-001"
+    },
+    "tests/test_sqlite.py": {
+      "runs": 5,
+      "passes": 4,
+      "failures": 1,
+      "timeouts": 0,
+      "total_duration_s": 0.6,
+      "last_run": "2026-06-02T03:58:27Z",
+      "last_failure": "2026-06-02T03:54:48Z",
+      "last_story_id": "US-001"
+    },
+    "tests/test_storage.py": {
+      "runs": 5,
+      "passes": 5,
+      "failures": 0,
+      "timeouts": 0,
+      "total_duration_s": 0.62,
+      "last_run": "2026-06-02T03:58:27Z",
+      "last_failure": null,
+      "last_story_id": "US-001"
+    },
+    "tests/test_run_routes.py": {
+      "runs": 1,
+      "passes": 1,
+      "failures": 0,
+      "timeouts": 0,
+      "total_duration_s": 2.47,
+      "last_run": "2026-06-02T02:12:11Z",
+      "last_failure": null,
+      "last_story_id": "US-004"
+    },
+    "tests/test_subscriptions.py": {
+      "runs": 2,
+      "passes": 2,
+      "failures": 0,
+      "timeouts": 0,
+      "total_duration_s": 0.31,
+      "last_run": "2026-06-02T02:45:53Z",
+      "last_failure": null,
+      "last_story_id": "US-003"
+    },
+    "tests/test_emitter.py": {
+      "runs": 2,
+      "passes": 2,
+      "failures": 0,
+      "timeouts": 0,
+      "total_duration_s": 0.45,
+      "last_run": "2026-06-02T02:45:53Z",
+      "last_failure": null,
+      "last_story_id": "US-003"
+    },
+    "tests/test_roots_subscription_api.py": {
+      "runs": 1,
+      "passes": 1,
+      "failures": 0,
+      "timeouts": 0,
+      "total_duration_s": 0.57,
+      "last_run": "2026-06-02T03:02:51Z",
+      "last_failure": null,
+      "last_story_id": "US-004"
+    },
+    "tests/test_agent_context.py": {
+      "runs": 2,
+      "passes": 2,
+      "failures": 0,
+      "timeouts": 0,
+      "total_duration_s": 0.84,
+      "last_run": "2026-06-02T03:44:31Z",
+      "last_failure": null,
+      "last_story_id": "US-004"
+    },
+    "tests/test_orchestrator_class.py": {
+      "runs": 1,
+      "passes": 1,
+      "failures": 0,
+      "timeouts": 0,
+      "total_duration_s": 0.32,
+      "last_run": "2026-06-02T03:15:28Z",
+      "last_failure": null,
+      "last_story_id": "US-002"
+    },
+    "tests/test_agent_context_injection.py": {
+      "runs": 1,
+      "passes": 1,
+      "failures": 0,
+      "timeouts": 0,
+      "total_duration_s": 0.15,
+      "last_run": "2026-06-02T03:27:07Z",
+      "last_failure": null,
+      "last_story_id": "US-003"
+    },
+    "tests/test_fork_join.py": {
+      "runs": 4,
+      "passes": 4,
+      "failures": 0,
+      "timeouts": 0,
+      "total_duration_s": 3.18,
+      "last_run": "2026-06-02T05:04:45Z",
+      "last_failure": null,
+      "last_story_id": "US-006"
+    },
+    "tests/test_agent_handlers.py": {
+      "runs": 2,
+      "passes": 2,
+      "failures": 0,
+      "timeouts": 0,
+      "total_duration_s": 1.05,
+      "last_run": "2026-06-02T04:46:25Z",
+      "last_failure": null,
+      "last_story_id": "US-005"
+    },
+    "tests/test_validator.py": {
+      "runs": 3,
+      "passes": 3,
+      "failures": 0,
+      "timeouts": 0,
+      "total_duration_s": 1.54,
+      "last_run": "2026-06-02T05:24:07Z",
+      "last_failure": null,
+      "last_story_id": "US-002"
+    },
+    "tests/test_schema.py": {
+      "runs": 1,
+      "passes": 1,
+      "failures": 0,
+      "timeouts": 0,
+      "total_duration_s": 0.05,
+      "last_run": "2026-06-02T05:13:11Z",
+      "last_failure": null,
+      "last_story_id": "US-001"
+    },
+    "tests/test_iterator_validation.py": {
+      "runs": 1,
+      "passes": 1,
+      "failures": 0,
+      "timeouts": 0,
+      "total_duration_s": 0.0,
+      "last_run": "2026-06-02T05:24:07Z",
+      "last_failure": null,
+      "last_story_id": "US-002"
+    },
+    "tests/test_events.py": {
+      "runs": 1,
+      "passes": 1,
+      "failures": 0,
+      "timeouts": 0,
+      "total_duration_s": 0.0,
+      "last_run": "2026-06-02T05:24:07Z",
+      "last_failure": null,
+      "last_story_id": "US-002"
+    },
+    "tests/test_iterator_execution.py": {
+      "runs": 3,
+      "passes": 3,
+      "failures": 0,
+      "timeouts": 0,
+      "total_duration_s": 2.25,
+      "last_run": "2026-06-02T06:08:55Z",
+      "last_failure": null,
+      "last_story_id": "US-005"
+    },
+    "tests/test_escalation.py": {
+      "runs": 1,
+      "passes": 1,
+      "failures": 0,
+      "timeouts": 0,
+      "total_duration_s": 1.05,
+      "last_run": "2026-06-02T06:00:55Z",
+      "last_failure": null,
+      "last_story_id": "US-004"
+    },
+    "tests/test_iterator_parallel.py": {
+      "runs": 2,
+      "passes": 2,
+      "failures": 0,
+      "timeouts": 0,
+      "total_duration_s": 0.74,
+      "last_run": "2026-06-02T06:30:33Z",
+      "last_failure": null,
+      "last_story_id": "US-007"
+    }
+  }
+}

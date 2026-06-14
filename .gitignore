@@ -1,3 +1,4 @@
+# Python
 __pycache__/
 *.pyc
 *.pyo
@@ -5,8 +6,18 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+.venv/
+venv/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Roots runtime / build artifacts
 .roots.db
 roots.db
+/*.root
 kit_tools/specs/.execution-config.json
 kit_tools/specs/.execution-state.json
 kit_tools/.validate_epic_*.json
