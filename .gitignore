@@ -24,3 +24,9 @@ kit_tools/.validate_epic_*.json
 .claude/
 kit_tools/.execution-events.jsonl
 kit_tools/.execution-notifications
+
+# kit_tools transient working artifacts (machine-specific paths / session-local)
+kit_tools/SYNC_MANIFEST.json
+kit_tools/SEED_MANIFEST.json
+kit_tools/.sync_cache/
+kit_tools/SESSION_SCRATCH.md
