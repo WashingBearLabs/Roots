@@ -58,20 +58,27 @@ graph routes between them using deterministic conditions or AI-driven decisions.
 
 ## Installation
 
-> **Status:** Roots is in active beta. A PyPI release is planned; for now, install
-> from source.
+Roots is published to PyPI as **`rootsflow`** (the import package is `roots`):
 
 ```bash
-# From source (editable)
-git clone https://github.com/WashingBearLabs/Roots.git
-cd Roots
-pip install -e .          # or:  uv pip install -e .
-
-# With dev tooling (tests, type-checker, linter)
-pip install -e ".[dev]"
+pip install rootsflow      # or:  uv pip install rootsflow
 ```
 
-Requires **Python 3.12+**.
+Then use it:
+
+```python
+from roots import Roots, SqliteBackend
+```
+
+Or install from source for development:
+
+```bash
+git clone https://github.com/WashingBearLabs/Roots.git
+cd Roots
+pip install -e ".[dev]"    # editable, with tests / type-checker / linter
+```
+
+Requires **Python 3.12+**. Roots is in active beta (`0.x`).
 
 ## Quick start
 

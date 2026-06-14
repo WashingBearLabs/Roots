@@ -55,10 +55,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/WashingBearLabs/Roots"
+Homepage = "https://washingbearlabs.com/projects/open-builds#roots"
+Documentation = "https://washingbearlabs.com/docs/roots"
 Repository = "https://github.com/WashingBearLabs/Roots"
 Issues = "https://github.com/WashingBearLabs/Roots/issues"
-Documentation = "https://github.com/WashingBearLabs/Roots/blob/main/docs/INTEGRATION_GUIDE.md"
 
 [project.scripts]
 roots = "roots.cli.main:app"
