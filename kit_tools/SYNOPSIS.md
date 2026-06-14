@@ -11,7 +11,7 @@
 
 > **TEMPLATE_INTENT:** One-page project overview for quick orientation. Answer: What is this? What state is it in? How do I run it?
 
-> Last updated: 2026-06-13
+> Last updated: 2026-06-14
 > Updated by: Claude
 
 ---
@@ -26,10 +26,11 @@ Roots is an AI-native process orchestration framework that defines processes as 
 
 | Aspect | Status |
 |--------|--------|
-| **Stage** | MVP/Beta |
+| **Stage** | Beta — public |
 | **Version** | v0.1.0 |
-| **Last Deploy** | N/A (local-first framework) |
-| **Active Development** | Yes — core framework complete, packaging system finalized |
+| **Distribution** | Published to PyPI as [`rootsflow`](https://pypi.org/project/rootsflow/) (import package `roots`) |
+| **Repo** | Public — [github.com/WashingBearLabs/Roots](https://github.com/WashingBearLabs/Roots) |
+| **Active Development** | Yes — core framework complete; first public release shipped |
 
 ### What Works
 - Process definition via YAML directed graphs with 10 node types and 4 decision modes
@@ -63,7 +64,7 @@ Roots is an AI-native process orchestration framework that defines processes as 
 | **Framework** | FastAPI, Pydantic v2 |
 | **Database** | SQLite (default), PostgreSQL (optional) |
 | **Infrastructure** | Local-first / self-hosted |
-| **Auth** | N/A (no authentication in v1) |
+| **Auth** | Optional API key via `ROOTS_API_KEY` (none by default) |
 | **Async** | asyncio throughout |
 
 ---
@@ -83,20 +84,19 @@ Roots is an AI-native process orchestration framework that defines processes as 
 ## How to Run Locally
 
 ```bash
-# Prerequisites: Python 3.12+, pip
+# Prerequisites: Python 3.12+
 
-# Step 1: Clone the repository
-git clone https://github.com/WashingBearLabs/Roots.git
-cd Roots
+# Install from PyPI
+pip install rootsflow          # import package is `roots`
 
-# Step 2: Install in development mode
-pip install -e ".[dev]"
-
-# Step 3: Start the API server
+# Start the API server
 roots serve
 
-# Or run the demo suite (opens browser to localhost:8200)
-python demo/run_all.py
+# --- Or develop from source ---
+git clone https://github.com/WashingBearLabs/Roots.git
+cd Roots
+pip install -e ".[dev]"        # editable, with tests / type-checker / linter
+python demo/run_all.py         # run the demo suite (opens browser to localhost:8200)
 ```
 
 ---
@@ -105,10 +105,11 @@ python demo/run_all.py
 
 | Resource | URL |
 |----------|-----|
-| **Production** | N/A |
+| **PyPI** | https://pypi.org/project/rootsflow/ |
+| **Homepage** | https://washingbearlabs.com/projects/open-builds#roots |
 | **Repo** | https://github.com/WashingBearLabs/Roots |
-| **Docs** | `kit_tools/docs/` |
-| **CI/CD** | N/A |
+| **Docs** | https://washingbearlabs.com/docs/roots · `kit_tools/docs/` |
+| **CI/CD** | GitHub Actions — `.github/workflows/ci.yml` (ruff, pyright, pytest on 3.12/3.13) |
 
 ---
 

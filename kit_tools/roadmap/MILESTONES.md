@@ -1,17 +1,18 @@
 # Milestones
 
-> Last updated: 2026-06-13
+> Last updated: 2026-06-14
 > Updated by: Claude
 
 Tracks major milestones for the Roots framework.
 
 ---
 
-## Current Target: None active — between milestones
+## Current Target: None active — first public release shipped 🎉
 
-The last two epics (Embedding Enhancements and Process Composition) are complete
-and merged to `main`. The next planned milestone is **Root Registry (T3.8)**,
-not yet scoped. Run `/kit-tools:plan-epic` to start the next one.
+**v0.1.0 is public** (2026-06-14): published to PyPI as `rootsflow`, repo made
+public, with a product page and docs on washingbearlabs.com. The next planned
+milestone is **Root Registry (T3.8)**, not yet scoped. Run `/kit-tools:plan-epic`
+to start the next one.
 
 ---
 
@@ -32,6 +33,7 @@ The next major milestone. Will enable publishing, discovering, and installing .r
 - [x] ~~**Library Refinements** — Vote aggregation, decision history, process versioning~~ (11 stories, completed 2026-05-13)
 - [x] ~~**Process Composition** — Subprocess node type, pause/fail cascading, depth limits, API~~ (9 stories, completed 2026-05-21; merged to `main` 2026-06-13)
 - [x] ~~**Embedding Enhancements (v1.2)** — Run metadata & tagging, event subscriptions, agent context injection, crash-safe parallel execution, iterator node~~ (18 stories, completed 2026-06)
+- [x] ~~**Public Release (v0.1.0)** — Repo made public + published to PyPI as `rootsflow`; LICENSE/README/CONTRIBUTING/SECURITY, branch protection, CI (GitHub Actions), security hardening (SSRF resolution, archive size caps, optional API auth), and a product page + docs on washingbearlabs.com~~ (completed 2026-06-14)
 
 ---
 
