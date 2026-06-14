@@ -2,37 +2,81 @@
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.hatch.build.targets.wheel]
-packages = ["roots"]
-
 [project]
-name = "roots"
-version = "0.1.0"
-description = "A process orchestration framework"
+name = "rootsflow"
+dynamic = ["version"]
+description = "An AI-native process orchestration framework — YAML-defined directed graphs executed by a crash-safe orchestrator."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
-dependencies = [
-    "pydantic>=2.0",
-    "pyyaml",
+authors = [{ name = "Joshua Johnston" }]
+keywords = [
+    "orchestration",
+    "workflow",
+    "agents",
+    "llm",
+    "state-machine",
+    "process",
+    "dag",
     "fastapi",
-    "uvicorn[standard]",
-    "typer[all]",
-    "httpx",
-    "aiosqlite",
-    "asyncpg",
-    "sqlalchemy[asyncio]",
-    "simpleeval",
-    "jsonschema",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Framework :: FastAPI",
+    "Typing :: Typed",
+]
+dependencies = [
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "typer>=0.12",
+    "httpx>=0.27",
+    "aiosqlite>=0.19",
+    "asyncpg>=0.29",
+    "simpleeval>=0.9.13",
+    "jsonschema>=4.0",
 ]
 
-[project.scripts]
-roots = "roots.cli.main:app"
-
 [project.optional-dependencies]
+mcp = ["mcp>=1.0"]
 dev = [
     "pytest",
     "pytest-asyncio",
     "pyright",
     "ruff",
+]
+
+[project.urls]
+Homepage = "https://github.com/WashingBearLabs/Roots"
+Repository = "https://github.com/WashingBearLabs/Roots"
+Issues = "https://github.com/WashingBearLabs/Roots/issues"
+Documentation = "https://github.com/WashingBearLabs/Roots/blob/main/docs/INTEGRATION_GUIDE.md"
+
+[project.scripts]
+roots = "roots.cli.main:app"
+
+[tool.hatch.version]
+path = "roots/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["roots"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/roots",
+    "/README.md",
+    "/LICENSE",
+    "/CONTRIBUTING.md",
+    "/SECURITY.md",
+    "/pyproject.toml",
 ]
 
 [tool.pyright]
