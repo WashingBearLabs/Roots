@@ -9,8 +9,8 @@
 
 > **TEMPLATE_INTENT:** Persistent record of code quality, security, and intent alignment findings from automated validation. Tracks findings across sessions with status tracking and archival.
 
-> Last updated: 2026-06-08
-> Updated by: Claude (close-session — clean cancellation enhancement)
+> Last updated: 2026-06-14
+> Updated by: Claude (public-readiness security pass)
 
 ---
 
@@ -36,6 +36,29 @@
 
 <!-- Newest findings at top. Each entry has a unique ID: YYYY-MM-DD-NNN -->
 <!-- Findings are added by /kit-tools:validate-feature -->
+
+### 2026-06-14 — Public-Readiness Security Pass (reconciliation)
+
+> Pre-public-release security hardening + audit reconciliation. A full secret
+> scan (TruffleHog over all 362 commits) found **0 verified secrets**. Several
+> findings below are marked `open` but were already fixed in code at the time of
+> earlier validations; this note reconciles the headline items so a reader does
+> not conclude known criticals ship unfixed.
+
+**Fixed in this pass:**
+- **SSRF — DNS resolution gap** (`roots/core/url_validator.py`): `validate_url` now resolves hostnames and rejects any that resolve to private/loopback/link-local/metadata addresses (previously only literal-IP hosts were checked). Tests: `tests/test_url_validator.py`.
+- **Decompression bomb** (`roots/packaging/archive.py`): `read_archive` now caps entry count (1000) and total uncompressed size (100 MB) with bounded reads, raising `ArchiveTooLargeError`. Addresses 2026-03-25-312 / 2026-03-25-216 / 2026-03-25-101. Tests: `tests/test_archive.py`.
+- **API auth** (`roots/api/app.py`): optional `ROOTS_API_KEY` enforcement + non-local-bind warning. See 2026-03-24-082 (now `mitigated`). Tests: `tests/test_api_auth.py`.
+
+**Verified already-mitigated (no code change needed):**
+- **Webhook secret exposure** (2026-03-24-098 / -090 / -093): `_record_to_response` masks the secret to `"****"`; the real HMAC key is never returned by the API.
+- **Safe server defaults** (2026-03-24-066 / -038): `roots serve` binds `127.0.0.1`, `reload=False`, CORS `allow_credentials=False`.
+- **No injection / unsafe deserialization**: SQL is fully parameterized (metadata keys regex-validated before interpolation, 2026-06-01-009); all YAML uses `safe_load`; no `eval`/`exec`/`pickle`; `simpleeval` sandbox for conditions.
+- **Path traversal in `.root` extraction** (2026-03-25-301 / -303): guarded by `is_relative_to` + `spec_from_file_location`.
+
+**Residual (documented, accepted for v1):** auth off by default (single-trust model — see `SECURITY.md`); full DNS-rebinding defense (request-time IP pinning) not implemented; the remaining `open` quality/info items below are non-blocking for release.
+
+---
 
 ### 2026-06-08 — Clean Cancellation Enhancement (close-session quality check)
 
@@ -728,7 +751,7 @@
 |----|----------|----------|------|--------|
 | 2026-03-24-080 | compliance | critical | `roots/agents/mcp_gateway.py` | resolved |
 | 2026-03-24-081 | security | critical | `roots/agents/mcp_gateway.py` | resolved |
-| 2026-03-24-082 | security | critical | `roots/api/app.py` | open |
+| 2026-03-24-082 | security | critical | `roots/api/app.py` | mitigated |
 | 2026-03-24-083 | quality | warning | `roots/agents/mcp_gateway.py` | open |
 | 2026-03-24-084 | quality | warning | `roots/agents/mcp_gateway.py` | open |
 | 2026-03-24-085 | quality | warning | `roots/agents/mcp_gateway.py` | open |
@@ -756,7 +779,7 @@
 > Recommendation: Fixed — added `_validate_command()` rejecting empty commands, path traversal, and shell metacharacters.
 
 **2026-03-24-082** — All API endpoints have zero authentication or authorization. Combined with MCP command execution, this could enable unauthenticated RCE.
-> Recommendation: Add authentication middleware (API key, JWT, or OAuth2) before shipping. Requires a separate feature spec for auth model design.
+> **MITIGATED (2026-06-14):** `create_app` now supports optional API-key auth via the `ROOTS_API_KEY` env var — when set, all data routes require a matching `X-API-Key` header (constant-time compare); `/` and `/health` stay open. The server also defaults to binding `127.0.0.1`, and `roots serve` prints a loud warning when binding a non-local host without a key. Auth is still **off by default** (single-trust v1 model), and the no-auth posture is documented in `README.md` and `SECURITY.md`. A richer auth model (JWT/OAuth2, per-tenant authz) remains future work; downgraded from open because the exposure is now opt-in and clearly signposted.
 
 **2026-03-24-083** — Bare `except Exception: pass` blocks in `disconnect` and `disconnect_command` silently swallow all cleanup errors, making debugging connection leaks difficult.
 > Recommendation: Add `logging.debug` calls in these except blocks.
