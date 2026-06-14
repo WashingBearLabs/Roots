@@ -9,6 +9,15 @@ from pathlib import Path
 
 from roots.packaging.manifest import RootManifest
 
+# Guardrails against decompression ("zip") bombs when reading untrusted .root
+# packages: cap the number of entries and the total uncompressed bytes.
+MAX_ARCHIVE_FILES = 1000
+MAX_ARCHIVE_UNCOMPRESSED_BYTES = 100 * 1024 * 1024  # 100 MB
+
+
+class ArchiveTooLargeError(ValueError):
+    """Raised when a .root archive exceeds the safety limits for reading."""
+
 
 def create_archive(
     manifest: RootManifest,
@@ -74,12 +83,42 @@ def read_archive(
     Validates the SHA-256 checksum of process.yaml if present.
     """
     with zipfile.ZipFile(archive_path, "r") as zf:
-        manifest_bytes = zf.read("manifest.json")
-        manifest = RootManifest(**json.loads(manifest_bytes))
+        infos = zf.infolist()
 
+        # Guard 1: entry-count cap.
+        if len(infos) > MAX_ARCHIVE_FILES:
+            raise ArchiveTooLargeError(
+                f"Archive has too many entries: {len(infos)} "
+                f"(limit {MAX_ARCHIVE_FILES})"
+            )
+
+        # Guard 2: declared total uncompressed size (catches honest bombs early,
+        # before any decompression).
+        declared_total = sum(info.file_size for info in infos)
+        if declared_total > MAX_ARCHIVE_UNCOMPRESSED_BYTES:
+            raise ArchiveTooLargeError(
+                f"Archive uncompressed size {declared_total} bytes exceeds "
+                f"limit of {MAX_ARCHIVE_UNCOMPRESSED_BYTES} bytes"
+            )
+
+        # Guard 3: bounded reads (defends against headers that lie about size).
         contents: dict[str, bytes] = {}
+        budget = MAX_ARCHIVE_UNCOMPRESSED_BYTES
         for name in zf.namelist():
-            contents[name] = zf.read(name)
+            with zf.open(name) as member:
+                data = member.read(budget + 1)
+            if len(data) > budget:
+                raise ArchiveTooLargeError(
+                    "Archive uncompressed contents exceed limit of "
+                    f"{MAX_ARCHIVE_UNCOMPRESSED_BYTES} bytes"
+                )
+            budget -= len(data)
+            contents[name] = data
+
+    manifest_bytes = contents.get("manifest.json")
+    if manifest_bytes is None:
+        raise ValueError("Archive missing manifest.json")
+    manifest = RootManifest(**json.loads(manifest_bytes))
 
     # Validate checksum
     if manifest.checksum is not None:

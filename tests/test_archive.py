@@ -273,3 +273,57 @@ class TestRoundTrip:
         _, contents = read_archive(out)
 
         assert contents["notes.txt"] == b"some notes"
+
+
+# ---------------------------------------------------------------------------
+# Decompression-bomb guards
+# ---------------------------------------------------------------------------
+
+class TestArchiveLimits:
+    def _write_zip(self, path: Path, files: dict[str, bytes]) -> None:
+        with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for name, data in files.items():
+                zf.writestr(name, data)
+
+    def test_too_many_entries_rejected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from roots.packaging import archive as archive_mod
+
+        monkeypatch.setattr(archive_mod, "MAX_ARCHIVE_FILES", 5)
+        files: dict[str, bytes] = {
+            "manifest.json": json.dumps(_minimal_manifest_data()).encode()
+        }
+        for i in range(10):
+            files[f"file_{i}.txt"] = b"x"
+        bomb = tmp_path / "many.root"
+        self._write_zip(bomb, files)
+
+        with pytest.raises(archive_mod.ArchiveTooLargeError, match="too many entries"):
+            read_archive(bomb)
+
+    def test_oversize_uncompressed_rejected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from roots.packaging import archive as archive_mod
+
+        monkeypatch.setattr(archive_mod, "MAX_ARCHIVE_UNCOMPRESSED_BYTES", 1024)
+        files = {
+            "manifest.json": json.dumps(_minimal_manifest_data()).encode(),
+            "big.bin": b"A" * 5000,
+        }
+        bomb = tmp_path / "big.root"
+        self._write_zip(bomb, files)
+
+        with pytest.raises(archive_mod.ArchiveTooLargeError):
+            read_archive(bomb)
+
+    def test_within_limits_still_reads(self, tmp_path: Path) -> None:
+        process_file = _setup_process_dir(tmp_path)
+        manifest = RootManifest(**_minimal_manifest_data())
+        out = tmp_path / "ok.root"
+        create_archive(manifest, process_file, out)
+
+        result_manifest, contents = read_archive(out)
+        assert result_manifest.package_id == "test-org/my-process"
+        assert "process.yaml" in contents
