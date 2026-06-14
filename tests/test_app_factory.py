@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from roots import Roots
+from roots import Roots, __version__
 from roots.api.app import create_app, get_roots
 from roots.storage.sqlite import SqliteBackend
 
@@ -59,7 +59,7 @@ async def test_root_endpoint(client):
     resp = await client.get("/")
     assert resp.status_code == 200
     data = resp.json()
-    assert data == {"name": "roots", "version": "0.1.0"}
+    assert data == {"name": "roots", "version": __version__}
 
 
 @pytest.mark.asyncio

@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 
+from roots import __version__
 from roots.api.deps import get_roots  # noqa: F401 — re-export for backwards compat
 from roots.api.routers.agents import router as agents_router
 from roots.api.routers.checkpoints import router as checkpoints_router
@@ -40,7 +41,7 @@ def create_app(
     Returns:
         A FastAPI application with all routers registered.
     """
-    app = FastAPI(title="roots", version="0.1.0")
+    app = FastAPI(title="roots", version=__version__)
 
     app.state.roots = roots
 
@@ -82,7 +83,7 @@ def create_app(
 
     @app.get("/")
     async def root() -> dict[str, str]:
-        return {"name": "roots", "version": "0.1.0"}
+        return {"name": "roots", "version": __version__}
 
     @app.get("/health")
     async def health() -> dict[str, str]:
