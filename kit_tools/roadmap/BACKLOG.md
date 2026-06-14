@@ -1,6 +1,6 @@
 # BACKLOG.md
 
-> Last updated: 2026-06-01
+> Last updated: 2026-06-13
 > Updated by: Claude
 
 Future work items and ideas for the Roots framework.
@@ -66,22 +66,22 @@ Future work items and ideas for the Roots framework.
 
 ## Library Refinements (Epic)
 - [Epic Overview](../specs/epic-library-refinements.md)
-- [Vote Aggregation](../specs/feature-vote-aggregation.md) — Agent pool consensus (T3.4, 4 stories)
-- [Decision History](../specs/feature-decision-history.md) — Query + auto-inject (T3.1, 4 stories)
-- [Process Versioning](../specs/feature-process-versioning.md) — Version pinning (T3.2, 3 stories)
+- [Vote Aggregation](../specs/archive/feature-vote-aggregation.md) — Agent pool consensus (T3.4, 4 stories)
+- [Decision History](../specs/archive/feature-decision-history.md) — Query + auto-inject (T3.1, 4 stories)
+- [Process Versioning](../specs/archive/feature-process-versioning.md) — Version pinning (T3.2, 3 stories)
 
 ## Process Composition (Epic)
 - [Epic Overview](../specs/epic-process-composition.md)
-- [Subprocess Schema](../specs/feature-subprocess-schema.md) — Node type, storage, validation (T3.3, 3 stories)
-- [Subprocess Execution](../specs/feature-subprocess-execution.md) — Orchestrator lifecycle, pause/fail cascading, API (T3.3, 5 stories)
+- [Subprocess Schema](../specs/archive/feature-subprocess-schema.md) — Node type, storage, validation (T3.3, 3 stories)
+- [Subprocess Execution](../specs/archive/feature-subprocess-execution.md) — Orchestrator lifecycle, pause/fail cascading, API (T3.3, 5 stories)
 
 ## Embedding Enhancements (Epic)
 - [Epic Overview](../specs/epic-embedding-enhancements.md)
-- [Run Metadata](../specs/feature-run-metadata.md) — Run tagging and rich filtering (3 stories)
-- [Event Subscriptions](../specs/feature-event-subscriptions.md) — Callback hooks and wait_for (3 stories)
-- [Agent Context](../specs/feature-agent-context.md) — Agent context injection for orchestration access (3 stories)
-- [Crash-Safe Parallel](../specs/feature-crash-safe-parallel.md) — Per-branch state checkpointing (5 stories)
-- [Iterator Node](../specs/feature-iterator-node.md) — Dynamic for_each iteration (4 stories)
+- [Run Metadata](../specs/archive/feature-run-metadata.md) — Run tagging and rich filtering (3 stories)
+- [Event Subscriptions](../specs/archive/feature-event-subscriptions.md) — Callback hooks and wait_for (3 stories)
+- [Agent Context](../specs/archive/feature-agent-context.md) — Agent context injection for orchestration access (3 stories)
+- [Crash-Safe Parallel](../specs/archive/feature-crash-safe-parallel.md) — Per-branch state checkpointing (5 stories)
+- [Iterator Node](../specs/archive/feature-iterator-node.md) — Dynamic for_each iteration (4 stories)
 
 ---
 

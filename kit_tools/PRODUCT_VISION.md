@@ -7,7 +7,7 @@
 -->
 # PRODUCT_VISION.md
 
-> Last updated: 2026-03-24
+> Last updated: 2026-06-13
 > Updated by: Claude
 
 ---
@@ -60,60 +60,60 @@ Roots is an AI-native process orchestration framework that provides the connecti
 #### T1.1 -- Process Schema Layer
 - **Description:** YAML-based process graph definitions with Pydantic v2 models for all 8 node types (agent, agent_pool, decision, checkpoint, fork, join, emit, end), typed edges with metadata (label, condition, event trigger flag), and a schema validator that produces clear error messages referencing offending fields and node IDs. Agent pool nodes support three v1 execution strategies: `parallel`, `sequential`, and `first_pass`. The authoritative definition of what a Roots process is.
 - **Dual-edge design:** Decision nodes define their outbound edges *inside their config block* (each with target, condition, label, description). Non-decision nodes use the top-level `edges` list for unconditional routing. The schema validator must enforce this: decision nodes require config-level edges; top-level edges connecting *from* a decision node are invalid.
-- **Feature Spec(s):** [feature-process-schema.md](specs/feature-process-schema.md) (8 stories)
+- **Feature Spec(s):** [feature-process-schema.md](specs/archive/feature-process-schema.md) (8 stories)
 - **Status:** Planned
 
 #### T1.2 -- Storage Backend
 - **Description:** Abstract async storage interface with SQLite and PostgreSQL implementations. Covers process CRUD, run lifecycle, work item state, run history, checkpoint/escalation state, decision history schema, retry state, webhook registry, and run-level optimistic locking (advisory locks for Postgres, locked_by column for SQLite).
-- **Feature Spec(s):** [feature-storage-backend.md](specs/feature-storage-backend.md) (9 stories)
+- **Feature Spec(s):** [feature-storage-backend.md](specs/archive/feature-storage-backend.md) (9 stories)
 - **Status:** Planned
 
 #### T1.3 -- Orchestrator Engine
 - **Description:** Stateless-between-ticks execution engine. A **tick** is one atomic unit of work: load run state from storage, execute the current node, write updated state back, yield. Each tick is independently crash-safe. ProcessRunner class owns a single run's execution loop; Orchestrator class manages multiple runners. The orchestrator **delegates** to T1.4 (Decision Engine) for decision node evaluation and to T1.5 (Agent Registry) for agent invocation -- it does not implement decision logic or agent calling directly. Handles node dispatch by type, edge evaluation, run state machine (pending/running/paused/completed/failed/cancelled), and coordinates with storage for crash-safe state persistence. Confidence-threshold escalation in T1.4 produces an escalation record that the orchestrator handles identically to T2.1 escalations (pause run, emit event, surface via API).
 - **State accumulation model:** Each agent/agent_pool node declares an `output_key` in its config. When the node completes, the orchestrator writes its output to `work_item_state[output_key]`. State accumulates as nodes execute -- downstream nodes (including decision conditions) read from the full accumulated state dict. Nodes never overwrite each other's output because each writes to its own key. The orchestrator owns this write; nodes produce output, they don't mutate state directly.
-- **Feature Spec(s):** [feature-orchestrator-engine.md](specs/feature-orchestrator-engine.md) (8 stories)
+- **Feature Spec(s):** [feature-orchestrator-engine.md](specs/archive/feature-orchestrator-engine.md) (8 stories)
 - **Status:** Planned
 
 #### T1.4 -- Decision Engine
 - **Description:** All four decision modes: deterministic (safe expression evaluator -- no eval()), ai_bounded, ai_checkpoint, ai_autonomous. LiteLLM for AI modes -- model-agnostic, works with any provider (Anthropic, OpenAI, Gemini, Ollama, etc.) via unified interface. Model configurable per node. Confidence threshold escalation as the primary safety net. Structured response validation via Pydantic.
-- **Feature Spec(s):** [feature-decision-engine.md](specs/feature-decision-engine.md) (8 stories)
+- **Feature Spec(s):** [feature-decision-engine.md](specs/archive/feature-decision-engine.md) (8 stories)
 - **Status:** Planned
 
 #### T1.5 -- Agent Registry & Invocation
 - **Description:** Registry mapping agent names to invocation strategies. v1 implements two invocation types: **local callable** and **remote HTTP callback**. MCP invocation is deferred to Tier 2 (T2.5) pending gateway interface design. AgentInvoker handles both types transparently. Input/output schema validation before and after invocation. Timeout handling for remote agents. Schema mismatch raises typed errors for orchestrator handling. All agents must be pre-registered (no inline/anonymous agents in v1).
-- **Feature Spec(s):** [feature-agent-registry.md](specs/feature-agent-registry.md) (5 stories)
+- **Feature Spec(s):** [feature-agent-registry.md](specs/archive/feature-agent-registry.md) (5 stories)
 - **Status:** Planned
 
 #### T1.6 -- Event System
 - **Description:** Structured JSON event emission at all lifecycle points (20+ event types). Fire-and-forget via asyncio.create_task() with bounded task set (max concurrent pending emissions, configurable, default 100) to prevent unbounded memory growth from slow sinks. Pluggable sinks: HttpSink, FileSink, StdoutSink. Broken sinks never halt execution; slow sinks shed oldest pending events when buffer is full. WebhookDispatcher with HMAC-SHA256 signatures and pattern-based event filtering.
-- **Feature Spec(s):** [feature-event-system.md](specs/feature-event-system.md) (8 stories)
+- **Feature Spec(s):** [feature-event-system.md](specs/archive/feature-event-system.md) (8 stories)
 - **Status:** Planned
 
 ### Tier 2 -- Extended (v1)
 
 #### T2.1 -- Retry & Escalation
 - **Description:** Retry policy as first-class node config (max_attempts, backoff strategies: fixed/linear/exponential, exhaustion behavior: fail or route to fallback edge). Persistent retry state survives crashes. Escalation as distinct from checkpoints -- triggered by schema validation failure, low AI confidence, or explicit agent signal. Both resolved via same API.
-- **Feature Spec(s):** [feature-retry-escalation.md](specs/feature-retry-escalation.md) (5 stories)
+- **Feature Spec(s):** [feature-retry-escalation.md](specs/archive/feature-retry-escalation.md) (5 stories)
 - **Status:** Planned
 
 #### T2.2 -- Fork/Join Parallel Execution
 - **Description:** Matched-pair fork/join nodes for parallel branch execution. Schema validator enforces pairing. Fork creates N sub-run contexts with state copies, executes via asyncio.gather. Join merges via merge_all (deep merge, last-writer-wins) or collect (list under configurable key). allow_partial flag for partial failure tolerance.
-- **Feature Spec(s):** [feature-fork-join.md](specs/feature-fork-join.md) (5 stories)
+- **Feature Spec(s):** [feature-fork-join.md](specs/archive/feature-fork-join.md) (5 stories)
 - **Status:** Planned
 
 #### T2.3 -- HTTP API
 - **Description:** FastAPI server with async throughout. Process CRUD, run management (start/pause/resume/cancel/history), checkpoint resolution (approve/reject/redirect), agent registration, webhook management, headless graph data endpoints, and **graph mutation endpoints** (add/update/delete nodes, edges, and node positions -- the write contract for any visual editor). Application factory pattern for embedded/standalone/hybrid modes.
-- **Feature Spec(s):** [feature-http-api.md](specs/feature-http-api.md) (9 stories)
+- **Feature Spec(s):** [feature-http-api.md](specs/archive/feature-http-api.md) (9 stories)
 - **Status:** Planned
 
 #### T2.4 -- CLI
 - **Description:** Typer-based CLI (`roots`) for process validation, run management, agent registration, and server startup. Commands: serve, validate, run, status, agents. Useful for CI/CD integration and scripting.
-- **Feature Spec(s):** [feature-cli.md](specs/feature-cli.md) (5 stories)
+- **Feature Spec(s):** [feature-cli.md](specs/archive/feature-cli.md) (5 stories)
 - **Status:** Planned
 
 #### T2.5 -- MCP Agent Invocation
 - **Description:** MCP tool invocation as a third agent type. Requires designing the MCP gateway interface: how MCP servers are discovered/configured, how tool calls map to agent input/output contracts, and how MCP server lifecycle is managed. Deferred from T1.5 because the interface design is unresolved.
-- **Feature Spec(s):** [feature-mcp-invocation.md](specs/feature-mcp-invocation.md) (5 stories)
+- **Feature Spec(s):** [feature-mcp-invocation.md](specs/archive/feature-mcp-invocation.md) (5 stories)
 - **Status:** Planned
 
 ### Tier 3 -- Future (Phase 2)
@@ -151,9 +151,9 @@ Roots is an AI-native process orchestration framework that provides the connecti
 #### T3.7 -- Root Packaging & Distribution
 - **Description:** Portable, versionable, shareable process packages. A "Root" (capital R) is a `.root` archive containing a process definition, agent contracts (input/output schemas without implementations), optional default agent implementations, configuration overrides/templates, and metadata. Enables process-as-a-package: open-source security playbooks, compliance workflows, and operational procedures as installable, executable artifacts. `roots pack` exports, `roots inspect` previews, `roots install` loads with contract validation. Agent contracts decouple process definitions from implementations — the same Root works on any system that satisfies the contracts.
 - **Feature Spec(s):** [epic-root-packaging.md](specs/epic-root-packaging.md) — 3 feature specs, 16 stories:
-  - [feature-root-manifest.md](specs/feature-root-manifest.md) (6 stories) — Manifest schema, contract extraction, archive format, pack/inspect CLI
-  - [feature-root-install.md](specs/feature-root-install.md) (5 stories) — Install, contract validation, config overrides, package tracking
-  - [feature-root-defaults.md](specs/feature-root-defaults.md) (5 stories) — Default agents, scaffolding, config templates, e2e test
+  - [feature-root-manifest.md](specs/archive/feature-root-manifest.md) (6 stories) — Manifest schema, contract extraction, archive format, pack/inspect CLI
+  - [feature-root-install.md](specs/archive/feature-root-install.md) (5 stories) — Install, contract validation, config overrides, package tracking
+  - [feature-root-defaults.md](specs/archive/feature-root-defaults.md) (5 stories) — Default agents, scaffolding, config templates, e2e test
 - **Status:** Planned
 
 #### T3.8 -- Root Registry & Marketplace

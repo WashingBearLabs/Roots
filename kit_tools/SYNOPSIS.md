@@ -11,7 +11,7 @@
 
 > **TEMPLATE_INTENT:** One-page project overview for quick orientation. Answer: What is this? What state is it in? How do I run it?
 
-> Last updated: 2026-03-26
+> Last updated: 2026-06-13
 > Updated by: Claude
 
 ---
@@ -32,22 +32,25 @@ Roots is an AI-native process orchestration framework that defines processes as 
 | **Active Development** | Yes — core framework complete, packaging system finalized |
 
 ### What Works
-- Process definition via YAML directed graphs with 8 node types and 4 decision modes
+- Process definition via YAML directed graphs with 10 node types and 4 decision modes
 - Tick-based crash-safe orchestrator with state accumulation
-- Agent registry supporting local, remote HTTP, and MCP agents
+- Process composition: subprocess nodes (call another process) and iterator nodes (dynamic `for_each` fan-out), with depth limits and cycle detection
+- Crash-safe parallel execution: fork/join and parallel agent_pool persist per-branch results, so recovery resumes only incomplete branches
+- Run metadata & tagging with rich `metadata_filter` querying; decision history; process versioning
+- Agent registry supporting local, remote HTTP, and MCP agents, with agent context injection and event subscriptions (`on`/`once`/`wait_for`)
 - Pluggable storage backends (SQLite and PostgreSQL)
 - Event system with webhooks and bounded-buffer emission
 - Root packaging (.root archives for portable process distribution)
-- Full HTTP API via FastAPI (process CRUD, run management, graph mutations)
+- Full HTTP API via FastAPI (process CRUD, run management, child runs, decision history, graph mutations)
 - 5 demo applications
-- 1,173+ tests passing with strict pyright
+- 1,716 tests (1,603 passing, 113 skipped without a live PostgreSQL) under strict pyright
 
 ### What's In Progress
 - Production hardening and expanded agent ecosystem
 - See `roadmap/MILESTONES.md` for details
 
 ### What's Broken / Known Issues
-- Fork/join is not crash-safe (documented v1 limitation)
+- No authentication/authorization on the HTTP API (documented v1 posture — see `AUDIT_FINDINGS.md` finding 2026-03-24-082)
 - See `kit_tools/docs/GOTCHAS.md` for details
 
 ---

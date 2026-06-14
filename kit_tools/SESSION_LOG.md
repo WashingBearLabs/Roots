@@ -43,6 +43,32 @@
 
 <!-- Newest sessions at top -->
 
+## 2026-06-13 — Process-Composition Merge + Doc Sync
+
+**Duration:** ~1 session
+**Focus:** Integrate the long-unmerged `epic/process-composition` (subprocess node type) into `main`, then a full `/kit-tools:sync-project` pass to reconcile doc drift.
+
+### Accomplished
+- Discovered `epic/process-composition` was fully built but never merged (branch forked early; `main` had advanced 69 commits with the entire embedding-enhancements epic). `main`'s active subprocess specs were stale 0/69 planning copies; the real completed+archived work lived on the branch.
+- Merged via integration branch `merge/process-composition`, fast-forwarded `main` (commit d5b0fd5). 21 conflicts resolved — mostly parallel ITERATOR-vs-SUBPROCESS additions; the real work was re-indexing the `runs` table (now carries `metadata_json` + `parent_run_id` + `parent_node_id`) consistently across sqlite/postgres, and merging `validate_subprocess_references` into one BFS covering both iterator and subprocess refs. Closes audit finding 2026-06-01-010 (`get_child_runs` now exists).
+- Dropped 5 embedding specs the merge would have resurrected into active `specs/`; subprocess specs auto-archived, epic marked completed.
+- **Doc sync:** fixed node-type count (8 → 10), test count (1,173 → 1,716), and corrected the now-stale "fork/join is NOT crash-safe" claim (the crash-safe-parallel feature from embedding-enhancements made it crash-safe via `branch_results` — uncaught drift) across SYNOPSIS, CODE_ARCH, GOTCHAS, TESTING_GUIDE. Updated MILESTONES (embedding-enhancements → completed, no active target). Added `GET /runs/{id}/children` + `metadata_filter` to API_GUIDE. Fixed ~25 broken spec links in BACKLOG, PRODUCT_VISION, and two epic specs (specs moved to `archive/`).
+
+### Validation
+- Tests: 1,603 passed, 113 skipped, 0 failed (was 1,551 on main; +52 subprocess). pyright strict: 0 errors.
+- All internal `kit_tools/` doc links resolve.
+
+### Documentation Updated
+- [x] SYNOPSIS.md, arch/CODE_ARCH.md, docs/GOTCHAS.md, testing/TESTING_GUIDE.md
+- [x] roadmap/MILESTONES.md, roadmap/BACKLOG.md, docs/API_GUIDE.md, PRODUCT_VISION.md
+- [x] specs/epic-{library-refinements,embedding-enhancements}.md (link fixes)
+- [ ] arch/DATA_MODEL.md — still an unfilled template (pre-existing gap; `runs`/`branch_results`/`decisions` schema undocumented)
+
+### Follow-ups
+- `main` is ahead of `origin/main` by ~29 commits — NOT pushed (awaiting user).
+- arch/DATA_MODEL.md needs authoring (out of scope for this sync).
+- Repo hygiene: `.pyc` bytecode is tracked (should be gitignored).
+
 ## 2026-06-08 — Clean Cancellation + Embedding Epic Merge
 
 **Duration:** ~1 hour

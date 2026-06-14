@@ -9,7 +9,7 @@
 
 > **TEMPLATE_INTENT:** Document API endpoints, CLI commands, or library interface. The external contract.
 
-> Last updated: 2026-03-26
+> Last updated: 2026-06-13
 > Updated by: Claude
 
 ---
@@ -110,9 +110,10 @@ POST /runs
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | `process_id` | string | yes | ID of the process to execute |
-| `input` | object | no | Initial input data for the run |
+| `work_item` | object | no | Initial input/work-item state for the run |
+| `metadata` | object | no | Flat key→scalar tags for the run (str/int/float/bool/null values only) |
 
-**Response:** Created run object with run ID and initial state.
+**Response:** Created run object with run ID, initial state, and metadata.
 
 ---
 
@@ -121,6 +122,13 @@ POST /runs
 ```
 GET /runs
 ```
+
+**Query params:**
+| Name | Type | Description |
+|------|------|-------------|
+| `process_id` | string | Filter to one process |
+| `status` | string | Filter by run status |
+| `metadata_filter` | string (JSON) | Filter by metadata, e.g. `{"env":{"$eq":"prod"}}`; supports `$eq`/`$in`/`$exists` operators |
 
 **Response:** Array of run objects.
 
@@ -132,7 +140,19 @@ GET /runs
 GET /runs/{run_id}
 ```
 
-**Response:** Single run object with current state.
+**Response:** Single run object with current state, including `metadata`, `parent_run_id`, and `parent_node_id` (the latter two are null for top-level runs).
+
+---
+
+### Get Child Runs
+
+```
+GET /runs/{run_id}/children
+```
+
+Returns the child runs spawned by subprocess (and iterator) nodes within the given run. Returns `404` if the parent run does not exist.
+
+**Response:** Array of run objects whose `parent_run_id` equals `{run_id}`.
 
 ---
 

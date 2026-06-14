@@ -17,9 +17,9 @@ Advance the Roots framework beyond v1 core with three internal library improveme
 
 | Seq | Feature Spec | Status | Dependencies |
 |-----|-------------|--------|--------------|
-| 1 | [feature-vote-aggregation.md](feature-vote-aggregation.md) | Active (4 stories) | None |
-| 2 | [feature-decision-history.md](feature-decision-history.md) | Active (4 stories) | None |
-| 3 | [feature-process-versioning.md](feature-process-versioning.md) | Active | None |
+| 1 | [feature-vote-aggregation.md](archive/feature-vote-aggregation.md) | Active (4 stories) | None |
+| 2 | [feature-decision-history.md](archive/feature-decision-history.md) | Active (4 stories) | None |
+| 3 | [feature-process-versioning.md](archive/feature-process-versioning.md) | Active | None |
 
 ## Completion Criteria
 

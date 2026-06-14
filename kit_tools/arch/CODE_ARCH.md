@@ -11,7 +11,7 @@
 
 > **TEMPLATE_INTENT:** Document the code structure, key modules, and architectural patterns. The map of how code is organized.
 
-> Last updated: 2026-03-26
+> Last updated: 2026-06-13
 > Updated by: Claude
 
 ---
@@ -41,7 +41,7 @@ The primary design principles are:
 │   ├── api/                # FastAPI routers (processes, runs, agents, webhooks, graph)
 │   ├── packaging/          # Root manifest, archive (.root), import/install
 │   └── cli/                # CLI entry point (main.py)
-├── tests/                  # 66 test files, 1,173+ tests
+├── tests/                  # 75 test files, 1,716 tests
 ├── demo/                   # 5 demo applications
 │   └── run_all.py          # Run all demos (serves on localhost:8200)
 ├── pyproject.toml          # Project config, dependencies, tool settings
@@ -97,7 +97,7 @@ Webhook Delivery / Sink Consumers
 ## Key Patterns
 
 ### Tick-Based Execution
-The orchestrator processes one node per tick, persisting state after each step. This makes execution crash-safe — if the process dies, it resumes from the last completed tick. Fork/join is the one exception: it is NOT crash-safe in v1.
+The orchestrator processes one node per tick, persisting state after each step. This makes execution crash-safe — if the process dies, it resumes from the last completed tick. Fork/join and parallel agent_pool are also crash-safe: each branch's result is checkpointed to the `branch_results` table as it completes, so recovery resumes only the branches that were still in flight.
 
 ### State Accumulation via output_key
 Each node declares an `output_key`. When the node completes, its result is stored in the run state under that key. Downstream nodes read from prior output keys, creating an implicit data pipeline through the graph.

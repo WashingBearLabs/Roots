@@ -8,7 +8,7 @@
 
 > **TEMPLATE_INTENT:** Document known issues, quirks, and non-obvious behaviors. Landmines to avoid.
 
-> Last updated: 2026-03-26
+> Last updated: 2026-06-13
 > Updated by: Claude
 
 ## Overview
@@ -19,22 +19,19 @@ Known issues, quirks, tech debt, and non-obvious behaviors in the Roots framewor
 
 ## Active Gotchas
 
-### 1. Fork/Join Is NOT Crash-Safe
+### 1. Fork/Join Crash Safety — RESOLVED (was: NOT crash-safe)
 
-**Location:** `roots/core/orchestrator.py`
-**Severity:** High
-**Added:** 2026-03-26
+**Location:** `roots/core/orchestrator.py`, `roots/storage/*` (`branch_results` table)
+**Severity:** ~~High~~ Resolved
+**Added:** 2026-03-26 · **Resolved:** 2026-06 (Crash-Safe Parallel Execution feature)
 
-**What happens:**
-If the process crashes during a fork/join section (parallel branch execution), the run cannot reliably resume from where it left off. Partial branch completions may be lost.
+**Original limitation:**
+A crash during a fork/join (or parallel agent_pool) section could lose partial branch completions, since branch results were held in in-memory `ProcessRunner` instance variables.
 
-**Why it exists:**
-This is a documented v1 limitation. Crash-safe fork/join requires transactional multi-node state updates that are not yet implemented.
+**How it was fixed:**
+Each branch now checkpoints its result to the `branch_results` table as it completes (`save_branch_result`). On re-entry after a crash, the handler loads `get_branch_results` and resumes only the branches that had not finished. Covered by `tests/test_fork_join.py::TestCrashSafeForkPersistence` and the crash-recovery suite.
 
-**Workaround:**
-Design critical workflows to avoid fork/join, or accept that fork/join sections may need to be re-executed from the fork point after a crash.
-
-**Fix planned:** Yes (post-v1)
+**Residual edge case:** A fork with two outbound edges pointing at the *same* target node maps both branches to the same storage `branch_id`, so one result can overwrite the other on recovery (audit finding 2026-06-01-031, info severity). Give fork edges distinct targets.
 
 ---
 
@@ -67,7 +64,7 @@ Always use `model_dump(by_alias=True, mode="json")` when serializing any model t
 `NodeDefinition.config` can be one of several config types depending on the node type (agent config, decision config, etc.). Accessing type-specific fields without an `isinstance` guard causes pyright errors and potential runtime `AttributeError`.
 
 **Why it exists:**
-The 8 node types each have different configuration schemas, unified under a single `config` field.
+The 10 node types each have different configuration schemas, unified under a single `config` field.
 
 **Workaround:**
 Always use `isinstance` checks before accessing config-specific attributes:

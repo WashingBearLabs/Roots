@@ -30,11 +30,11 @@ Enhancement 5 (LLM callable passthrough) from the original spec is already imple
 
 | Seq | Feature Spec | Status | Stories | Size | Dependencies |
 |-----|-------------|--------|---------|------|--------------|
-| 1 | [feature-run-metadata.md](feature-run-metadata.md) | Planned | 4 | M | None |
-| 2 | [feature-event-subscriptions.md](feature-event-subscriptions.md) | Planned | 4 | M | None |
-| 3 | [feature-agent-context.md](feature-agent-context.md) | Planned | 4 | M | event-subscriptions, run-metadata |
-| 4 | [feature-crash-safe-parallel.md](feature-crash-safe-parallel.md) | Planned | 6 | L | None |
-| 5 | [feature-iterator-node.md](feature-iterator-node.md) | Planned | 7 | L | crash-safe-parallel, agent-context |
+| 1 | [feature-run-metadata.md](archive/feature-run-metadata.md) | Planned | 4 | M | None |
+| 2 | [feature-event-subscriptions.md](archive/feature-event-subscriptions.md) | Planned | 4 | M | None |
+| 3 | [feature-agent-context.md](archive/feature-agent-context.md) | Planned | 4 | M | event-subscriptions, run-metadata |
+| 4 | [feature-crash-safe-parallel.md](archive/feature-crash-safe-parallel.md) | Planned | 6 | L | None |
+| 5 | [feature-iterator-node.md](archive/feature-iterator-node.md) | Planned | 7 | L | crash-safe-parallel, agent-context |
 
 ## Completion Criteria
 

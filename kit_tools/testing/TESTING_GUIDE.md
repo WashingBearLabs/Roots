@@ -10,7 +10,7 @@
 
 > **TEMPLATE_INTENT:** Document test structure, running tests, and writing new tests. Quality assurance reference.
 
-> Last updated: 2026-03-26
+> Last updated: 2026-06-13
 > Updated by: Claude
 
 ## Quick Start
@@ -44,7 +44,7 @@ pytest tests/ --cov=roots
 ## Test Structure
 
 ```
-tests/                          # 66 test files, 1,173+ tests
+tests/                          # 75 test files, 1,716 tests
 ├── conftest.py                 # Shared fixtures (see below)
 ├── test_sqlite.py              # SQLite storage backend tests
 ├── test_postgres.py            # PostgreSQL storage tests (auto-skipped without DSN)

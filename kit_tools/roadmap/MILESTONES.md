@@ -1,24 +1,17 @@
 # Milestones
 
-> Last updated: 2026-06-01
+> Last updated: 2026-06-13
 > Updated by: Claude
 
 Tracks major milestones for the Roots framework.
 
 ---
 
-## Current Target: Embedding Enhancements (v1.2)
+## Current Target: None active — between milestones
 
-**Target:** 2026-06 (active)
-**Status:** Active — [epic-embedding-enhancements.md](../specs/epic-embedding-enhancements.md)
-**Stories:** 18 across 5 feature specs
-
-Production embedding improvements:
-- Run Metadata & Tagging (3 stories) — run tagging with rich filtering
-- Event Subscriptions (3 stories) — callback hooks and wait_for
-- Agent Context Injection (3 stories) — agent orchestration access
-- Crash-Safe Parallel Execution (5 stories) — per-branch state checkpointing
-- Iterator Node (4 stories) — dynamic for_each iteration
+The last two epics (Embedding Enhancements and Process Composition) are complete
+and merged to `main`. The next planned milestone is **Root Registry (T3.8)**,
+not yet scoped. Run `/kit-tools:plan-epic` to start the next one.
 
 ---
 
@@ -37,7 +30,8 @@ The next major milestone. Will enable publishing, discovering, and installing .r
 - [x] ~~**Demo Apps** — Reference applications demonstrating Roots framework capabilities~~ (14 stories, completed 2026-03-25)
 - [x] ~~**Root Packaging** — .root packaging format, manifest & export, import & install, defaults & config~~ (16 stories, completed 2026-03-25)
 - [x] ~~**Library Refinements** — Vote aggregation, decision history, process versioning~~ (11 stories, completed 2026-05-13)
-- [x] ~~**Process Composition** — Subprocess node type, pause/fail cascading, depth limits, API~~ (9 stories, completed 2026-05-21)
+- [x] ~~**Process Composition** — Subprocess node type, pause/fail cascading, depth limits, API~~ (9 stories, completed 2026-05-21; merged to `main` 2026-06-13)
+- [x] ~~**Embedding Enhancements (v1.2)** — Run metadata & tagging, event subscriptions, agent context injection, crash-safe parallel execution, iterator node~~ (18 stories, completed 2026-06)
 
 ---
 
