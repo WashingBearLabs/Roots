@@ -43,6 +43,39 @@
 
 <!-- Newest sessions at top -->
 
+## 2026-06-14 — Public Release v0.1.0 🎉
+
+**Duration:** ~1 long session (continued from the 2026-06-13 merge work below)
+**Focus:** Take Roots public — review, harden, publish to PyPI, build the website presence, and ship the first public release.
+
+### Accomplished
+- **Public-readiness review** — TruffleHog full-history secret scan (0 verified secrets) + security/packaging deep-dive agents. Surfaced: no LICENSE/README, tracked artifacts, PyPI name collision, SSRF DNS gap, zip-bomb, no API auth.
+- **Community files** — added LICENSE (MIT), README, CONTRIBUTING, SECURITY.
+- **Repo hygiene** — untracked `roots.db`, `.idea/`, `.pyc`; expanded `.gitignore`.
+- **Packaging** — distribution renamed `rootsflow` (import stays `roots`); full metadata/classifiers/URLs; dynamic version from `roots/__init__.py`; sdist allowlist (no internal leak); dropped unused `sqlalchemy`; `typer[all]`→`typer`; added `[mcp]` extra.
+- **Security fixes** — SSRF hostname resolution (`url_validator`, +21 tests); `.root` archive size caps (+3 tests); optional `ROOTS_API_KEY` auth + non-local serve warning (+6 tests); verified webhook secrets already masked.
+- **CI** — GitHub Actions (ruff/pyright/pytest on 3.12 & 3.13); lint cleaned to green; `AUDIT_FINDINGS` reconciled (critical 2026-03-24-082 → mitigated).
+- **Branch protection** on `main` (block force-push/deletion).
+- **Published `rootsflow 0.1.0` to PyPI** — verified clean-room `pip install` + `import roots` end-to-end. Tagged `v0.1.0`.
+- **Website (washingbearlabs.com)** — Roots card on Open Builds (Beta), `roots.md` docs + `roots-release-notes.md` changelog; docs model `category`→`tags`; consolidated docs index (one card per product, Read more + Changelog links). Live + verified.
+- **Release tooling** — `kit_tools/BUMP_VERSION.md` two-repo release runbook (`/kit-tools:bump-version` bumps version, runs the green-gate, and syncs the site docs + changelog).
+- **Final leak review** — published artifacts + live site clean; untracked transient kit_tools artifacts (held a personal path); scrubbed unreleased-project names (Poppy/Acorn) and private-infra detail from public docs (Option B).
+
+### Documentation Updated
+- [x] SYNOPSIS.md (public/PyPI state, install, links, auth), MILESTONES.md (+ Public Release v0.1.0), BACKLOG.md
+- [x] DECISIONS.md (release decisions; fork/join entry marked superseded), API_GUIDE.md (auth), ENV_REFERENCE.md (`ROOTS_API_KEY`)
+- [x] AUDIT_FINDINGS.md (reconciliation), README/LICENSE/CONTRIBUTING/SECURITY (new)
+
+### Verification
+- Version consistent across every surface: `pyproject = roots.__version__ = PyPI = git tag v0.1.0 = site = 0.1.0`.
+- Tests 1633 passed, ruff clean, pyright 0 errors. Both repos clean, on `main`, in sync.
+
+### Open Items / Next Steps
+- `arch/DATA_MODEL.md` still an unfilled template (backlog D2).
+- Future: feature-spec contribution template (backlog C1) for the spec-based contribution model.
+- WBL repo tracks `dist/`+`node_modules/` (gitignore cleanup someday — separate repo).
+- Personal path remains in one old git-history commit (low severity; not rewriting — branch protection blocks force-push).
+
 ## 2026-06-13 — Process-Composition Merge + Doc Sync
 
 **Duration:** ~1 session

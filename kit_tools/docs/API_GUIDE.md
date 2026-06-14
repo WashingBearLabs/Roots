@@ -9,7 +9,7 @@
 
 > **TEMPLATE_INTENT:** Document API endpoints, CLI commands, or library interface. The external contract.
 
-> Last updated: 2026-06-13
+> Last updated: 2026-06-14
 > Updated by: Claude
 
 ---
@@ -24,7 +24,11 @@ The Roots API is a RESTful HTTP API served by FastAPI. All endpoints accept and 
 
 ## Authentication
 
-No authentication is required in v1. All endpoints are open.
+The API is **unauthenticated by default**. Set the `ROOTS_API_KEY` environment
+variable to require a matching `X-API-Key` header on all data routes (`/` and
+`/health` stay open for liveness probes). The server binds `127.0.0.1` by default;
+do not expose `roots serve` to an untrusted network without `ROOTS_API_KEY` or an
+authenticating proxy in front of it.
 
 ---
 

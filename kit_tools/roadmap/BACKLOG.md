@@ -1,6 +1,6 @@
 # BACKLOG.md
 
-> Last updated: 2026-06-13
+> Last updated: 2026-06-14
 > Updated by: Claude
 
 Future work items and ideas for the Roots framework.
@@ -11,8 +11,11 @@ Future work items and ideas for the Roots framework.
 
 | Priority | Item | Type | Ref | Status |
 |----------|------|------|-----|--------|
-| P0 | Embedding Enhancements | Epic | E1 | **Active** |
+| P0 | ~~Embedding Enhancements~~ | Epic | E1 | **Done** (2026-06) |
+| P0 | ~~Public Release (v0.1.0)~~ | Release | — | **Done** (2026-06-14) |
 | P0 | Root Registry & Marketplace | Feature | T3.8 | Not Started |
+| P1 | Contribution model — feature-spec template | Docs | C1 | Not Started — spec-based PRs (contributors write feature specs; maintainer implements) + lighter rules for doc PRs |
+| P2 | Fill in DATA_MODEL.md | Docs | D2 | Not Started — runs/branch_results/decisions schema still an unfilled template |
 | P1 | ~~Decision History Retrieval~~ | Feature | T3.1 | **Done** (2026-05-13) |
 | P1 | ~~Process Versioning~~ | Feature | T3.2 | **Done** (2026-05-13) |
 | P2 | ~~Process Composition~~ | Feature | T3.3 | **Done** (2026-05-21) |

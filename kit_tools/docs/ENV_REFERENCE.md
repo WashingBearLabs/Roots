@@ -1,6 +1,6 @@
 # ENV_REFERENCE.md
 
-> Last updated: 2026-03-26
+> Last updated: 2026-06-14
 > Updated by: Claude
 
 Environment variables used by the Roots framework.
@@ -11,6 +11,7 @@ Environment variables used by the Roots framework.
 
 | Variable | Required | Description |
 |----------|----------|-------------|
+| `ROOTS_API_KEY` | No | When set, the HTTP API requires a matching `X-API-Key` header |
 | `ROOTS_POSTGRES_DSN` | No | PostgreSQL connection string |
 | `ROOTS_LLM_BASE_URL` | No | LLM API base URL |
 | `ROOTS_LLM_API_KEY` | No | LLM API key |
@@ -24,6 +25,7 @@ No `.env` file is required for basic usage. The framework runs with SQLite and w
 
 | Variable | Description | Default | Notes |
 |----------|-------------|---------|-------|
+| `ROOTS_API_KEY` | API key required on all HTTP data routes when set | None (API unauthenticated) | Clients must send `X-API-Key: <key>`; `/` and `/health` stay open. Recommended whenever binding a non-local host. |
 | `ROOTS_POSTGRES_DSN` | PostgreSQL connection string for storage backend | None (uses SQLite) | Format: `postgresql://user:pass@host:port/dbname` |
 | `ROOTS_LLM_BASE_URL` | Base URL for LLM API requests | OpenAI API (`https://api.openai.com/v1`) | Any OpenAI-compatible endpoint works |
 | `ROOTS_LLM_API_KEY` | API key for LLM requests | None | Takes precedence over `OPENAI_API_KEY` |

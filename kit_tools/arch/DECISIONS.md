@@ -1,6 +1,6 @@
 # DECISIONS.md
 
-> Last updated: 2026-03-26
+> Last updated: 2026-06-14
 > Updated by: Claude
 
 This file records significant architectural and technical decisions for the Roots framework.
@@ -136,7 +136,7 @@ The supply chain attack demonstrated unacceptable risk in depending on a third-p
 
 ### 2026-03-24: Fork/Join NOT Crash-Safe in v1
 
-**Status:** Accepted (conscious trade-off)
+**Status:** Superseded (2026-06) — fork/join and parallel agent_pool are now crash-safe via per-branch `branch_results` checkpointing (Embedding Enhancements epic). Retained as a record of the original v1 trade-off.
 
 **Context:**
 Fork/join nodes enable parallel branches in a process. Making fork/join fully crash-safe (resumable after a crash mid-fork) adds significant complexity to state management.
@@ -230,6 +230,27 @@ A zip-based format is simple to create, inspect, and distribute. The manifest pr
 - Manifest schema defines package metadata and dependencies
 - Foundation for future Root Registry (T3.8)
 - Easy to inspect: `unzip -l package.root` shows contents
+
+---
+
+### 2026-06-14: Public Release — Distribution, Auth, and Docs Model
+
+**Status:** Accepted
+
+**Context:**
+Roots' first public release (v0.1.0) required decisions about how it is distributed, secured, and documented.
+
+**Decisions:**
+
+- **Distribution name `rootsflow`, import name `roots`.** The PyPI names `roots` and `root` are both taken. The distribution (what you `pip install`) is `rootsflow`; the import package stays `roots` (`from roots import Roots`) — a short, available name without renaming the codebase.
+- **Optional API authentication via `ROOTS_API_KEY`.** The HTTP API is unauthenticated by default (single-trust v1 model) but gains an opt-in API-key guard (`X-API-Key`); the server binds `127.0.0.1` and warns loudly on non-local binds. A full auth model (JWT/per-tenant) remains future work.
+- **Single version source.** The version literal lives only in `roots/__init__.py`; `pyproject.toml` (dynamic via hatchling) and `roots/api/app.py` derive from it.
+- **Website is the product home + changelog source of truth.** Canonical homepage is the Open Builds project page on washingbearlabs.com; the public changelog lives on the site (`roots-release-notes.md`), not as a repo `CHANGELOG.md`. `/kit-tools:bump-version` (driven by `kit_tools/BUMP_VERSION.md`) keeps the site docs + changelog in sync on each release — a two-repo release.
+- **`kit_tools/` stays public but scrubbed.** Internal dev docs remain public (transparency + a future spec-based contribution model), with unreleased-project names and private-infra specifics removed.
+
+**Consequences:**
+- Users `pip install rootsflow`, then `import roots`.
+- Each release updates two repos (code + site) via one runbook.
 
 ---
 
