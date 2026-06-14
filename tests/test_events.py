@@ -14,7 +14,8 @@ from roots.events.types import EventEnvelope, EventType, create_event
 
 class TestEventType:
     def test_all_event_types_defined(self) -> None:
-        assert len(EventType) == 24
+        # 19 base + 5 iterator + 3 subprocess lifecycle events
+        assert len(EventType) == 27
 
     def test_run_events(self) -> None:
         assert EventType.RUN_STARTED == "roots.run.started"
@@ -46,6 +47,11 @@ class TestEventType:
     def test_escalation_events(self) -> None:
         assert EventType.ESCALATION_TRIGGERED == "roots.escalation.triggered"
         assert EventType.ESCALATION_RESOLVED == "roots.escalation.resolved"
+
+    def test_subprocess_events(self) -> None:
+        assert EventType.SUBPROCESS_STARTED == "roots.subprocess.started"
+        assert EventType.SUBPROCESS_COMPLETED == "roots.subprocess.completed"
+        assert EventType.SUBPROCESS_FAILED == "roots.subprocess.failed"
 
     def test_event_type_is_str_enum(self) -> None:
         assert isinstance(EventType.RUN_STARTED, str)

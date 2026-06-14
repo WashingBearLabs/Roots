@@ -1,7 +1,7 @@
 <!-- Template Version: 2.2.0 -->
 ---
 feature: subprocess-execution
-status: active
+status: completed
 session_ready: true
 depends_on: [subprocess-schema]
 vision_ref: "T3.3 — Process Composition"
@@ -11,7 +11,8 @@ epic: process-composition
 epic_seq: 2
 epic_final: true
 created: 2026-05-13
-updated: 2026-05-13
+updated: 2026-05-21
+completed: 2026-05-21
 ---
 
 # Feature Spec: Subprocess Execution & Lifecycle
@@ -44,16 +45,16 @@ With the SUBPROCESS node type and storage foundation in place (feature-subproces
 - Store child_run_id in parent state (e.g., `state["_subprocess_run_" + node.id]`) for pause/resume tracking
 
 **Acceptance Criteria:**
-- [ ] _handle_subprocess added to orchestrator dispatch table (replaces stub handler from schema spec)
-- [ ] Handler creates child run with input_mapping applied: for each (parent_key, child_key) in input_mapping, child_state[child_key] = parent_state[parent_key]; missing parent keys raise OrchestrationError (not KeyError)
-- [ ] Child run executes to completion via inner ProcessRunner tick loop; parent lock refreshed between child ticks to prevent lock theft by other orchestrator instances
-- [ ] Output mapped back: for each (child_key, parent_key) in output_mapping, result[parent_key] = child_state[child_key]; missing child keys produce None (not KeyError); stored at output_key
-- [ ] Child runner uses parent's owner_id for lock acquisition
-- [ ] `_subprocess_depth` injected into child initial state (current depth + 1) for depth tracking by US-004
-- [ ] SUBPROCESS_STARTED and SUBPROCESS_COMPLETED events emitted with child_run_id in metadata
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] _handle_subprocess added to orchestrator dispatch table (replaces stub handler from schema spec)
+- [x] Handler creates child run with input_mapping applied: for each (parent_key, child_key) in input_mapping, child_state[child_key] = parent_state[parent_key]; missing parent keys raise OrchestrationError (not KeyError)
+- [x] Child run executes to completion via inner ProcessRunner tick loop; parent lock refreshed between child ticks to prevent lock theft by other orchestrator instances
+- [x] Output mapped back: for each (child_key, parent_key) in output_mapping, result[parent_key] = child_state[child_key]; missing child keys produce None (not KeyError); stored at output_key
+- [x] Child runner uses parent's owner_id for lock acquisition
+- [x] `_subprocess_depth` injected into child initial state (current depth + 1) for depth tracking by US-004
+- [x] SUBPROCESS_STARTED and SUBPROCESS_COMPLETED events emitted with child_run_id in metadata
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-002: Handle subprocess pause cascading
 
@@ -69,15 +70,15 @@ With the SUBPROCESS node type and storage foundation in place (feature-subproces
 - If child run ID found but child no longer exists, fail gracefully
 
 **Acceptance Criteria:**
-- [ ] Initial child pause: _trigger_escalation called with SUBPROCESS_PAUSED, creates escalation record with child_run_id
-- [ ] Child_run_id stored in parent work_item_state before parent pauses
-- [ ] Parent resume: handler detects existing child run from state, checks its status instead of creating new child
-- [ ] If child completed: output extracted and returned normally (no duplicate child runs)
-- [ ] If child still paused: parent re-pauses by setting self._escalated = True directly (no duplicate escalation record — distinct from initial pause path)
-- [ ] If stored child_run_id not found in storage: parent node fails with clear error
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] Initial child pause: _trigger_escalation called with SUBPROCESS_PAUSED, creates escalation record with child_run_id
+- [x] Child_run_id stored in parent work_item_state before parent pauses
+- [x] Parent resume: handler detects existing child run from state, checks its status instead of creating new child
+- [x] If child completed: output extracted and returned normally (no duplicate child runs)
+- [x] If child still paused: parent re-pauses by setting self._escalated = True directly (no duplicate escalation record — distinct from initial pause path)
+- [x] If stored child_run_id not found in storage: parent node fails with clear error
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-003: Handle subprocess failure propagation
 
@@ -91,12 +92,12 @@ With the SUBPROCESS node type and storage foundation in place (feature-subproces
 - History event should record the subprocess failure with child context
 
 **Acceptance Criteria:**
-- [ ] Child run FAILED → parent node fails with NODE_FAILED and RUN_FAILED events; SUBPROCESS_FAILED event emitted with child_run_id
-- [ ] Child run CANCELLED → parent node fails (same behavior as child failure)
-- [ ] Failure metadata includes child_run_id and child's final status
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] Child run FAILED → parent node fails with NODE_FAILED and RUN_FAILED events; SUBPROCESS_FAILED event emitted with child_run_id
+- [x] Child run CANCELLED → parent node fails (same behavior as child failure)
+- [x] Failure metadata includes child_run_id and child's final status
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-004: Enforce subprocess depth limit
 
@@ -110,13 +111,13 @@ With the SUBPROCESS node type and storage foundation in place (feature-subproces
 - The circular reference validator (schema spec US-003) catches static cycles; depth limit catches dynamic/runtime depth
 
 **Acceptance Criteria:**
-- [ ] Current subprocess depth tracked (via state metadata or runner context)
-- [ ] Depth checked at handler entry before creating child run
-- [ ] Depth >= max_depth → node fails with clear error message ("Subprocess depth limit exceeded: {depth}/{max_depth}")
-- [ ] Default depth limit (5) prevents unbounded nesting in tests
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] Current subprocess depth tracked (via state metadata or runner context)
+- [x] Depth checked at handler entry before creating child run
+- [x] Depth >= max_depth → node fails with clear error message ("Subprocess depth limit exceeded: {depth}/{max_depth}")
+- [x] Default depth limit (5) prevents unbounded nesting in tests
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-005: API visibility for subprocess runs
 
@@ -129,12 +130,12 @@ With the SUBPROCESS node type and storage foundation in place (feature-subproces
 - get_child_runs(parent_run_id) from storage spec — wire to endpoint
 
 **Acceptance Criteria:**
-- [ ] GET /runs/{id}/children endpoint returns list of child runs for a parent run
-- [ ] Existing RunResponse model (or equivalent) updated to include parent_run_id and parent_node_id fields; _run_to_response helper updated
-- [ ] Returns empty list (not 404) when run has no children
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] GET /runs/{id}/children endpoint returns list of child runs for a parent run
+- [x] Existing RunResponse model (or equivalent) updated to include parent_run_id and parent_node_id fields; _run_to_response helper updated
+- [x] Returns empty list (not 404) when run has no children
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ## Out of Scope
 

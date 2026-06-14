@@ -1,10 +1,10 @@
 <!-- Template Version: 2.1.0 -->
 ---
 epic: process-composition
-status: active
+status: completed
 vision_ref: "T3.3 — Process Composition"
 created: 2026-05-13
-updated: 2026-05-13
+updated: 2026-05-21
 ---
 
 # Epic: Process Composition
@@ -17,19 +17,19 @@ Enable hierarchical process decomposition by adding a SUBPROCESS node type whose
 
 | Seq | Feature Spec | Status | Dependencies |
 |-----|-------------|--------|--------------|
-| 1 | [feature-subprocess-schema.md](feature-subprocess-schema.md) | Active (4 stories) | None |
-| 2 | [feature-subprocess-execution.md](feature-subprocess-execution.md) | Active (5 stories) | subprocess-schema |
+| 1 | [feature-subprocess-schema.md](archive/feature-subprocess-schema.md) | Completed | None |
+| 2 | [feature-subprocess-execution.md](archive/feature-subprocess-execution.md) | Completed | subprocess-schema |
 
 ## Completion Criteria
 
-- [ ] Both feature specs completed and archived
-- [ ] Subprocess nodes execute child processes end-to-end with input/output mapping
-- [ ] Child pause correctly cascades to parent (and parent resume re-enters child)
-- [ ] Child failure correctly propagates to parent
-- [ ] Circular process references detected at validation time
-- [ ] Depth limit enforced at runtime (default 5)
-- [ ] Parent/child run relationships visible via API
-- [ ] All existing tests continue to pass (zero regressions)
+- [x] Both feature specs completed and archived
+- [x] Subprocess nodes execute child processes end-to-end with input/output mapping
+- [x] Child pause correctly cascades to parent (and parent resume re-enters child)
+- [x] Child failure correctly propagates to parent
+- [x] Circular process references detected at validation time
+- [x] Depth limit enforced at runtime (default 5)
+- [x] Parent/child run relationships visible via API
+- [x] All existing tests continue to pass (zero regressions)
 - [ ] Product vision updated to reflect T3.3 as completed
 
 ## Notes

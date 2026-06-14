@@ -22,6 +22,7 @@ class NodeType(StrEnum):
     EMIT = "emit"
     END = "end"
     ITERATOR = "iterator"
+    SUBPROCESS = "subprocess"
 
 
 class BackoffStrategy(StrEnum):
@@ -239,6 +240,15 @@ class IteratorNodeConfig(BaseModel):
         return self
 
 
+class SubProcessNodeConfig(BaseModel):
+    process_id: str
+    input_mapping: dict[str, str] = Field(default_factory=dict)
+    output_mapping: dict[str, str] = Field(default_factory=dict)
+    output_key: str
+    max_depth: int = Field(default=5, ge=1, le=20)
+
+
+
 CONFIG_MAP: dict[NodeType, type[BaseModel]] = {
     NodeType.AGENT: AgentNodeConfig,
     NodeType.AGENT_POOL: AgentPoolNodeConfig,
@@ -249,6 +259,7 @@ CONFIG_MAP: dict[NodeType, type[BaseModel]] = {
     NodeType.EMIT: EmitNodeConfig,
     NodeType.END: EndNodeConfig,
     NodeType.ITERATOR: IteratorNodeConfig,
+    NodeType.SUBPROCESS: SubProcessNodeConfig,
 }
 
 

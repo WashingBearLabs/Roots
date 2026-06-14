@@ -26,6 +26,7 @@ from roots.core.schema import (
     OnExhaustion,
     ProcessDefinition,
     RetryConfig,
+    SubProcessNodeConfig,
     TieBreak,
     VoteConfig,
 )
@@ -43,6 +44,7 @@ class TestNodeType:
             "emit",
             "end",
             "iterator",
+            "subprocess",
         }
         assert {v.value for v in NodeType} == expected
 
@@ -122,6 +124,10 @@ VALID_CONFIGS: dict[NodeType, dict[str, Any]] = {
         "output_key": "results",
         "item_key": "item",
     },
+    NodeType.SUBPROCESS: {
+        "process_id": "child-process",
+        "output_key": "child_result",
+    },
 }
 
 
@@ -187,6 +193,7 @@ class TestNodeDefinition:
             NodeType.JOIN,
             NodeType.EMIT,
             NodeType.END,
+            NodeType.SUBPROCESS,
         ],
     )
     def test_reject_retry_on_non_agent_types(self, node_type: NodeType) -> None:
@@ -841,6 +848,48 @@ class TestIteratorNodeConfig:
         )
         assert isinstance(node.config, IteratorNodeConfig)
         assert node.config.items_key == "items"
+class TestSubProcessNodeConfig:
+    def test_minimal_valid(self) -> None:
+        cfg = SubProcessNodeConfig(process_id="child-proc", output_key="result")
+        assert cfg.process_id == "child-proc"
+        assert cfg.output_key == "result"
+        assert cfg.input_mapping == {}
+        assert cfg.output_mapping == {}
+        assert cfg.max_depth == 5
+
+    def test_all_fields(self) -> None:
+        cfg = SubProcessNodeConfig(
+            process_id="child-proc",
+            input_mapping={"customer_data": "input"},
+            output_mapping={"output": "child_output"},
+            output_key="child_result",
+            max_depth=3,
+        )
+        assert cfg.process_id == "child-proc"
+        assert cfg.input_mapping == {"customer_data": "input"}
+        assert cfg.output_mapping == {"output": "child_output"}
+        assert cfg.output_key == "child_result"
+        assert cfg.max_depth == 3
+
+    def test_requires_process_id(self) -> None:
+        with pytest.raises(ValueError):
+            SubProcessNodeConfig(output_key="result")  # type: ignore[call-arg]
+
+    def test_requires_output_key(self) -> None:
+        with pytest.raises(ValueError):
+            SubProcessNodeConfig(process_id="child")  # type: ignore[call-arg]
+
+    def test_max_depth_lower_bound(self) -> None:
+        cfg = SubProcessNodeConfig(process_id="p", output_key="out", max_depth=1)
+        assert cfg.max_depth == 1
+        with pytest.raises(ValueError):
+            SubProcessNodeConfig(process_id="p", output_key="out", max_depth=0)
+
+    def test_max_depth_upper_bound(self) -> None:
+        cfg = SubProcessNodeConfig(process_id="p", output_key="out", max_depth=20)
+        assert cfg.max_depth == 20
+        with pytest.raises(ValueError):
+            SubProcessNodeConfig(process_id="p", output_key="out", max_depth=21)
 
 
 class TestConfigDiscriminator:
@@ -916,6 +965,26 @@ class TestConfigDiscriminator:
         )
         assert isinstance(node.config, EndNodeConfig)
         assert node.config.status == EndStatus.COMPLETED
+
+    def test_subprocess_config_parsed(self) -> None:
+        node = NodeDefinition(
+            id="sp-1",
+            type=NodeType.SUBPROCESS,
+            label="Subprocess",
+            config={
+                "process_id": "child-proc",
+                "input_mapping": {"data": "input"},
+                "output_mapping": {"result": "output"},
+                "output_key": "child_result",
+                "max_depth": 3,
+            },
+        )
+        assert isinstance(node.config, SubProcessNodeConfig)
+        assert node.config.process_id == "child-proc"
+        assert node.config.input_mapping == {"data": "input"}
+        assert node.config.output_mapping == {"result": "output"}
+        assert node.config.output_key == "child_result"
+        assert node.config.max_depth == 3
 
     def test_already_typed_config_not_reparsed(self) -> None:
         typed_config = AgentNodeConfig(agent="summarizer", output_key="out")
@@ -1191,6 +1260,47 @@ class TestProcessDefinition:
         assert len(edges) == 1
         assert isinstance(edges[0], DecisionEdge)
         assert edges[0].target == "a"
+
+    def test_subprocess_node_in_process_parses_correctly(self) -> None:
+        import yaml
+
+        yaml_src = """
+id: parent-proc
+name: Parent Process
+version: 1.0.0
+entry_point: call_child
+nodes:
+  - id: call_child
+    type: subprocess
+    label: Call Child
+    config:
+      process_id: child-proc
+      input_mapping:
+        customer_data: input
+      output_mapping:
+        result: child_output
+      output_key: child_result
+      max_depth: 3
+  - id: done
+    type: end
+    label: Done
+    config:
+      status: completed
+edges:
+  - from: call_child
+    to: done
+"""
+        data = yaml.safe_load(yaml_src)
+        proc = ProcessDefinition.model_validate(data)
+        node = proc.get_node("call_child")
+        assert node is not None
+        assert node.type == NodeType.SUBPROCESS
+        assert isinstance(node.config, SubProcessNodeConfig)
+        assert node.config.process_id == "child-proc"
+        assert node.config.input_mapping == {"customer_data": "input"}
+        assert node.config.output_mapping == {"result": "child_output"}
+        assert node.config.output_key == "child_result"
+        assert node.config.max_depth == 3
 
     def test_non_decision_outbound_uses_top_level_edges(self) -> None:
         node_a = _make_node("a")

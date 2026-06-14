@@ -10,20 +10,23 @@ import pytest
 from roots.agents.registry import AgentRegistry
 from roots.agents.invoker import AgentInvoker
 from roots.core.decision import DecisionEngine
+from roots.core.escalation import EscalationTrigger
 from roots.core.orchestrator import Orchestrator, OrchestrationError, ProcessRunner
 from roots.core.schema import (
     AgentNodeConfig,
+    CheckpointNodeConfig,
     EdgeDefinition,
     EndNodeConfig,
     EndStatus,
     NodeDefinition,
     NodeType,
     ProcessDefinition,
+    SubProcessNodeConfig,
 )
 from roots.core.state_machine import RunStatus
 from roots.events.emitter import EventEmitter
 from roots.events.sinks import EventSink
-from roots.events.types import EventEnvelope
+from roots.events.types import EventEnvelope, EventType
 from roots.storage.base import StorageBackend
 
 
@@ -353,3 +356,603 @@ class TestStartExecuteCompletedFlow:
         assert final is not None
         assert final.status == RunStatus.COMPLETED
         assert "step1_out" in final.work_item_state
+
+
+class TestSubprocessHandler:
+    def _make_child_process(self) -> ProcessDefinition:
+        """Child: echo agent -> END."""
+        return ProcessDefinition(
+            id="child-proc",
+            name="Child Process",
+            version="1.0.0",
+            nodes=[
+                NodeDefinition(
+                    id="step",
+                    type=NodeType.AGENT,
+                    label="Step",
+                    config=AgentNodeConfig(agent="echo", output_key="step_out"),
+                ),
+                NodeDefinition(
+                    id="done",
+                    type=NodeType.END,
+                    label="Done",
+                    config=EndNodeConfig(status=EndStatus.COMPLETED),
+                ),
+            ],
+            edges=[EdgeDefinition(from_node="step", to_node="done")],
+            entry_point="step",
+        )
+
+    def _make_parent_process(
+        self,
+        input_mapping: dict[str, str] | None = None,
+        output_mapping: dict[str, str] | None = None,
+    ) -> ProcessDefinition:
+        """Parent: SUBPROCESS node -> END."""
+        return ProcessDefinition(
+            id="parent-proc",
+            name="Parent Process",
+            version="1.0.0",
+            nodes=[
+                NodeDefinition(
+                    id="sub-node",
+                    type=NodeType.SUBPROCESS,
+                    label="Sub",
+                    config=SubProcessNodeConfig(
+                        process_id="child-proc",
+                        output_key="child_result",
+                        input_mapping=input_mapping or {},
+                        output_mapping=output_mapping or {},
+                    ),
+                ),
+                NodeDefinition(
+                    id="done",
+                    type=NodeType.END,
+                    label="Done",
+                    config=EndNodeConfig(status=EndStatus.COMPLETED),
+                ),
+            ],
+            edges=[EdgeDefinition(from_node="sub-node", to_node="done")],
+            entry_point="sub-node",
+        )
+
+    async def test_subprocess_executes_child_and_completes(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+    ) -> None:
+        """Parent run completes after child process executes to completion."""
+        await sqlite_storage.save_process(self._make_child_process())
+        await sqlite_storage.save_process(self._make_parent_process())
+
+        run = await orchestrator.start_run("parent-proc", {"input": "test"})
+        await orchestrator.execute_run(run.id)
+
+        parent = await sqlite_storage.get_run(run.id)
+        assert parent is not None
+        assert parent.status == RunStatus.COMPLETED
+
+        children = await sqlite_storage.get_child_runs(run.id)
+        assert len(children) == 1
+        child = children[0]
+        assert child.status == RunStatus.COMPLETED
+        assert child.parent_run_id == run.id
+        assert child.parent_node_id == "sub-node"
+
+    async def test_subprocess_input_mapping_applied(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+    ) -> None:
+        """input_mapping copies specified parent keys into child initial state."""
+        await sqlite_storage.save_process(self._make_child_process())
+        await sqlite_storage.save_process(
+            self._make_parent_process(input_mapping={"parent_val": "child_input"})
+        )
+
+        run = await orchestrator.start_run("parent-proc", {"parent_val": "hello"})
+        await orchestrator.execute_run(run.id)
+
+        children = await sqlite_storage.get_child_runs(run.id)
+        assert len(children) == 1
+        # child_input was set from parent_val
+        assert children[0].work_item_state.get("child_input") == "hello"
+
+    async def test_subprocess_missing_input_key_raises(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+    ) -> None:
+        """Missing input_mapping parent key raises OrchestrationError."""
+        await sqlite_storage.save_process(self._make_child_process())
+        await sqlite_storage.save_process(
+            self._make_parent_process(input_mapping={"missing_key": "child_input"})
+        )
+
+        run = await orchestrator.start_run("parent-proc", {"other": "value"})
+        with pytest.raises(OrchestrationError, match="missing_key"):
+            await orchestrator.execute_run(run.id)
+
+    async def test_subprocess_output_mapping_applied(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+    ) -> None:
+        """output_mapping copies child state keys into result stored at output_key."""
+        await sqlite_storage.save_process(self._make_child_process())
+        await sqlite_storage.save_process(
+            self._make_parent_process(output_mapping={"step_out": "result"})
+        )
+
+        run = await orchestrator.start_run("parent-proc", {})
+        await orchestrator.execute_run(run.id)
+
+        parent = await sqlite_storage.get_run(run.id)
+        assert parent is not None
+        assert parent.status == RunStatus.COMPLETED
+        child_result = parent.work_item_state.get("child_result")
+        assert isinstance(child_result, dict)
+        assert "result" in child_result
+
+    async def test_subprocess_missing_output_key_produces_none(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+    ) -> None:
+        """Missing child output key in output_mapping produces None, not KeyError."""
+        await sqlite_storage.save_process(self._make_child_process())
+        await sqlite_storage.save_process(
+            self._make_parent_process(output_mapping={"nonexistent_key": "result"})
+        )
+
+        run = await orchestrator.start_run("parent-proc", {})
+        await orchestrator.execute_run(run.id)
+
+        parent = await sqlite_storage.get_run(run.id)
+        assert parent is not None
+        assert parent.status == RunStatus.COMPLETED
+        child_result = parent.work_item_state.get("child_result")
+        assert isinstance(child_result, dict)
+        assert child_result.get("result") is None
+
+    async def test_subprocess_depth_injected_into_child_state(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+    ) -> None:
+        """_subprocess_depth incremented in child initial state."""
+        await sqlite_storage.save_process(self._make_child_process())
+        await sqlite_storage.save_process(self._make_parent_process())
+
+        run = await orchestrator.start_run("parent-proc", {})
+        await orchestrator.execute_run(run.id)
+
+        children = await sqlite_storage.get_child_runs(run.id)
+        assert len(children) == 1
+        assert children[0].work_item_state.get("_subprocess_depth") == 1
+
+    async def test_subprocess_child_run_id_stored_in_parent_state(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+    ) -> None:
+        """_subprocess_run_<node_id> key is present in parent final state."""
+        await sqlite_storage.save_process(self._make_child_process())
+        await sqlite_storage.save_process(self._make_parent_process())
+
+        run = await orchestrator.start_run("parent-proc", {})
+        await orchestrator.execute_run(run.id)
+
+        parent = await sqlite_storage.get_run(run.id)
+        assert parent is not None
+        assert "_subprocess_run_sub-node" in parent.work_item_state
+
+    async def test_subprocess_events_emitted(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+        sink: CollectorSink,
+    ) -> None:
+        """SUBPROCESS_STARTED and SUBPROCESS_COMPLETED events are emitted."""
+        await sqlite_storage.save_process(self._make_child_process())
+        await sqlite_storage.save_process(self._make_parent_process())
+
+        run = await orchestrator.start_run("parent-proc", {})
+        await orchestrator.execute_run(run.id)
+
+        event_types = [e.event for e in sink.events]
+        assert EventType.SUBPROCESS_STARTED in event_types
+        assert EventType.SUBPROCESS_COMPLETED in event_types
+
+        started = next(e for e in sink.events if e.event == EventType.SUBPROCESS_STARTED)
+        completed = next(e for e in sink.events if e.event == EventType.SUBPROCESS_COMPLETED)
+        assert started.metadata.get("child_run_id") is not None
+        assert completed.metadata.get("child_run_id") == started.metadata["child_run_id"]
+
+    # --- US-002: Subprocess pause cascading ---
+
+    def _make_pausing_child_process(self) -> ProcessDefinition:
+        """Child: CHECKPOINT -> END (pauses at checkpoint on first execution)."""
+        return ProcessDefinition(
+            id="pausing-child-proc",
+            name="Pausing Child",
+            version="1.0.0",
+            nodes=[
+                NodeDefinition(
+                    id="cp",
+                    type=NodeType.CHECKPOINT,
+                    label="Review",
+                    config=CheckpointNodeConfig(prompt="Needs review"),
+                ),
+                NodeDefinition(
+                    id="done",
+                    type=NodeType.END,
+                    label="Done",
+                    config=EndNodeConfig(status=EndStatus.COMPLETED),
+                ),
+            ],
+            edges=[EdgeDefinition(from_node="cp", to_node="done")],
+            entry_point="cp",
+        )
+
+    def _make_pausing_parent_process(self) -> ProcessDefinition:
+        """Parent: SUBPROCESS(pausing-child-proc) -> END."""
+        return ProcessDefinition(
+            id="pausing-parent-proc",
+            name="Pausing Parent",
+            version="1.0.0",
+            nodes=[
+                NodeDefinition(
+                    id="sub",
+                    type=NodeType.SUBPROCESS,
+                    label="Sub",
+                    config=SubProcessNodeConfig(
+                        process_id="pausing-child-proc",
+                        output_key="child_result",
+                        input_mapping={},
+                        output_mapping={},
+                    ),
+                ),
+                NodeDefinition(
+                    id="done",
+                    type=NodeType.END,
+                    label="Done",
+                    config=EndNodeConfig(status=EndStatus.COMPLETED),
+                ),
+            ],
+            edges=[EdgeDefinition(from_node="sub", to_node="done")],
+            entry_point="sub",
+        )
+
+    async def test_subprocess_initial_pause_cascades_to_parent(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+    ) -> None:
+        """Child pause cascades to parent with SUBPROCESS_PAUSED escalation."""
+        await sqlite_storage.save_process(self._make_pausing_child_process())
+        await sqlite_storage.save_process(self._make_pausing_parent_process())
+
+        run = await orchestrator.start_run("pausing-parent-proc", {})
+        await orchestrator.execute_run(run.id)
+
+        parent = await sqlite_storage.get_run(run.id)
+        assert parent is not None
+        assert parent.status == RunStatus.PAUSED
+        assert "_subprocess_run_sub" in parent.work_item_state
+
+        escalation = await sqlite_storage.get_pending_escalation(run.id)
+        assert escalation is not None
+        assert escalation.trigger_type == EscalationTrigger.SUBPROCESS_PAUSED
+        child_run_id = parent.work_item_state["_subprocess_run_sub"]
+        assert child_run_id in escalation.reason
+
+    async def test_subprocess_resume_child_completed(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+    ) -> None:
+        """Resuming parent when child completed extracts output; no duplicate child run."""
+        await sqlite_storage.save_process(self._make_pausing_child_process())
+        await sqlite_storage.save_process(self._make_pausing_parent_process())
+
+        run = await orchestrator.start_run("pausing-parent-proc", {})
+        await orchestrator.execute_run(run.id)
+
+        parent = await sqlite_storage.get_run(run.id)
+        assert parent is not None
+        assert parent.status == RunStatus.PAUSED
+        child_run_id = parent.work_item_state["_subprocess_run_sub"]
+
+        # Advance child past checkpoint to "done" and complete it
+        child = await sqlite_storage.get_run(child_run_id)
+        assert child is not None
+        assert child.status == RunStatus.PAUSED
+        await sqlite_storage.update_run_status(child_run_id, RunStatus.RUNNING, "done")
+        child_runner_proc = orchestrator
+        await child_runner_proc.execute_run(child_run_id)
+
+        child_after = await sqlite_storage.get_run(child_run_id)
+        assert child_after is not None
+        assert child_after.status == RunStatus.COMPLETED
+
+        # Resume parent — should detect child completed and finish
+        assert parent.current_node_id is not None
+        await sqlite_storage.update_run_status(
+            run.id, RunStatus.RUNNING, parent.current_node_id
+        )
+        await orchestrator.execute_run(run.id)
+
+        parent_after = await sqlite_storage.get_run(run.id)
+        assert parent_after is not None
+        assert parent_after.status == RunStatus.COMPLETED
+
+        # No duplicate child runs
+        children = await sqlite_storage.get_child_runs(run.id)
+        assert len(children) == 1
+
+    async def test_subprocess_resume_child_still_paused(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+    ) -> None:
+        """Resuming parent when child still paused re-pauses parent without new escalation."""
+        await sqlite_storage.save_process(self._make_pausing_child_process())
+        await sqlite_storage.save_process(self._make_pausing_parent_process())
+
+        run = await orchestrator.start_run("pausing-parent-proc", {})
+        await orchestrator.execute_run(run.id)
+
+        parent = await sqlite_storage.get_run(run.id)
+        assert parent is not None
+        assert parent.status == RunStatus.PAUSED
+
+        # Resolve original escalation so we can detect if a new one is created
+        escalation = await sqlite_storage.get_pending_escalation(run.id)
+        assert escalation is not None
+        await sqlite_storage.resolve_escalation(escalation.id, {"resolved_by": "test"})
+
+        # Resume parent while child is still paused
+        assert parent.current_node_id is not None
+        await sqlite_storage.update_run_status(
+            run.id, RunStatus.RUNNING, parent.current_node_id
+        )
+        await orchestrator.execute_run(run.id)
+
+        parent_after = await sqlite_storage.get_run(run.id)
+        assert parent_after is not None
+        assert parent_after.status == RunStatus.PAUSED
+
+        # No new escalation created — re-pause used self._escalated = True directly
+        new_escalation = await sqlite_storage.get_pending_escalation(run.id)
+        assert new_escalation is None
+
+    async def test_subprocess_resume_missing_child_run_raises(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+    ) -> None:
+        """Resuming parent with a nonexistent stored child_run_id raises OrchestrationError."""
+        await sqlite_storage.save_process(self._make_pausing_child_process())
+        await sqlite_storage.save_process(self._make_pausing_parent_process())
+
+        run = await orchestrator.start_run("pausing-parent-proc", {})
+        await orchestrator.execute_run(run.id)
+
+        parent = await sqlite_storage.get_run(run.id)
+        assert parent is not None
+        assert parent.status == RunStatus.PAUSED
+
+        # Overwrite stored child_run_id with a nonexistent ID
+        bad_state = dict(parent.work_item_state)
+        bad_state["_subprocess_run_sub"] = "run-nonexistent-id"
+        await sqlite_storage.update_work_item_state(run.id, bad_state)
+
+        assert parent.current_node_id is not None
+        await sqlite_storage.update_run_status(
+            run.id, RunStatus.RUNNING, parent.current_node_id
+        )
+
+        with pytest.raises(OrchestrationError, match="not found in storage"):
+            await orchestrator.execute_run(run.id)
+
+    # --- US-003: Subprocess failure propagation ---
+
+    async def test_subprocess_child_failed_propagates_to_parent(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+        sink: CollectorSink,
+    ) -> None:
+        """Child run FAILED → parent node fails; SUBPROCESS_FAILED, NODE_FAILED, RUN_FAILED emitted."""
+        await sqlite_storage.save_process(self._make_pausing_child_process())
+        await sqlite_storage.save_process(self._make_pausing_parent_process())
+
+        run = await orchestrator.start_run("pausing-parent-proc", {})
+        await orchestrator.execute_run(run.id)
+
+        parent = await sqlite_storage.get_run(run.id)
+        assert parent is not None
+        assert parent.status == RunStatus.PAUSED
+        child_run_id: str = parent.work_item_state["_subprocess_run_sub"]
+
+        # Simulate child run failing
+        await sqlite_storage.update_run_status(child_run_id, RunStatus.FAILED)
+
+        # Resume parent — should detect child FAILED and fail itself
+        assert parent.current_node_id is not None
+        await sqlite_storage.update_run_status(
+            run.id, RunStatus.RUNNING, parent.current_node_id
+        )
+        await orchestrator.execute_run(run.id)
+
+        parent_after = await sqlite_storage.get_run(run.id)
+        assert parent_after is not None
+        assert parent_after.status == RunStatus.FAILED
+
+        event_types = [e.event for e in sink.events]
+        assert EventType.SUBPROCESS_FAILED in event_types
+        assert EventType.NODE_FAILED in event_types
+        assert EventType.RUN_FAILED in event_types
+
+        subprocess_failed_evt = next(
+            e for e in sink.events if e.event == EventType.SUBPROCESS_FAILED
+        )
+        assert subprocess_failed_evt.metadata.get("child_run_id") == child_run_id
+        assert subprocess_failed_evt.metadata.get("child_status") == RunStatus.FAILED
+
+    async def test_subprocess_child_cancelled_propagates_to_parent(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+    ) -> None:
+        """Child run CANCELLED → parent node fails (same behavior as FAILED)."""
+        await sqlite_storage.save_process(self._make_pausing_child_process())
+        await sqlite_storage.save_process(self._make_pausing_parent_process())
+
+        run = await orchestrator.start_run("pausing-parent-proc", {})
+        await orchestrator.execute_run(run.id)
+
+        parent = await sqlite_storage.get_run(run.id)
+        assert parent is not None
+        assert parent.status == RunStatus.PAUSED
+        child_run_id: str = parent.work_item_state["_subprocess_run_sub"]
+
+        await sqlite_storage.update_run_status(child_run_id, RunStatus.CANCELLED)
+
+        assert parent.current_node_id is not None
+        await sqlite_storage.update_run_status(
+            run.id, RunStatus.RUNNING, parent.current_node_id
+        )
+        await orchestrator.execute_run(run.id)
+
+        parent_after = await sqlite_storage.get_run(run.id)
+        assert parent_after is not None
+        assert parent_after.status == RunStatus.FAILED
+
+    async def test_subprocess_failure_metadata_has_child_context(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+        sink: CollectorSink,
+    ) -> None:
+        """NODE_FAILED and RUN_FAILED metadata include child_run_id and child_status."""
+        await sqlite_storage.save_process(self._make_pausing_child_process())
+        await sqlite_storage.save_process(self._make_pausing_parent_process())
+
+        run = await orchestrator.start_run("pausing-parent-proc", {})
+        await orchestrator.execute_run(run.id)
+
+        parent = await sqlite_storage.get_run(run.id)
+        assert parent is not None
+        child_run_id: str = parent.work_item_state["_subprocess_run_sub"]
+
+        await sqlite_storage.update_run_status(child_run_id, RunStatus.FAILED)
+
+        assert parent.current_node_id is not None
+        await sqlite_storage.update_run_status(
+            run.id, RunStatus.RUNNING, parent.current_node_id
+        )
+        await orchestrator.execute_run(run.id)
+
+        node_failed_evt = next(
+            e for e in sink.events
+            if e.event == EventType.NODE_FAILED
+            and e.metadata.get("reason") == "subprocess_failed"
+        )
+        run_failed_evt = next(
+            e for e in sink.events
+            if e.event == EventType.RUN_FAILED
+            and e.metadata.get("reason") == "subprocess_failed"
+        )
+        assert node_failed_evt.metadata.get("child_run_id") == child_run_id
+        assert node_failed_evt.metadata.get("child_status") == RunStatus.FAILED
+        assert run_failed_evt.metadata.get("child_run_id") == child_run_id
+        assert run_failed_evt.metadata.get("child_status") == RunStatus.FAILED
+
+    # --- US-004: Subprocess depth limit ---
+
+    def _make_depth_limited_parent(self, max_depth: int = 5) -> ProcessDefinition:
+        """Parent: SUBPROCESS(child-proc, max_depth=N) -> END."""
+        return ProcessDefinition(
+            id="depth-parent-proc",
+            name="Depth Parent",
+            version="1.0.0",
+            nodes=[
+                NodeDefinition(
+                    id="sub-node",
+                    type=NodeType.SUBPROCESS,
+                    label="Sub",
+                    config=SubProcessNodeConfig(
+                        process_id="child-proc",
+                        output_key="child_result",
+                        max_depth=max_depth,
+                    ),
+                ),
+                NodeDefinition(
+                    id="done",
+                    type=NodeType.END,
+                    label="Done",
+                    config=EndNodeConfig(status=EndStatus.COMPLETED),
+                ),
+            ],
+            edges=[EdgeDefinition(from_node="sub-node", to_node="done")],
+            entry_point="sub-node",
+        )
+
+    async def test_subprocess_depth_limit_exceeded_raises(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+    ) -> None:
+        """OrchestrationError raised when _subprocess_depth >= max_depth."""
+        await sqlite_storage.save_process(self._make_child_process())
+        await sqlite_storage.save_process(self._make_depth_limited_parent(max_depth=2))
+
+        # Pre-inject depth at the limit to simulate being 2 levels deep already
+        run = await orchestrator.start_run("depth-parent-proc", {"_subprocess_depth": 2})
+        with pytest.raises(OrchestrationError, match="Subprocess depth limit exceeded: 2/2"):
+            await orchestrator.execute_run(run.id)
+
+    async def test_subprocess_depth_error_message_format(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+    ) -> None:
+        """Error message includes current depth and max_depth."""
+        await sqlite_storage.save_process(self._make_child_process())
+        await sqlite_storage.save_process(self._make_depth_limited_parent(max_depth=3))
+
+        run = await orchestrator.start_run("depth-parent-proc", {"_subprocess_depth": 5})
+        with pytest.raises(OrchestrationError, match="Subprocess depth limit exceeded: 5/3"):
+            await orchestrator.execute_run(run.id)
+
+    async def test_subprocess_default_depth_limit_blocks_at_five(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+    ) -> None:
+        """Default max_depth=5 prevents execution when depth reaches 5."""
+        await sqlite_storage.save_process(self._make_child_process())
+        await sqlite_storage.save_process(self._make_depth_limited_parent())  # default max_depth=5
+
+        run = await orchestrator.start_run("depth-parent-proc", {"_subprocess_depth": 5})
+        with pytest.raises(OrchestrationError, match="Subprocess depth limit exceeded: 5/5"):
+            await orchestrator.execute_run(run.id)
+
+    async def test_subprocess_depth_below_limit_succeeds(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+    ) -> None:
+        """Subprocess executes normally when depth is below max_depth."""
+        await sqlite_storage.save_process(self._make_child_process())
+        await sqlite_storage.save_process(self._make_depth_limited_parent(max_depth=3))
+
+        # Depth 2 is below max_depth=3, so subprocess should succeed
+        run = await orchestrator.start_run("depth-parent-proc", {"_subprocess_depth": 2})
+        await orchestrator.execute_run(run.id)
+
+        parent = await sqlite_storage.get_run(run.id)
+        assert parent is not None
+        assert parent.status == RunStatus.COMPLETED

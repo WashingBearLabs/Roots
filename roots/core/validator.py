@@ -16,6 +16,7 @@ from roots.core.schema import (
     NodeType,
     OnExhaustion,
     ProcessDefinition,
+    SubProcessNodeConfig,
 )
 
 if TYPE_CHECKING:
@@ -217,6 +218,17 @@ def validate_structure(process: ProcessDefinition) -> list[str]:
                     f"— circular reference not allowed"
                 )
 
+    # Subprocess self-reference check (static)
+    for node in process.nodes:
+        if (
+            node.type == NodeType.SUBPROCESS
+            and isinstance(node.config, SubProcessNodeConfig)
+            and node.config.process_id == process.id
+        ):
+            errors.append(
+                f"Subprocess node '{node.id}' references its own process '{process.id}'"
+            )
+
     return errors
 
 
@@ -224,12 +236,19 @@ async def validate_subprocess_references(
     process: ProcessDefinition,
     storage: StorageBackend,
 ) -> list[str]:
-    """Detect transitive cycles through iterator process_id references.
+    """Detect transitive cycles through iterator and subprocess references.
 
-    Performs a BFS over all processes reachable via iterator nodes.
-    Returns a list of error strings for any cycles detected.
+    Iterator nodes and subprocess nodes both spawn child-process runs via a
+    ``process_id`` reference, so a cycle through either is a non-terminating
+    reference and must be rejected. Performs a BFS over all processes reachable
+    through both node types. Subprocess references additionally report unknown
+    target processes; iterator references skip unresolved targets (validated
+    elsewhere).
+
+    Returns a list of error strings; empty list means no problems detected.
     """
     errors: list[str] = []
+    missing_reported: set[str] = set()
     visited: set[str] = {process.id}
     queue: deque[tuple[ProcessDefinition, list[str]]] = deque(
         [(process, [process.id])]
@@ -238,22 +257,41 @@ async def validate_subprocess_references(
     while queue:
         current, path = queue.popleft()
         for node in current.nodes:
-            if node.type != NodeType.ITERATOR or not isinstance(
+            is_iterator = node.type == NodeType.ITERATOR and isinstance(
                 node.config, IteratorNodeConfig
-            ):
+            )
+            is_subprocess = node.type == NodeType.SUBPROCESS and isinstance(
+                node.config, SubProcessNodeConfig
+            )
+            if not (is_iterator or is_subprocess):
                 continue
+            assert isinstance(
+                node.config, (IteratorNodeConfig, SubProcessNodeConfig)
+            )
             ref_id = node.config.process_id
             if ref_id in path:
-                errors.append(
-                    f"Iterator node '{node.id}' in process '{current.id}': "
-                    f"cycle detected: {' -> '.join(path + [ref_id])}"
-                )
+                if is_iterator:
+                    errors.append(
+                        f"Iterator node '{node.id}' in process '{current.id}': "
+                        f"cycle detected: {' -> '.join(path + [ref_id])}"
+                    )
+                else:
+                    cycle = path[path.index(ref_id):] + [ref_id]
+                    errors.append(
+                        f"Circular subprocess reference detected: "
+                        f"{' → '.join(cycle)}"
+                    )
                 continue
             if ref_id in visited:
                 continue
             visited.add(ref_id)
             ref_proc = await storage.get_process(ref_id)
             if ref_proc is None:
+                if is_subprocess and ref_id not in missing_reported:
+                    errors.append(
+                        f"Subprocess references unknown process '{ref_id}'"
+                    )
+                    missing_reported.add(ref_id)
                 continue
             queue.append((ref_proc, path + [ref_id]))
 

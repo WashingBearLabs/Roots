@@ -15,6 +15,7 @@ from roots.core.validator import (
     parse_process_dict,
     validate_process_yaml,
     validate_structure,
+    validate_subprocess_references,
 )
 from roots.core.schema import ProcessDefinition
 
@@ -200,6 +201,7 @@ VALID_CONFIGS: dict[str, dict[str, Any]] = {
     "join": {},
     "emit": {"event_type": "process.done"},
     "checkpoint": {"prompt": "Review"},
+    "subprocess": {"process_id": "other-proc", "output_key": "result"},
 }
 
 
@@ -701,3 +703,219 @@ class TestForkJoinPairing:
         assert errors == []
         assert isinstance(process.fork_join_map, dict)
         assert process.fork_join_map["split"] == "merge"
+
+
+# --- Subprocess reference validation tests ---
+
+
+class TestSubprocessSelfReference:
+    def test_self_reference_flagged(self) -> None:
+        process = _build_process(
+            id="proc-1",
+            nodes=[
+                _make_node("sub", "subprocess", {
+                    "process_id": "proc-1",
+                    "output_key": "result",
+                }),
+                _make_node("done", "end"),
+            ],
+            edges=[{"from": "sub", "to": "done"}],
+            entry_point="sub",
+        )
+        errors = validate_structure(process)
+        assert any(
+            "Subprocess node 'sub' references its own process 'proc-1'" in e
+            for e in errors
+        )
+
+    def test_reference_to_other_process_ok(self) -> None:
+        process = _build_process(
+            nodes=[
+                _make_node("sub", "subprocess"),
+                _make_node("done", "end"),
+            ],
+            edges=[{"from": "sub", "to": "done"}],
+            entry_point="sub",
+        )
+        errors = validate_structure(process)
+        assert not any("references its own process" in e for e in errors)
+
+
+class TestValidateSubprocessReferences:
+    async def test_no_subprocess_nodes_ok(
+        self, sqlite_storage: Any
+    ) -> None:
+        process = _build_process()
+        errors = await validate_subprocess_references(process, sqlite_storage)
+        assert errors == []
+
+    async def test_missing_referenced_process_returns_error(
+        self, sqlite_storage: Any
+    ) -> None:
+        process = _build_process(
+            nodes=[
+                _make_node("sub", "subprocess", {
+                    "process_id": "nonexistent",
+                    "output_key": "result",
+                }),
+                _make_node("done", "end"),
+            ],
+            edges=[{"from": "sub", "to": "done"}],
+            entry_point="sub",
+        )
+        await sqlite_storage.save_process(process)
+        errors = await validate_subprocess_references(process, sqlite_storage)
+        assert len(errors) == 1
+        assert "nonexistent" in errors[0]
+
+    async def test_valid_subprocess_reference_ok(
+        self, sqlite_storage: Any
+    ) -> None:
+        child = _build_process(id="child-proc")
+        await sqlite_storage.save_process(child)
+
+        process = _build_process(
+            nodes=[
+                _make_node("sub", "subprocess", {
+                    "process_id": "child-proc",
+                    "output_key": "result",
+                }),
+                _make_node("done", "end"),
+            ],
+            edges=[{"from": "sub", "to": "done"}],
+            entry_point="sub",
+        )
+        await sqlite_storage.save_process(process)
+        errors = await validate_subprocess_references(process, sqlite_storage)
+        assert errors == []
+
+    async def test_circular_ref_depth_2(
+        self, sqlite_storage: Any
+    ) -> None:
+        """A→B→A circular reference at depth 2."""
+        proc_a = ProcessDefinition.model_validate({
+            "id": "proc-a",
+            "name": "Process A",
+            "version": "1.0.0",
+            "entry_point": "sub",
+            "nodes": [
+                {"id": "sub", "type": "subprocess", "label": "Sub",
+                 "config": {"process_id": "proc-b", "output_key": "result"}},
+                {"id": "done", "type": "end", "label": "Done",
+                 "config": {"status": "completed"}},
+            ],
+            "edges": [{"from": "sub", "to": "done"}],
+        })
+        proc_b = ProcessDefinition.model_validate({
+            "id": "proc-b",
+            "name": "Process B",
+            "version": "1.0.0",
+            "entry_point": "sub",
+            "nodes": [
+                {"id": "sub", "type": "subprocess", "label": "Sub",
+                 "config": {"process_id": "proc-a", "output_key": "result"}},
+                {"id": "done", "type": "end", "label": "Done",
+                 "config": {"status": "completed"}},
+            ],
+            "edges": [{"from": "sub", "to": "done"}],
+        })
+        await sqlite_storage.save_process(proc_a)
+        await sqlite_storage.save_process(proc_b)
+
+        errors = await validate_subprocess_references(proc_a, sqlite_storage)
+        assert len(errors) >= 1
+        assert any("Circular" in e for e in errors)
+        assert any("proc-a" in e and "proc-b" in e for e in errors)
+
+    async def test_circular_ref_depth_3(
+        self, sqlite_storage: Any
+    ) -> None:
+        """A→B→C→A circular reference at depth 3."""
+        proc_a = ProcessDefinition.model_validate({
+            "id": "proc-a",
+            "name": "Process A",
+            "version": "1.0.0",
+            "entry_point": "sub",
+            "nodes": [
+                {"id": "sub", "type": "subprocess", "label": "Sub",
+                 "config": {"process_id": "proc-b", "output_key": "result"}},
+                {"id": "done", "type": "end", "label": "Done",
+                 "config": {"status": "completed"}},
+            ],
+            "edges": [{"from": "sub", "to": "done"}],
+        })
+        proc_b = ProcessDefinition.model_validate({
+            "id": "proc-b",
+            "name": "Process B",
+            "version": "1.0.0",
+            "entry_point": "sub",
+            "nodes": [
+                {"id": "sub", "type": "subprocess", "label": "Sub",
+                 "config": {"process_id": "proc-c", "output_key": "result"}},
+                {"id": "done", "type": "end", "label": "Done",
+                 "config": {"status": "completed"}},
+            ],
+            "edges": [{"from": "sub", "to": "done"}],
+        })
+        proc_c = ProcessDefinition.model_validate({
+            "id": "proc-c",
+            "name": "Process C",
+            "version": "1.0.0",
+            "entry_point": "sub",
+            "nodes": [
+                {"id": "sub", "type": "subprocess", "label": "Sub",
+                 "config": {"process_id": "proc-a", "output_key": "result"}},
+                {"id": "done", "type": "end", "label": "Done",
+                 "config": {"status": "completed"}},
+            ],
+            "edges": [{"from": "sub", "to": "done"}],
+        })
+        await sqlite_storage.save_process(proc_a)
+        await sqlite_storage.save_process(proc_b)
+        await sqlite_storage.save_process(proc_c)
+
+        errors = await validate_subprocess_references(proc_a, sqlite_storage)
+        assert len(errors) >= 1
+        assert any("Circular" in e for e in errors)
+        assert any("proc-a" in e and "proc-b" in e and "proc-c" in e for e in errors)
+
+    async def test_circular_error_message_includes_cycle_path(
+        self, sqlite_storage: Any
+    ) -> None:
+        """Error message names the full cycle path."""
+        proc_a = ProcessDefinition.model_validate({
+            "id": "alpha",
+            "name": "Alpha",
+            "version": "1.0.0",
+            "entry_point": "sub",
+            "nodes": [
+                {"id": "sub", "type": "subprocess", "label": "Sub",
+                 "config": {"process_id": "beta", "output_key": "result"}},
+                {"id": "done", "type": "end", "label": "Done",
+                 "config": {"status": "completed"}},
+            ],
+            "edges": [{"from": "sub", "to": "done"}],
+        })
+        proc_b = ProcessDefinition.model_validate({
+            "id": "beta",
+            "name": "Beta",
+            "version": "1.0.0",
+            "entry_point": "sub",
+            "nodes": [
+                {"id": "sub", "type": "subprocess", "label": "Sub",
+                 "config": {"process_id": "alpha", "output_key": "result"}},
+                {"id": "done", "type": "end", "label": "Done",
+                 "config": {"status": "completed"}},
+            ],
+            "edges": [{"from": "sub", "to": "done"}],
+        })
+        await sqlite_storage.save_process(proc_a)
+        await sqlite_storage.save_process(proc_b)
+
+        errors = await validate_subprocess_references(proc_a, sqlite_storage)
+        assert len(errors) == 1
+        # Error should name both processes in the cycle
+        assert "alpha" in errors[0]
+        assert "beta" in errors[0]
+        # Should show the path with arrow separator
+        assert "→" in errors[0]

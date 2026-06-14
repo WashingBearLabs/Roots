@@ -343,3 +343,71 @@ async def test_list_runs_invalid_json_filter_returns_422(client):
     resp = await client.get("/runs", params={"metadata_filter": "not-valid-json{"})
     assert resp.status_code == 422
     assert "metadata_filter" in resp.json()["detail"].lower() or "invalid" in resp.json()["detail"].lower()
+
+
+# --- Parent/child fields ---
+
+
+@pytest.mark.asyncio
+async def test_run_response_includes_parent_fields(client):
+    """RunResponse includes parent_run_id and parent_node_id fields (null for top-level runs)."""
+    await _create_process(client)
+    resp = await client.post(
+        "/runs", json={"process_id": "proc-1", "work_item": {"x": 1}}
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert "parent_run_id" in data
+    assert "parent_node_id" in data
+    assert data["parent_run_id"] is None
+    assert data["parent_node_id"] is None
+
+
+# --- Children endpoint ---
+
+
+@pytest.mark.asyncio
+async def test_get_children_returns_empty_list_when_no_children(client):
+    """GET /runs/{id}/children returns empty list when run has no children."""
+    await _create_process(client)
+    create_resp = await client.post(
+        "/runs", json={"process_id": "proc-1", "work_item": {"x": 1}}
+    )
+    run_id = create_resp.json()["id"]
+
+    resp = await client.get(f"/runs/{run_id}/children")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+@pytest.mark.asyncio
+async def test_get_children_returns_child_runs(client, fastapi_app):
+    """GET /runs/{id}/children returns list of child runs."""
+    await _create_process(client)
+    create_resp = await client.post(
+        "/runs", json={"process_id": "proc-1", "work_item": {"x": 1}}
+    )
+    parent_id = create_resp.json()["id"]
+
+    storage = fastapi_app.state.roots.storage
+    child = await storage.create_run(
+        "proc-1",
+        {"child_key": "val"},
+        parent_run_id=parent_id,
+        parent_node_id="subprocess-node",
+    )
+
+    resp = await client.get(f"/runs/{parent_id}/children")
+    assert resp.status_code == 200
+    children = resp.json()
+    assert len(children) == 1
+    assert children[0]["id"] == child.id
+    assert children[0]["parent_run_id"] == parent_id
+    assert children[0]["parent_node_id"] == "subprocess-node"
+
+
+@pytest.mark.asyncio
+async def test_get_children_returns_404_for_unknown_run(client):
+    """GET /runs/{id}/children returns 404 when parent run does not exist."""
+    resp = await client.get("/runs/nonexistent/children")
+    assert resp.status_code == 404

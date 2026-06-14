@@ -48,6 +48,11 @@ class EventType(StrEnum):
     ITERATOR_COMPLETED = "roots.iterator.completed"
     ITERATOR_FAILED = "roots.iterator.failed"
 
+    # Subprocess lifecycle
+    SUBPROCESS_STARTED = "roots.subprocess.started"
+    SUBPROCESS_COMPLETED = "roots.subprocess.completed"
+    SUBPROCESS_FAILED = "roots.subprocess.failed"
+
 
 class EventEnvelope(BaseModel):
     event: str

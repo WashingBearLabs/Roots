@@ -41,14 +41,14 @@ This spec adds the foundational types and storage support for process compositio
 - output_key stores the mapped output dict; output_mapping selects which child state keys to include. The result stored at state[output_key] is `{parent_key: child_state[child_key] for child_key, parent_key in output_mapping.items()}`
 
 **Acceptance Criteria:**
-- [ ] SUBPROCESS added to NodeType enum
-- [ ] SubProcessNodeConfig Pydantic model with: process_id (str), input_mapping (dict[str, str], maps parent state keys → child input keys), output_mapping (dict[str, str], maps child state keys → parent output keys), output_key (str), max_depth (int, default 5, Field with ge=1, le=20)
-- [ ] SubProcessNodeConfig added to CONFIG_MAP; NodeDefinition validator accepts it
-- [ ] NodeDefinition validator rejects retry config on SUBPROCESS nodes (same as checkpoint/fork/join)
-- [ ] YAML process definitions with subprocess nodes parse and validate correctly
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] SUBPROCESS added to NodeType enum
+- [x] SubProcessNodeConfig Pydantic model with: process_id (str), input_mapping (dict[str, str], maps parent state keys → child input keys), output_mapping (dict[str, str], maps child state keys → parent output keys), output_key (str), max_depth (int, default 5, Field with ge=1, le=20)
+- [x] SubProcessNodeConfig added to CONFIG_MAP; NodeDefinition validator accepts it
+- [x] NodeDefinition validator rejects retry config on SUBPROCESS nodes (same as checkpoint/fork/join)
+- [x] YAML process definitions with subprocess nodes parse and validate correctly
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-002: Add subprocess event types and escalation trigger
 
@@ -61,12 +61,12 @@ This spec adds the foundational types and storage support for process compositio
 - A stub handler (`_handle_subprocess` that raises `OrchestrationError("Subprocess execution not yet implemented")`) should be added to the dispatch table at `roots/core/orchestrator.py:369-388` so that subprocess nodes produce a clear error instead of "No handler for node type 'subprocess'"
 
 **Acceptance Criteria:**
-- [ ] EscalationTrigger.SUBPROCESS_PAUSED added to escalation trigger enum
-- [ ] EventType entries added: SUBPROCESS_STARTED, SUBPROCESS_COMPLETED, SUBPROCESS_FAILED
-- [ ] Stub handler added to orchestrator dispatch table that raises OrchestrationError with clear "not yet implemented" message
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] EscalationTrigger.SUBPROCESS_PAUSED added to escalation trigger enum
+- [x] EventType entries added: SUBPROCESS_STARTED, SUBPROCESS_COMPLETED, SUBPROCESS_FAILED
+- [x] Stub handler added to orchestrator dispatch table that raises OrchestrationError with clear "not yet implemented" message
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-003: Add parent/child run relationship to storage
 
@@ -81,15 +81,15 @@ This spec adds the foundational types and storage support for process compositio
 - Add index on parent_run_id in both backends for efficient child run queries
 
 **Acceptance Criteria:**
-- [ ] parent_run_id (str | None) and parent_node_id (str | None) added to RunRecord dataclass
-- [ ] parent_run_id and parent_node_id TEXT columns added to runs table in both backends (nullable); index on parent_run_id
-- [ ] initialize() adds columns via ALTER TABLE for existing databases (SQLite: try/except OperationalError; PostgreSQL: ADD COLUMN IF NOT EXISTS)
-- [ ] create_run abstract signature updated with optional keyword-only parent_run_id and parent_node_id; both backends and existing callers updated
-- [ ] get_child_runs(parent_run_id) abstract method returns list of child RunRecords; implemented in both backends
-- [ ] Test: initialize() on a database without parent_run_id column successfully adds it (migration test)
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] parent_run_id (str | None) and parent_node_id (str | None) added to RunRecord dataclass
+- [x] parent_run_id and parent_node_id TEXT columns added to runs table in both backends (nullable); index on parent_run_id
+- [x] initialize() adds columns via ALTER TABLE for existing databases (SQLite: try/except OperationalError; PostgreSQL: ADD COLUMN IF NOT EXISTS)
+- [x] create_run abstract signature updated with optional keyword-only parent_run_id and parent_node_id; both backends and existing callers updated
+- [x] get_child_runs(parent_run_id) abstract method returns list of child RunRecords; implemented in both backends
+- [x] Test: initialize() on a database without parent_run_id column successfully adds it (migration test)
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ### US-004: Validate subprocess references
 
@@ -103,14 +103,14 @@ This spec adds the foundational types and storage support for process compositio
 - Test circular refs at depth 2 (A→B→A) and depth 3 (A→B→C→A) to verify transitive detection
 
 **Acceptance Criteria:**
-- [ ] Static validation in validate_structure(): subprocess node with process_id matching current process.id produces validation error
-- [ ] Async function validate_subprocess_references(process, storage) detects circular references transitively (tests: A→B→A and A→B→C→A)
-- [ ] Circular reference validation returns clear error messages naming the cycle path
-- [ ] Validation handles missing referenced processes gracefully (error message, not crash)
-- [ ] validate_subprocess_references called from Orchestrator.start_run() before creating the run (mandatory, not opt-in)
-- [ ] Tests written/updated for new functionality
-- [ ] Full test suite passes
-- [ ] Typecheck/lint passes
+- [x] Static validation in validate_structure(): subprocess node with process_id matching current process.id produces validation error
+- [x] Async function validate_subprocess_references(process, storage) detects circular references transitively (tests: A→B→A and A→B→C→A)
+- [x] Circular reference validation returns clear error messages naming the cycle path
+- [x] Validation handles missing referenced processes gracefully (error message, not crash)
+- [x] validate_subprocess_references called from Orchestrator.start_run() before creating the run (mandatory, not opt-in)
+- [x] Tests written/updated for new functionality
+- [x] Full test suite passes
+- [x] Typecheck/lint passes
 
 ## Out of Scope
 

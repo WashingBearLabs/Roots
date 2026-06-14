@@ -15,6 +15,7 @@ from roots.agents.types import AgentInput, AgentOutput
 from roots.core.aggregation import AggregationError, aggregate_votes
 from roots.core.decision import DecisionEngine
 from roots.core.escalation import EscalationTrigger, create_escalation_from_error
+from roots.core.validator import validate_subprocess_references
 from roots.core.schema import (
     VOTE_AGGREGATIONS,
     AgentNodeConfig,
@@ -31,6 +32,7 @@ from roots.core.schema import (
     MergeStrategy,
     NodeDefinition,
     NodeType,
+    SubProcessNodeConfig,
 )
 from roots.core.validator import validate_subprocess_references
 from roots.core.state_machine import RunStatus
@@ -64,6 +66,17 @@ def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]
 
 class OrchestrationError(Exception):
     """Raised when an orchestration operation fails."""
+
+
+class SubprocessFailedError(Exception):
+    """Raised when a subprocess child run ends in FAILED or CANCELLED status."""
+
+    def __init__(self, child_run_id: str, child_status: str) -> None:
+        self.child_run_id = child_run_id
+        self.child_status = child_status
+        super().__init__(
+            f"Subprocess child run '{child_run_id}' ended with status '{child_status}'"
+        )
 
 
 class ProcessRunner:
@@ -325,6 +338,49 @@ class ProcessRunner:
                     )
                 )
                 return False
+            except SubprocessFailedError as exc:
+                await self._storage.append_history_event(
+                    self.run_id, "failed", node.id,
+                    {
+                        "reason": "subprocess_failed",
+                        "child_run_id": exc.child_run_id,
+                        "child_status": exc.child_status,
+                    },
+                )
+                await self._storage.update_run_atomically(
+                    self.run_id,
+                    work_item_state=state,
+                    status=RunStatus.FAILED,
+                    current_node_id=node.id,
+                )
+                self._event_emitter.emit(
+                    create_event(
+                        EventType.NODE_FAILED,
+                        run_id=self.run_id,
+                        process_id=run.process_id,
+                        node_id=node.id,
+                        node_type=node.type.value,
+                        metadata={
+                            "reason": "subprocess_failed",
+                            "child_run_id": exc.child_run_id,
+                            "child_status": exc.child_status,
+                        },
+                    )
+                )
+                self._event_emitter.emit(
+                    create_event(
+                        EventType.RUN_FAILED,
+                        run_id=self.run_id,
+                        process_id=run.process_id,
+                        node_id=node.id,
+                        metadata={
+                            "reason": "subprocess_failed",
+                            "child_run_id": exc.child_run_id,
+                            "child_status": exc.child_status,
+                        },
+                    )
+                )
+                return False
 
             # Step 7: Write output to state if applicable
             if output is not None:
@@ -466,6 +522,7 @@ class ProcessRunner:
             NodeType.FORK: self._handle_fork,
             NodeType.JOIN: self._handle_join,
             NodeType.ITERATOR: self._handle_iterator,
+            NodeType.SUBPROCESS: self._handle_subprocess,
         }
         handler = handlers.get(node.type)
         if handler is None:
@@ -1990,6 +2047,137 @@ class ProcessRunner:
         # Clear branch results only on successful completion (preserves progress on failure)
         await self._storage.clear_branch_results(self.run_id, node.id)
         return None
+
+    async def _handle_subprocess(
+        self, node: NodeDefinition, state: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        assert isinstance(node.config, SubProcessNodeConfig)
+        config = node.config
+
+        existing_child_run_id: str | None = state.get(f"_subprocess_run_{node.id}")
+        if existing_child_run_id is not None:
+            # Resume path: parent was previously paused waiting for this child
+            child_run = await self._storage.get_run(existing_child_run_id)
+            if child_run is None:
+                raise OrchestrationError(
+                    f"Subprocess '{node.id}': stored child run "
+                    f"'{existing_child_run_id}' not found in storage"
+                )
+            if child_run.status == RunStatus.PAUSED:
+                # Child still paused — re-pause parent without a new escalation record
+                self._escalated = True
+                return None
+            # Child completed/failed since parent paused — extract output below
+        else:
+            # Check depth limit before creating child run
+            current_depth: int = max(0, state.get("_subprocess_depth", 0))
+            if current_depth >= config.max_depth:
+                raise OrchestrationError(
+                    f"Subprocess depth limit exceeded: {current_depth}/{config.max_depth}"
+                )
+
+            # Fresh start: build child input state from input_mapping
+            child_state: dict[str, Any] = {}
+            for parent_key, child_key in config.input_mapping.items():
+                if parent_key not in state:
+                    raise OrchestrationError(
+                        f"Subprocess '{node.id}': input_mapping key '{parent_key}' "
+                        f"not found in parent state"
+                    )
+                child_state[child_key] = state[parent_key]
+
+            # Inject subprocess depth for depth tracking
+            child_state["_subprocess_depth"] = current_depth + 1
+
+            # Create child run linked to parent
+            child_run = await self._storage.create_run(
+                config.process_id,
+                child_state,
+                parent_run_id=self.run_id,
+                parent_node_id=node.id,
+            )
+            child_run_id = child_run.id
+
+            # Store child_run_id in parent state for pause/resume tracking
+            state[f"_subprocess_run_{node.id}"] = child_run_id
+
+            # Emit SUBPROCESS_STARTED
+            self._event_emitter.emit(
+                create_event(
+                    EventType.SUBPROCESS_STARTED,
+                    run_id=self.run_id,
+                    process_id=self._process_id or "",
+                    node_id=node.id,
+                    metadata={"child_run_id": child_run_id},
+                )
+            )
+
+            # Execute child via inner tick loop; refresh parent lock between ticks
+            child_runner = ProcessRunner(
+                run_id=child_run_id,
+                storage=self._storage,
+                agent_invoker=self._agent_invoker,
+                decision_engine=self._decision_engine,
+                event_emitter=self._event_emitter,
+                owner_id=self._owner_id,
+            )
+
+            while await child_runner.tick():
+                await self._storage.release_run_lock(self.run_id, self._owner_id)
+                if not await self._storage.acquire_run_lock(self.run_id, self._owner_id):
+                    raise OrchestrationError(
+                        f"Parent run '{self.run_id}' lock was stolen during subprocess execution"
+                    )
+
+            # Reload child run to get final state and status
+            child_run = await self._storage.get_run(child_run_id)
+            if child_run is None:
+                raise OrchestrationError(
+                    f"Child run '{child_run_id}' not found after completion"
+                )
+
+            # Child paused — cascade pause to parent (initial pause)
+            if child_run.status == RunStatus.PAUSED:
+                await self._trigger_escalation(
+                    node, state,
+                    f"Subprocess '{node.id}' child run '{child_run_id}' paused",
+                    EscalationTrigger.SUBPROCESS_PAUSED,
+                )
+                return None
+
+        # Child failed or was externally cancelled — propagate failure to parent
+        if child_run.status in (RunStatus.FAILED, RunStatus.CANCELLED):
+            self._event_emitter.emit(
+                create_event(
+                    EventType.SUBPROCESS_FAILED,
+                    run_id=self.run_id,
+                    process_id=self._process_id or "",
+                    node_id=node.id,
+                    metadata={
+                        "child_run_id": child_run.id,
+                        "child_status": child_run.status,
+                    },
+                )
+            )
+            raise SubprocessFailedError(child_run.id, child_run.status)
+
+        # Map output from child final state; missing keys produce None
+        result: dict[str, Any] = {}
+        for child_key, parent_key in config.output_mapping.items():
+            result[parent_key] = child_run.work_item_state.get(child_key)
+
+        # Emit SUBPROCESS_COMPLETED
+        self._event_emitter.emit(
+            create_event(
+                EventType.SUBPROCESS_COMPLETED,
+                run_id=self.run_id,
+                process_id=self._process_id or "",
+                node_id=node.id,
+                metadata={"child_run_id": child_run.id},
+            )
+        )
+
+        return result
 
 
 class Orchestrator:

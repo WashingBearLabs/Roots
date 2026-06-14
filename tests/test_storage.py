@@ -776,3 +776,127 @@ async def test_branch_results_isolated_by_run(storage: StorageBackend) -> None:
     r2 = await storage.get_branch_results(run2.id, "fork-node")
     assert r1[0].result_json == {"r": 1}
     assert r2[0].result_json == {"r": 2}
+# Parent/Child Run Relationship
+# ---------------------------------------------------------------------------
+
+
+async def test_create_run_with_parent_fields(storage: StorageBackend) -> None:
+    parent = await storage.create_run("proc-1", {})
+    child = await storage.create_run(
+        "proc-1", {}, parent_run_id=parent.id, parent_node_id="node-sub"
+    )
+
+    assert child.parent_run_id == parent.id
+    assert child.parent_node_id == "node-sub"
+
+
+async def test_create_run_without_parent_fields_defaults_none(
+    storage: StorageBackend,
+) -> None:
+    run = await storage.create_run("proc-1", {})
+    assert run.parent_run_id is None
+    assert run.parent_node_id is None
+
+
+async def test_get_run_returns_parent_fields(storage: StorageBackend) -> None:
+    parent = await storage.create_run("proc-1", {})
+    child = await storage.create_run(
+        "proc-1", {}, parent_run_id=parent.id, parent_node_id="node-sub"
+    )
+
+    fetched = await storage.get_run(child.id)
+    assert fetched is not None
+    assert fetched.parent_run_id == parent.id
+    assert fetched.parent_node_id == "node-sub"
+
+
+async def test_get_child_runs_returns_children(storage: StorageBackend) -> None:
+    parent = await storage.create_run("proc-1", {})
+    child1 = await storage.create_run(
+        "proc-1", {}, parent_run_id=parent.id, parent_node_id="node-a"
+    )
+    child2 = await storage.create_run(
+        "proc-2", {}, parent_run_id=parent.id, parent_node_id="node-b"
+    )
+
+    children = await storage.get_child_runs(parent.id)
+    assert len(children) == 2
+    child_ids = {c.id for c in children}
+    assert child1.id in child_ids
+    assert child2.id in child_ids
+
+
+async def test_get_child_runs_empty_when_no_children(storage: StorageBackend) -> None:
+    parent = await storage.create_run("proc-1", {})
+    children = await storage.get_child_runs(parent.id)
+    assert children == []
+
+
+async def test_get_child_runs_isolates_by_parent(storage: StorageBackend) -> None:
+    p1 = await storage.create_run("proc-1", {})
+    p2 = await storage.create_run("proc-1", {})
+    c1 = await storage.create_run("proc-1", {}, parent_run_id=p1.id, parent_node_id="n")
+    await storage.create_run("proc-1", {}, parent_run_id=p2.id, parent_node_id="n")
+
+    children_of_p1 = await storage.get_child_runs(p1.id)
+    assert len(children_of_p1) == 1
+    assert children_of_p1[0].id == c1.id
+
+
+async def test_list_runs_includes_parent_fields(storage: StorageBackend) -> None:
+    parent = await storage.create_run("proc-1", {})
+    await storage.create_run(
+        "proc-1", {}, parent_run_id=parent.id, parent_node_id="node-x"
+    )
+
+    all_runs = await storage.list_runs()
+    child_run = next(r for r in all_runs if r.parent_run_id is not None)
+    assert child_run.parent_run_id == parent.id
+    assert child_run.parent_node_id == "node-x"
+
+
+# ---------------------------------------------------------------------------
+# Migration: initialize() adds parent columns to existing databases
+# ---------------------------------------------------------------------------
+
+
+async def test_migration_adds_parent_columns(tmp_path: pytest.TempPathFactory) -> None:
+    import aiosqlite
+    from roots.storage.sqlite import SqliteBackend
+
+    db_path = str(tmp_path / "migration_test.db")  # type: ignore[operator]
+
+    # Create an "old" database that has the runs table without parent columns
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute(
+            """CREATE TABLE runs (
+                id TEXT PRIMARY KEY,
+                process_id TEXT,
+                status TEXT,
+                current_node_id TEXT,
+                work_item_state_json TEXT,
+                created_at TEXT,
+                updated_at TEXT,
+                locked_by TEXT,
+                locked_at TEXT,
+                process_version TEXT
+            )"""
+        )
+        await db.commit()
+
+    # initialize() should detect missing columns and add them
+    backend = SqliteBackend(db_path)
+    await backend.initialize()
+
+    # Verify by creating a run with parent fields
+    run = await backend.create_run(
+        "proc-1", {}, parent_run_id="run-parent", parent_node_id="node-sub"
+    )
+    assert run.parent_run_id == "run-parent"
+    assert run.parent_node_id == "node-sub"
+
+    fetched = await backend.get_run(run.id)
+    assert fetched is not None
+    assert fetched.parent_run_id == "run-parent"
+
+    await backend.close()

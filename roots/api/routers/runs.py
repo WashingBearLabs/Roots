@@ -30,6 +30,8 @@ def _run_to_response(run: Any) -> RunResponse:
         updated_at=run.updated_at,
         process_version=run.process_version,
         metadata=run.metadata,
+        parent_run_id=run.parent_run_id,
+        parent_node_id=run.parent_node_id,
     )
 
 
@@ -207,6 +209,23 @@ async def resume_run(
 
     updated = await roots.storage.get_run(run_id)
     return _run_to_response(updated)
+
+
+@router.get("/{run_id}/children", response_model=list[RunResponse])
+async def get_child_runs(
+    run_id: str,
+    roots: Roots = Depends(get_roots),
+) -> list[RunResponse]:
+    """Get child runs for a parent run."""
+    run = await roots.storage.get_run(run_id)
+    if run is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Run '{run_id}' not found",
+        )
+
+    children = await roots.storage.get_child_runs(run_id)
+    return [_run_to_response(c) for c in children]
 
 
 @router.get("/{run_id}/history", response_model=list[HistoryEventResponse])
