@@ -7,9 +7,6 @@ from typing import Any
 from roots.agents.registry import AgentRegistry
 from roots.agents.types import AgentRegistration, AgentType
 from roots.packaging.installer import (
-    ContractMatch,
-    ContractReport,
-    SchemaMismatch,
     validate_contracts,
 )
 from roots.packaging.manifest import AgentContract, RootManifest

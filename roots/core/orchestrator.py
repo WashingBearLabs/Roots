@@ -34,7 +34,6 @@ from roots.core.schema import (
     NodeType,
     SubProcessNodeConfig,
 )
-from roots.core.validator import validate_subprocess_references
 from roots.core.state_machine import RunStatus
 from roots.events.emitter import EventEmitter
 from roots.events.types import EventEnvelope, EventType, create_event

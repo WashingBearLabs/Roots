@@ -10,11 +10,11 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from roots import Roots
-
-logger = logging.getLogger(__name__)
 from roots.api.deps import get_roots
 from roots.api.models import HistoryEventResponse, RunCreateRequest, RunResponse
 from roots.core.state_machine import InvalidTransitionError, RunStatus, transition
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 

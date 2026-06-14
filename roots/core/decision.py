@@ -10,8 +10,6 @@ from typing import Any
 import pydantic
 from pydantic import BaseModel, Field
 
-logger = logging.getLogger(__name__)
-
 from roots.core.llm import LLMCompletionFunc, LLMConfig, LLMResponse, openai_chat_completion
 from roots.core.schema import DecisionEdge, DecisionMode, DecisionNodeConfig, NodeDefinition
 
@@ -20,6 +18,8 @@ from simpleeval import (  # type: ignore[import-untyped]
     EvalWithCompoundTypes,
     NameNotDefined,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class DecisionEvaluationError(Exception):
@@ -219,7 +219,7 @@ def build_decision_messages(
                 line += f", Reasoning: {sanitized}"
             history_lines.append(line)
         user_parts.append("## Historical Decisions\n" + "\n".join(history_lines))
-    user_parts.append(f"## Available Edges\n" + "\n".join(edge_descriptions))
+    user_parts.append("## Available Edges\n" + "\n".join(edge_descriptions))
     user_parts.append(
         "Select the most appropriate next step by calling the make_decision tool."
     )

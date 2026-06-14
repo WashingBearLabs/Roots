@@ -15,7 +15,7 @@ from roots.events.emitter import EventEmitter
 from roots.events.sinks import StdoutSink
 from roots.events.types import EventEnvelope
 from roots.events.webhooks import WebhookDispatcher
-from roots.storage.base import StorageBackend, WebhookRecord
+from roots.storage.base import WebhookRecord
 
 
 @pytest.fixture

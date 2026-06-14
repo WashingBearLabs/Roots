@@ -569,11 +569,8 @@ def install(
     from pathlib import Path as _Path
 
     from roots.packaging.installer import (
-        ContractReport,
-        install_package as _install_package,
         load_package,
     )
-    from roots.packaging.manifest import RootManifest
 
     path = _Path(package_path)
     if not path.is_file():

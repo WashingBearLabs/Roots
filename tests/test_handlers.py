@@ -25,7 +25,6 @@ from roots.core.schema import (
     NodeType,
     ProcessDefinition,
 )
-from roots.core.state_machine import RunStatus
 from roots.events.emitter import EventEmitter
 from roots.events.sinks import EventSink
 from roots.events.types import EventEnvelope

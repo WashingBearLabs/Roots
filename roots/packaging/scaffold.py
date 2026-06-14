@@ -64,7 +64,7 @@ def _generate_agents_module(
     # Generate register_agents function
     lines.append("")
     lines.append("def register_agents(roots):")
-    lines.append(f'    """Register all default agent implementations."""')
+    lines.append('    """Register all default agent implementations."""')
     if not contracts:
         lines.append("    return []")
     else:
@@ -115,7 +115,7 @@ def _generate_stub(contract: AgentContract) -> str:
 
     # Generate return value that matches output schema structure
     return_value = _generate_stub_return(contract.output_schema)
-    lines.append(f"    # TODO: implement")
+    lines.append("    # TODO: implement")
     lines.append(f"    return {return_value}")
 
     return "\n".join(lines)

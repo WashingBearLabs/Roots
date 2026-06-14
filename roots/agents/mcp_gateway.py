@@ -21,7 +21,7 @@ try:
 except ImportError:
     pass
 
-from roots.agents.invoker import AgentInvocationError
+from roots.agents.invoker import AgentInvocationError  # noqa: E402 — follows optional MCP import block
 
 # Characters forbidden in MCP command executable names (shell metacharacters).
 _UNSAFE_COMMAND_CHARS = set(";|&$`\"'\\!#~<>{}()*?[]")

@@ -483,7 +483,7 @@ class Roots:
         from pathlib import Path as _Path
 
         from roots.packaging.installer import install_package as _install
-        from roots.packaging.installer import ContractReport, load_package
+        from roots.packaging.installer import load_package
         from roots.packaging.defaults import load_defaults
 
         path = _Path(archive_path)

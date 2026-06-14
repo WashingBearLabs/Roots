@@ -7,7 +7,7 @@ from roots.agents.invoker import (
     AgentSchemaValidationError,
 )
 from roots.agents.registry import AgentRegistry
-from roots.agents.types import AgentInput, AgentRegistration, AgentType
+from roots.agents.types import AgentInput
 
 
 _INPUT_SCHEMA = {

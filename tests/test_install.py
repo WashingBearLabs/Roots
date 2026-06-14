@@ -15,10 +15,7 @@ from roots.agents.types import AgentRegistration, AgentType
 from roots.packaging.installer import (
     ContractReport,
     install_package,
-    load_package,
-    validate_contracts,
 )
-from roots.packaging.manifest import RootManifest
 from roots.storage.sqlite import SqliteBackend
 
 

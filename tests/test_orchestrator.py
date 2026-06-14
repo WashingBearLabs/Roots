@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from typing import Any
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -20,7 +19,6 @@ from roots.core.schema import (
     NodeType,
     ProcessDefinition,
 )
-from roots.core.state_machine import RunStatus
 from roots.events.emitter import EventEmitter
 from roots.events.sinks import EventSink
 from roots.events.types import EventEnvelope

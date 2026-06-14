@@ -93,6 +93,15 @@ reportUnknownArgumentType = "warning"
 
 [tool.ruff]
 line-length = 88
+# kit_tools/ is plugin-generated dev tooling, not project source.
+extend-exclude = ["kit_tools"]
+
+[tool.ruff.lint.per-file-ignores]
+# Test, demo, and example code use looser import ordering and occasionally keep
+# imports/vars for clarity; shipping code in roots/ stays strict.
+"tests/**" = ["E402", "F401", "F841"]
+"demo/**" = ["E402", "F401", "F841"]
+"examples/**" = ["E402", "F401", "F841"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
