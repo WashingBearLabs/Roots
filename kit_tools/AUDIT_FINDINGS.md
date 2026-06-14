@@ -9,8 +9,8 @@
 
 > **TEMPLATE_INTENT:** Persistent record of code quality, security, and intent alignment findings from automated validation. Tracks findings across sessions with status tracking and archival.
 
-> Last updated: 2026-06-01
-> Updated by: Claude (validate-implementation — feature-crash-safe-parallel)
+> Last updated: 2026-06-08
+> Updated by: Claude (close-session — clean cancellation enhancement)
 
 ---
 
@@ -36,6 +36,24 @@
 
 <!-- Newest findings at top. Each entry has a unique ID: YYYY-MM-DD-NNN -->
 <!-- Findings are added by /kit-tools:validate-feature -->
+
+### 2026-06-08 — Clean Cancellation Enhancement (close-session quality check)
+
+> Branch: `main` · Lightweight close-session quality check on commit `57dd754` (mid-node external cancel guard in `ProcessRunner.tick()`). **No critical or warning findings** — the fix is correct and preserves the cancel in the common case. 3 info-level hardening/coverage notes. Tests pass (1551 passed, 106 skipped).
+
+| ID | Category | Severity | File | Status |
+|----|----------|----------|------|--------|
+| 2026-06-08-044 | testing | info | `tests/test_orchestrator_class.py` | open |
+| 2026-06-08-045 | quality | info | `roots/core/orchestrator.py` | open |
+| 2026-06-08-046 | quality | info | `roots/core/orchestrator.py` | open |
+
+**2026-06-08-044** — The new `TestMidNodeCancel` test exercises only the Step 9 success-path guard (`orchestrator.py:397`). The four failure-path guards — `RetryRoutedError` (245), `RetryExhaustedError` (261), `AggregationError` (300), `error_key` (348) — are untested. Worth adding at least one case where the node raises (e.g. `RetryExhaustedError`) while a cancel lands, confirming the guard bails rather than overwriting CANCELLED→FAILED. Meaningful because without the guard that path would raise `StorageError` on the invalid transition.
+
+**2026-06-08-045** — In the four failure handlers, `append_history_event(..., "failed", ...)` (and the `NODE_FAILED` event in the `RetryRoutedError` path) are emitted *before* `_externally_terminal()`. When the guard then bails to CANCELLED, history retains a "failed" node event that contradicts the actual terminal status — cosmetic audit-trail noise, not state corruption. The success path is correctly ordered (guard precedes both persist and the "completed" append). Consider moving the guard above the history append in the failure paths for consistency. (Raised with user during this session; left as-is intentionally.)
+
+**2026-06-08-046** — Residual TOCTOU window: `_externally_terminal()` is a separate read from `update_run_atomically`, whose `UPDATE ... WHERE id = ?` is unconditional (not a status compare-and-swap). A cancel landing *between* the guard read and the UPDATE will trip `update_run_atomically`'s own `_can_transition(CANCELLED, RUNNING)` check and raise `StorageError`, which escapes `tick()` (inner try wraps only node dispatch). The guard shrinks this window dramatically and is reasonable best-effort for the documented non-crash-safe v1; the fully race-free fix is a single atomic conditional `UPDATE ... WHERE status NOT IN (terminal)`. Acceptable to leave given v1 constraints; flagged as a known limitation.
+
+---
 
 ### 2026-06-01 — feature-iterator-node Validation
 

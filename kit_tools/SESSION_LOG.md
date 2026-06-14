@@ -43,6 +43,33 @@
 
 <!-- Newest sessions at top -->
 
+## 2026-06-08 — Clean Cancellation + Embedding Epic Merge
+
+**Duration:** ~1 hour
+**Focus:** Standalone enhancement — honor an external run cancellation that lands mid-node (Poppy builder support). Plus merging the completed embedding-enhancements epic to `main`.
+
+### Accomplished
+- **Clean cancellation guard** in `ProcessRunner.tick()` (commit `57dd754`): added `_externally_terminal()` helper that re-reads the run and reports whether it reached a terminal state (CANCELLED/FAILED/COMPLETED, or deleted). Called immediately before each of the 5 post-node persists; if terminal, the tick returns False (stop) instead of overwriting. Fixes an external mid-node cancel being clobbered by the post-node persist (or tripping the cancelled→running transition guard).
+  - Files: `roots/core/orchestrator.py`, `tests/test_orchestrator_class.py` (`TestMidNodeCancel.test_external_cancel_mid_node_sticks`).
+  - Full suite: 1551 passed, 106 skipped.
+- **Merged `epic/embedding-enhancements` → `main`** (fast-forward, 69 commits) and pushed to origin.
+- **Cleanup:** deleted merged local + remote `epic/embedding-enhancements` branch; dropped a stale stash (was pure `.pyc` noise, no source).
+
+### Documentation Updated
+- [x] `kit_tools/SESSION_LOG.md` — this entry
+- [x] `kit_tools/AUDIT_FINDINGS.md` — 3 info findings from close-session quality check (2026-06-08-044..046)
+- [ ] No spec/milestone update — standalone enhancement, not tied to a feature spec
+
+### Open Items
+- **Audit (info, advisory):** new cancellation guard has 3 info findings — failure-path guards untested (044), "failed" history event written before guard bails to CANCELLED (045, intentionally left as-is), residual TOCTOU window where a cancel between guard-read and UPDATE raises `StorageError` (046). None blocking.
+- **Doc drift (from session start, unresolved):** GOTCHAS.md #1 still says fork/join is NOT crash-safe, but the merged epic shipped crash-safe parallel execution — reconcile. MILESTONES lists Process Composition complete, but `epic-process-composition.md` (0/9) + subprocess specs (0/38, 0/31) are still `status: active` — close out or reconcile.
+- Other active branches untouched: `epic/process-composition`, `epic/library-refinements`.
+
+### Notes
+User opted to keep doc changes minimal this session ("just log it"). The Poppy use case has a zero-Roots-change fallback (cooperative cancel polling in Poppy); this guard is the nice-to-have for prompt cancellation.
+
+---
+
 ## 2026-06-01/02 — Embedding Enhancements Epic (Complete)
 
 **Duration:** ~8 hours (planning + execution + validation)
