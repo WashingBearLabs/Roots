@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
+import secrets
 from typing import TYPE_CHECKING
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from roots.api.deps import get_roots  # noqa: F401 — re-export for backwards compat
@@ -20,12 +22,20 @@ if TYPE_CHECKING:
     from roots import Roots
 
 
-def create_app(roots: "Roots", cors_origins: list[str] | None = None) -> FastAPI:
+def create_app(
+    roots: "Roots",
+    cors_origins: list[str] | None = None,
+    api_key: str | None = None,
+) -> FastAPI:
     """Create a configured FastAPI application.
 
     Args:
         roots: The Roots framework instance to expose via the API.
         cors_origins: Allowed CORS origins. Defaults to ["*"].
+        api_key: Optional API key required on all data routes. Defaults to the
+            ``ROOTS_API_KEY`` environment variable. When set, every request to a
+            data route must send a matching ``X-API-Key`` header; ``/`` and
+            ``/health`` remain open. When unset, the API is unauthenticated.
 
     Returns:
         A FastAPI application with all routers registered.
@@ -34,7 +44,26 @@ def create_app(roots: "Roots", cors_origins: list[str] | None = None) -> FastAPI
 
     app.state.roots = roots
 
-    # TODO: Restrict CORS origins before adding authentication
+    if api_key is None:
+        api_key = os.environ.get("ROOTS_API_KEY") or None
+
+    async def require_api_key(
+        x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    ) -> None:
+        """Reject requests without a valid API key (no-op when auth is disabled)."""
+        if api_key is None:
+            return
+        if x_api_key is None or not secrets.compare_digest(x_api_key, api_key):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or missing API key",
+                headers={"WWW-Authenticate": "X-API-Key"},
+            )
+
+    auth = [Depends(require_api_key)] if api_key is not None else []
+
+    # CORS: credentials are disabled, so wildcard origins cannot leak cookies.
+    # Authentication (when enabled) is via the X-API-Key header, not cookies.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_origins if cors_origins is not None else ["*"],
@@ -43,13 +72,13 @@ def create_app(roots: "Roots", cors_origins: list[str] | None = None) -> FastAPI
         allow_headers=["*"],
     )
 
-    app.include_router(processes_router)
-    app.include_router(runs_router)
-    app.include_router(checkpoints_router)
-    app.include_router(agents_router)
-    app.include_router(webhooks_router)
-    app.include_router(graph_router)
-    app.include_router(decisions_router)
+    app.include_router(processes_router, dependencies=auth)
+    app.include_router(runs_router, dependencies=auth)
+    app.include_router(checkpoints_router, dependencies=auth)
+    app.include_router(agents_router, dependencies=auth)
+    app.include_router(webhooks_router, dependencies=auth)
+    app.include_router(graph_router, dependencies=auth)
+    app.include_router(decisions_router, dependencies=auth)
 
     @app.get("/")
     async def root() -> dict[str, str]:

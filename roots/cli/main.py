@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from typing import Any, Optional
 
@@ -101,11 +102,26 @@ def serve(
 
     app_instance = create_app(roots_instance)
 
+    api_key_set = bool(os.environ.get("ROOTS_API_KEY"))
+    is_local = host in ("127.0.0.1", "localhost", "::1")
+
     backend_label = storage if not _is_postgres_dsn(storage) else "PostgreSQL"
-    typer.echo(f"Roots server starting...")
+    typer.echo("Roots server starting...")
     typer.echo(f"  URL:     http://{host}:{port}")
     typer.echo(f"  Storage: {backend_label}")
+    typer.echo(f"  Auth:    {'API key (ROOTS_API_KEY)' if api_key_set else 'NONE'}")
     typer.echo("")
+
+    if not is_local and not api_key_set:
+        typer.secho(
+            "WARNING: binding to a non-local host with NO authentication.\n"
+            "         Anyone who can reach this port can create runs, register\n"
+            "         agents, and read all data. Set ROOTS_API_KEY to require a\n"
+            "         key, or place an authenticating proxy in front of Roots.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        typer.echo("")
 
     uvicorn.run(app_instance, host=host, port=port, log_level="info", reload=reload)
 
