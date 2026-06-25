@@ -7,7 +7,7 @@
 -->
 # PRODUCT_VISION.md
 
-> Last updated: 2026-06-14
+> Last updated: 2026-06-25
 > Updated by: Claude
 
 ---
@@ -120,23 +120,23 @@ Roots is an AI-native process orchestration framework that provides the connecti
 
 #### T3.1 -- Decision History Retrieval
 - **Description:** Query layer for retrieving past decisions as AI context. The storage schema is designed in v1; the retrieval logic and context injection into AI decision prompts is Phase 2. Enables pattern-based learning: "this type of decision at this node historically resolves this way."
-- **Feature Spec(s):** --
-- **Status:** Deferred
+- **Feature Spec(s):** [feature-decision-history.md](specs/archive/feature-decision-history.md) (4 stories)
+- **Status:** Completed (2026-05-13)
 
 #### T3.2 -- Process Versioning & Migration
 - **Description:** Version management for process graphs with graceful handling of in-flight runs when definitions change. Migration strategies for runs started on v1 of a process when v2 is deployed.
-- **Feature Spec(s):** --
-- **Status:** Deferred
+- **Feature Spec(s):** [feature-process-versioning.md](specs/archive/feature-process-versioning.md) (3 stories)
+- **Status:** Completed (2026-05-13)
 
 #### T3.3 -- Process Composition
 - **Description:** Sub-process references as node types -- a node whose execution is itself a full process graph. Enables hierarchical process decomposition.
-- **Feature Spec(s):** --
-- **Status:** Deferred
+- **Feature Spec(s):** [feature-subprocess-schema.md](specs/archive/feature-subprocess-schema.md), [feature-subprocess-execution.md](specs/archive/feature-subprocess-execution.md)
+- **Status:** Completed (2026-05-21)
 
 #### T3.4 -- Vote Aggregation Strategy
 - **Description:** Weighted voting for agent_pool nodes -- multiple agents vote on a result, majority wins. Requires design for quorum semantics, tie resolution, and weight configuration.
-- **Feature Spec(s):** --
-- **Status:** Deferred
+- **Feature Spec(s):** [feature-vote-aggregation.md](specs/archive/feature-vote-aggregation.md) (4 stories)
+- **Status:** Completed (2026-05-13)
 
 #### T3.5 -- Transform Node Type
 - **Description:** Declarative state mutation node without invoking a full agent. Lightweight alternative to local agent nodes for deterministic transformations.
