@@ -458,6 +458,28 @@ class TestSubprocessHandler:
         # child_input was set from parent_val
         assert children[0].work_item_state.get("child_input") == "hello"
 
+    async def test_subprocess_dotted_input_mapping_resolves(
+        self,
+        sqlite_storage: StorageBackend,
+        orchestrator: Orchestrator,
+    ) -> None:
+        """A dotted input_mapping key resolves a value nested under an output_key."""
+        await sqlite_storage.save_process(self._make_child_process())
+        await sqlite_storage.save_process(
+            self._make_parent_process(
+                input_mapping={"epic_plan.data": "child_input"}
+            )
+        )
+
+        run = await orchestrator.start_run(
+            "parent-proc", {"epic_plan": {"data": "hello"}}
+        )
+        await orchestrator.execute_run(run.id)
+
+        children = await sqlite_storage.get_child_runs(run.id)
+        assert len(children) == 1
+        assert children[0].work_item_state.get("child_input") == "hello"
+
     async def test_subprocess_missing_input_key_raises(
         self,
         sqlite_storage: StorageBackend,

@@ -589,6 +589,75 @@ class TestIteratorSequential:
         assert "context" in child_output
         assert child_output["context"] == "shared-context"
 
+    async def test_dotted_items_key_resolves_nested_list(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """A dotted items_key resolves a list nested under an output_key dict."""
+        parent_proc = _make_iterator_process(
+            "parent", "child", items_key="epic_plan.stories",
+        )
+        child_proc = _make_child_process("child")
+
+        _, final_run = await _run_iterator_process(
+            sqlite_storage, invoker, decision_engine, emitter,
+            parent_proc, child_proc,
+            work_item={"epic_plan": {"stories": ["s1", "s2"]}},
+        )
+
+        # One result per nested story item.
+        assert len(final_run.work_item_state["results"]) == 2
+
+    async def test_dotted_input_mapping_resolves_nested_value(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """A dotted input_mapping key resolves a nested value into the child."""
+        parent_proc = _make_iterator_process(
+            "parent", "child",
+            items_key="epic_plan.stories",
+            input_mapping={"epic_plan.project_dir": "project_dir"},
+        )
+        child_proc = _make_child_process("child")
+
+        _, final_run = await _run_iterator_process(
+            sqlite_storage, invoker, decision_engine, emitter,
+            parent_proc, child_proc,
+            work_item={
+                "epic_plan": {"stories": ["s1"], "project_dir": "/tmp/proj"}
+            },
+        )
+
+        child_output = final_run.work_item_state["results"][0]["output"]
+        assert child_output["project_dir"] == "/tmp/proj"
+
+    async def test_missing_input_mapping_key_raises(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """An unresolved input_mapping key raises instead of silently dropping."""
+        parent_proc = _make_iterator_process(
+            "parent", "child",
+            input_mapping={"epic_plan.missing": "child_key"},
+        )
+        child_proc = _make_child_process("child")
+
+        with pytest.raises(OrchestrationError, match="epic_plan.missing"):
+            await _run_iterator_process(
+                sqlite_storage, invoker, decision_engine, emitter,
+                parent_proc, child_proc,
+                work_item={"items": ["item1"], "epic_plan": {"other": "x"}},
+            )
+
     async def test_three_child_runs_created(
         self,
         sqlite_storage: StorageBackend,

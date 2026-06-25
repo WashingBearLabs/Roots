@@ -402,6 +402,57 @@ class TestIteratorParallelOrderPreservation:
         assert "my_item" in child_output
         assert child_output["my_item"] == "hello"
 
+    async def test_dotted_items_and_input_mapping_resolve(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Parallel path resolves dotted items_key and input_mapping (second copy)."""
+        parent_proc = _make_parallel_iterator_process(
+            "parent", "child",
+            items_key="epic_plan.stories",
+            input_mapping={"epic_plan.project_dir": "project_dir"},
+        )
+        child_proc = _make_child_process("child")
+
+        _, final_run = await _run_parallel_process(
+            sqlite_storage, invoker, decision_engine, emitter,
+            parent_proc, child_proc,
+            work_item={
+                "epic_plan": {
+                    "stories": ["s1", "s2"], "project_dir": "/tmp/proj"
+                }
+            },
+        )
+
+        results = final_run.work_item_state["results"]
+        assert len(results) == 2
+        for r in results:
+            assert r["output"]["project_dir"] == "/tmp/proj"
+
+    async def test_parallel_missing_input_mapping_key_raises(
+        self,
+        sqlite_storage: StorageBackend,
+        invoker: AgentInvoker,
+        decision_engine: DecisionEngine,
+        emitter: EventEmitter,
+    ) -> None:
+        """Parallel path raises on an unresolved input_mapping key (no silent drop)."""
+        parent_proc = _make_parallel_iterator_process(
+            "parent", "child",
+            input_mapping={"epic_plan.missing": "child_key"},
+        )
+        child_proc = _make_child_process("child")
+
+        with pytest.raises(OrchestrationError, match="epic_plan.missing"):
+            await _run_parallel_process(
+                sqlite_storage, invoker, decision_engine, emitter,
+                parent_proc, child_proc,
+                work_item={"items": ["item1"], "epic_plan": {"other": "x"}},
+            )
+
 
 # ---- Concurrency limit ----
 

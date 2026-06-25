@@ -73,6 +73,35 @@ def flatten_for_eval(state: dict[str, Any], prefix: str = "") -> dict[str, Any]:
     return result
 
 
+# Sentinel distinct from None, so a missing path is not conflated with a
+# stored None value. resolve_state_path returns this when a segment is absent.
+STATE_PATH_MISSING: Any = object()
+
+
+def resolve_state_path(state: dict[str, Any], dotted_key: str) -> Any:
+    """Resolve a (possibly dotted) key against nested run state.
+
+    A key with no dots is an ordinary top-level lookup, so existing workflows
+    are unaffected — this is purely additive::
+
+        "stories"            -> state["stories"]
+        "epic_plan.stories"  -> state["epic_plan"]["stories"]
+
+    Resolution walks nested dicts only; it does not index into lists. Decision
+    conditions use ``flatten_for_eval`` for the richer list-index semantics
+    (``results.0.name``), which deliberately are not supported here.
+
+    Returns ``STATE_PATH_MISSING`` if any segment is absent, so callers can
+    choose raise-vs-skip explicitly rather than catching KeyError.
+    """
+    current: Any = state
+    for segment in dotted_key.split("."):
+        if not isinstance(current, dict) or segment not in current:
+            return STATE_PATH_MISSING
+        current = current[segment]
+    return current
+
+
 _ARRAY_DOT_RE = re.compile(r"(?<=[A-Za-z_\]])\.(\d+)\b")
 
 

@@ -8,6 +8,7 @@ import pytest
 from roots.core.decision import (
     AIDecisionResponse,
     DECISION_TOOL,
+    STATE_PATH_MISSING,
     DecisionEngine,
     DecisionEvaluationError,
     DecisionResult,
@@ -16,6 +17,7 @@ from roots.core.decision import (
     flatten_for_eval,
     parse_ai_response,
     resolve_model,
+    resolve_state_path,
 )
 from roots.core.llm import LLMResponse, ToolCall
 from roots.core.schema import (
@@ -64,6 +66,48 @@ class TestFlattenForEval:
         assert result["tags.0"] == "alpha"
         assert result["tags.1"] == "beta"
         assert result["tags"] == ["alpha", "beta"]
+
+
+# --- resolve_state_path ---
+
+
+class TestResolveStatePath:
+    def test_dotless_key_is_top_level_lookup(self) -> None:
+        # Back-compat: a key with no dots behaves exactly like state[key].
+        state = {"stories": [1, 2, 3]}
+        assert resolve_state_path(state, "stories") == [1, 2, 3]
+
+    def test_dotted_key_walks_nested_dicts(self) -> None:
+        state = {"epic_plan": {"stories": ["s1"], "project_dir": "/tmp/x"}}
+        assert resolve_state_path(state, "epic_plan.stories") == ["s1"]
+        assert resolve_state_path(state, "epic_plan.project_dir") == "/tmp/x"
+
+    def test_deeply_nested(self) -> None:
+        state = {"a": {"b": {"c": "deep"}}}
+        assert resolve_state_path(state, "a.b.c") == "deep"
+
+    def test_missing_top_level_returns_sentinel(self) -> None:
+        assert resolve_state_path({"other": 1}, "stories") is STATE_PATH_MISSING
+
+    def test_missing_nested_segment_returns_sentinel(self) -> None:
+        state = {"epic_plan": {"stories": ["s1"]}}
+        assert resolve_state_path(state, "epic_plan.missing") is STATE_PATH_MISSING
+
+    def test_non_dict_intermediate_returns_sentinel(self) -> None:
+        # Walking into a non-dict (here a list) yields the sentinel, not a crash.
+        state = {"epic_plan": ["not", "a", "dict"]}
+        assert resolve_state_path(state, "epic_plan.stories") is STATE_PATH_MISSING
+
+    def test_does_not_index_into_lists(self) -> None:
+        # Unlike flatten_for_eval, list-index segments are not supported here.
+        state = {"items": [{"name": "a"}]}
+        assert resolve_state_path(state, "items.0") is STATE_PATH_MISSING
+
+    def test_stored_none_is_distinct_from_missing(self) -> None:
+        # A stored None must resolve to None, not the missing sentinel.
+        state = {"epic_plan": {"branch_name": None}}
+        assert resolve_state_path(state, "epic_plan.branch_name") is None
+        assert resolve_state_path(state, "epic_plan.branch_name") is not STATE_PATH_MISSING
 
 
 # --- evaluate_condition: dot notation ---

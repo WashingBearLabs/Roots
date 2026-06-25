@@ -23,7 +23,7 @@ from roots.storage.base import RunRecord, StorageBackend
 from roots.storage.postgres import PostgresBackend
 from roots.storage.sqlite import SqliteBackend
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 _TERMINAL_EVENT_TYPES: list[EventType] = [EventType.RUN_COMPLETED, EventType.RUN_FAILED]
 
