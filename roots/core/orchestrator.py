@@ -13,7 +13,11 @@ from uuid import uuid4
 from roots.agents.invoker import AgentInvoker, AgentSchemaValidationError
 from roots.agents.types import AgentInput, AgentOutput
 from roots.core.aggregation import AggregationError, aggregate_votes
-from roots.core.decision import DecisionEngine
+from roots.core.decision import (
+    STATE_PATH_MISSING,
+    DecisionEngine,
+    resolve_state_path,
+)
 from roots.core.escalation import EscalationTrigger, create_escalation_from_error
 from roots.core.validator import validate_subprocess_references
 from roots.core.schema import (
@@ -1496,19 +1500,45 @@ class ProcessRunner:
 
         return None
 
+    def _resolve_input_mapping(
+        self,
+        node: NodeDefinition,
+        state: dict[str, Any],
+        input_mapping: dict[str, str],
+    ) -> dict[str, Any]:
+        """Resolve an input_mapping against (possibly nested) run state.
+
+        Parent keys may be dotted paths (e.g. ``epic_plan.project_dir``) that
+        walk nested ``output_key`` dicts. Raises OrchestrationError on an
+        unresolved key — consistent across the iterator and subprocess paths and
+        the fail-loud intent, so a typo'd mapping key surfaces immediately rather
+        than silently dropping the value.
+        """
+        mapped: dict[str, Any] = {}
+        for parent_key, child_key in input_mapping.items():
+            value = resolve_state_path(state, parent_key)
+            if value is STATE_PATH_MISSING:
+                raise OrchestrationError(
+                    f"Node '{node.id}': input_mapping key '{parent_key}' "
+                    f"not found in run state"
+                )
+            mapped[child_key] = value
+        return mapped
+
     async def _handle_iterator(
         self, node: NodeDefinition, state: dict[str, Any]
     ) -> dict[str, Any] | None:
         assert isinstance(node.config, IteratorNodeConfig)
         config = node.config
 
-        # Validate items_key exists and is a list
-        if config.items_key not in state:
+        # Validate items_key exists and is a list. items_key may be a dotted
+        # path (e.g. "epic_plan.stories") resolved against nested state.
+        items = resolve_state_path(state, config.items_key)
+        if items is STATE_PATH_MISSING:
             raise OrchestrationError(
                 f"Iterator node '{node.id}': items_key '{config.items_key}' "
                 f"not found in run state"
             )
-        items = state[config.items_key]
         if not isinstance(items, list):
             raise OrchestrationError(
                 f"Iterator node '{node.id}': state['{config.items_key}'] "
@@ -1622,14 +1652,14 @@ class ProcessRunner:
                             f"Iterator node '{node.id}': lock lost during execution"
                         )
 
-                    # Build child work_item with item_key and input_mapping
+                    # Build child work_item with item_key and input_mapping.
+                    # input_mapping keys may be dotted paths into nested state;
+                    # an unresolved key raises (no silent drop).
                     child_work_item: dict[str, Any] = {
                         config.item_key: item,
-                        **{
-                            child_k: state[parent_k]
-                            for parent_k, child_k in config.input_mapping.items()
-                            if parent_k in state
-                        },
+                        **self._resolve_input_mapping(
+                            node, state, config.input_mapping
+                        ),
                     }
 
                     # Resume a paused child or create a new child run
@@ -1811,11 +1841,9 @@ class ProcessRunner:
 
                         child_work_item: dict[str, Any] = {
                             config.item_key: item,
-                            **{
-                                child_k: state[parent_k]
-                                for parent_k, child_k in config.input_mapping.items()
-                                if parent_k in state
-                            },
+                            **self._resolve_input_mapping(
+                                node, state, config.input_mapping
+                            ),
                         }
 
                         child_run = await self._storage.create_run(
@@ -2075,15 +2103,11 @@ class ProcessRunner:
                     f"Subprocess depth limit exceeded: {current_depth}/{config.max_depth}"
                 )
 
-            # Fresh start: build child input state from input_mapping
-            child_state: dict[str, Any] = {}
-            for parent_key, child_key in config.input_mapping.items():
-                if parent_key not in state:
-                    raise OrchestrationError(
-                        f"Subprocess '{node.id}': input_mapping key '{parent_key}' "
-                        f"not found in parent state"
-                    )
-                child_state[child_key] = state[parent_key]
+            # Fresh start: build child input state from input_mapping.
+            # input_mapping keys may be dotted paths into nested parent state.
+            child_state: dict[str, Any] = self._resolve_input_mapping(
+                node, state, config.input_mapping
+            )
 
             # Inject subprocess depth for depth tracking
             child_state["_subprocess_depth"] = current_depth + 1
