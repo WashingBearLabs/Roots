@@ -43,6 +43,36 @@
 
 <!-- Newest sessions at top -->
 
+## 2026-06-25 — Dotted-Path Resolution + v0.1.1 Release
+
+**Duration:** ~1 session
+**Focus:** Close out a stale epic, then ship the Poppy FR4 cross-repo handoff — dotted-path state resolution for iterator/subprocess reads — as `rootsflow` v0.1.1.
+
+### Accomplished
+- **Stale-epic cleanup** — `epic-library-refinements` was `status: active` though all 3 child features shipped + archived on 2026-05-13. Set `completed`, ticked all criteria, and fixed the matching `PRODUCT_VISION` drift (T3.1/T3.2/T3.4 — and T3.3 — `Deferred` → `Completed` with feature-spec links). Completed epics stay in `specs/` per convention (only feature specs move to `archive/`).
+- **Dotted-path resolution (feature)** — agent output nests under `output_key`, so iterator `items_key`/`input_mapping` and subprocess `input_mapping` couldn't reach nested values (hard-fail / silent-drop). Added `resolve_state_path` + `STATE_PATH_MISSING` (`decision.py`) and a shared `ProcessRunner._resolve_input_mapping` used at all 4 read sites. Dotless keys unchanged (back-compat). Iterator `input_mapping` now **raises** on a missing key (was silent skip), matching subprocess. Dict-walk only — no list indexing.
+- **Tests** — +14 (resolver units, dotted `items_key`/`input_mapping` across sequential + parallel iterator and subprocess, back-compat, raise-on-miss). Full suite 1647 passed, 113 skipped; ruff clean; pyright roots/ 0 errors.
+- **Released v0.1.1 end-to-end** — merged to `main` (`1b6955f`) + tag `v0.1.1`; built + `twine check`; **published `rootsflow 0.1.1` to PyPI** (verified installable); site release notes + `roots.md` title bumped and pushed live (auto-deploy).
+- **Handoff-back** — delivered a self-contained FR4 planning doc (consume `rootsflow>=0.1.1`, rewire `epic-lifecycle.yaml` to dotted keys; carries forward the 3 Poppy-side out-of-scope items: `output_key: branch_name` collision, missing `epic_context`/`repo_url`/`spec_path` producer, `run-` prefix on `run_id`).
+
+### Documentation Updated
+- [x] `specs/epic-library-refinements.md`, `PRODUCT_VISION.md` (epic close-out)
+- [x] `arch/DECISIONS.md` (2026-06-25 dotted-path decision)
+- [x] `docs/GOTCHAS.md` (#7: raise-on-miss, no list indexing, literal-dot caveat)
+- [x] `AGENT_README.md` (auth off-limits note de-staled — `ROOTS_API_KEY` shipped)
+- [x] `SYNOPSIS.md` (version v0.1.1, test count, dotted-path on composition line)
+- [x] `AUDIT_FINDINGS.md` (close-session quality review: clean + 1 info)
+
+### Open Items
+- **FR4 (Poppy repo):** consume v0.1.1 + rewire YAML — tracked in the handoff, not this repo.
+- `2026-06-25-001` (info, open): literal-dot top-level key names no longer matchable — documented, intended.
+
+### Notes
+- No feature spec for this work — it was a cross-repo handoff (`DOTTED_PATH_HANDOFF.md`, since removed; it named an unreleased project and this repo is public).
+- v0.1.1 chosen over 0.2.0 (maintainer call): framed as a state-propagation bug fix though the runbook classes new features as minor.
+
+---
+
 ## 2026-06-14 — Public Release v0.1.0 🎉
 
 **Duration:** ~1 long session (continued from the 2026-06-13 merge work below)
