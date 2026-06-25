@@ -8,7 +8,7 @@
 
 > **TEMPLATE_INTENT:** Document known issues, quirks, and non-obvious behaviors. Landmines to avoid.
 
-> Last updated: 2026-06-13
+> Last updated: 2026-06-25
 > Updated by: Claude
 
 ## Overview
@@ -131,6 +131,30 @@ These are third-party packages that do not ship py.typed markers or complete stu
 Use `# type: ignore` comments on the specific import lines. This is the accepted project convention.
 
 **Fix planned:** No — upstream type stub availability is out of scope.
+
+---
+
+### 7. Dotted-Path State Keys: Raise-on-Miss and No List Indexing
+
+**Location:** `roots/core/orchestrator.py` (`_resolve_input_mapping`, iterator/subprocess handlers), `roots/core/decision.py` (`resolve_state_path`)
+**Severity:** Medium
+**Added:** 2026-06-25 (v0.1.1)
+
+**What happens:**
+Iterator `items_key`/`input_mapping` and subprocess `input_mapping` accept dotted paths that walk nested run state (e.g. `epic_plan.stories` resolves `state["epic_plan"]["stories"]`). Two non-obvious behaviors:
+
+1. **Iterator `input_mapping` now raises on an unresolved key.** Before v0.1.1 a missing iterator mapping key was *silently skipped* (the child just didn't get the value); now it raises `OrchestrationError`, matching the subprocess path. A mis-wired or not-yet-produced key fails the run loudly instead of handing the child an empty value. Practical consequence: do not list a key in `input_mapping` until its producer actually writes it to state.
+2. **Dotted paths walk dicts only — no list indexing.** `epic_plan.stories` works; `epic_plan.stories.0.title` does **not** resolve (returns the missing sentinel → raises). List indices like `results.0.name` are supported only in *decision-condition expressions* (`flatten_for_eval`), not in these mapping keys.
+
+**Why it exists:**
+Agent output nests one level under `output_key`, so children need to read into it. A dedicated dict-only walker (`resolve_state_path`) is O(path depth) rather than flattening the whole state per iteration; raising matches the fail-loud intent. See `arch/DECISIONS.md` (2026-06-25).
+
+**Workaround:**
+Point mapping paths at dict members, not list elements. A dotless key is still a plain top-level lookup, so existing processes are unaffected.
+
+**Edge case:** a top-level state key whose *name literally contains a dot* (e.g. a key named `"epic_plan.stories"`) is no longer matchable — it is always split and walked as a path. `output_key` names are normally identifiers, so this is unlikely to bite, but it is a real semantic narrowing.
+
+**Fix planned:** No — both behaviors are intentional.
 
 ---
 

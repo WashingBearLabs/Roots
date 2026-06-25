@@ -1,6 +1,6 @@
 # AGENT_README.md
 
-> Last updated: 2026-03-26
+> Last updated: 2026-06-25
 > Updated by: Claude
 
 Navigation guide for AI assistants working in the Roots framework codebase. Defines read order, patterns to follow, and areas to avoid.
@@ -127,7 +127,7 @@ Before closing any session, use this checklist to prevent documentation drift:
 
 The following changes should be drafted but **not applied** without human approval:
 
-- [ ] **Authentication/Authorization flows** — Not implemented yet; design decisions pending
+- [ ] **Authentication/Authorization flows** — Optional API-key auth via `ROOTS_API_KEY` shipped in v0.1.0 (off by default, single-trust model); a full auth model (JWT/per-tenant) is still pending design
 - [ ] **Database migrations** — Manual SQL in storage backends; schema changes need careful review
 - [ ] **Infrastructure changes** — No IaC in this project; deployment is manual
 - [ ] **Dependency updates** — Major version bumps need testing (especially after LiteLLM supply chain incident)
@@ -193,7 +193,7 @@ Every documentation file should include at the top:
 
 ```markdown
 # FILENAME.md
-> Last updated: 2026-03-26
+> Last updated: 2026-06-25
 > Updated by: [Human/Claude]
 ```
 

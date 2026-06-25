@@ -1,6 +1,6 @@
 # DECISIONS.md
 
-> Last updated: 2026-06-14
+> Last updated: 2026-06-25
 > Updated by: Claude
 
 This file records significant architectural and technical decisions for the Roots framework.
@@ -251,6 +251,37 @@ Roots' first public release (v0.1.0) required decisions about how it is distribu
 **Consequences:**
 - Users `pip install rootsflow`, then `import roots`.
 - Each release updates two repos (code + site) via one runbook.
+
+---
+
+### 2026-06-25: Dotted-Path Resolution for Iterator/Subprocess State Reads
+
+**Status:** Accepted
+
+**Context:**
+Agent nodes store their entire output dict under a single `output_key`, so values nest one level down (e.g. `state["epic_plan"]["stories"]`). Iterator (`items_key`, `input_mapping`) and subprocess (`input_mapping`) nodes read run state by exact top-level key only, so a nested list under `items_key` hard-failed and nested `input_mapping` values were silently dropped from child runs. Surfaced by the Poppy FR4 cross-repo handoff.
+
+**Options Considered:**
+
+1. **Reuse `flatten_for_eval`** (the existing decision-condition resolver)
+   - Pros: one resolver; already supports list indices (`results.0.name`)
+   - Cons: rebuilds the entire flattened dict (recursively walking every list) on every call — wasteful per-iteration on large accumulated state
+
+2. **Dedicated dict-only path walker (`resolve_state_path`)**
+   - Pros: O(path depth), not O(state size); explicit missing-vs-`None` sentinel
+   - Cons: a second resolver; no list-index support (diverges from condition expressions)
+
+**Decision:**
+Add a dedicated `resolve_state_path` (dict-walk only, `STATE_PATH_MISSING` sentinel) in `decision.py`, used via a shared `ProcessRunner._resolve_input_mapping` at all four read sites. Dotless keys remain plain top-level lookups (fully back-compatible). Iterator `input_mapping` now **raises** on an unresolved key instead of silently skipping, matching the subprocess path's fail-loud behavior.
+
+**Rationale:**
+Per-iteration cost and an explicit raise-vs-skip choice matter more than sharing one resolver. Dict-only keeps the walker cheap, and the use cases (dict→dict nesting) don't need list indices. Raising surfaces wiring bugs immediately rather than handing children empty values.
+
+**Consequences:**
+- Iterator/subprocess `items_key`/`input_mapping` accept dotted paths (`epic_plan.stories`); dotless keys are unchanged.
+- **Behavior change:** a missing iterator `input_mapping` key now raises `OrchestrationError` (was a silent skip) — see `docs/GOTCHAS.md`.
+- List indices (`results.0.name`) work in decision conditions but **not** in these mapping keys.
+- Shipped in v0.1.1.
 
 ---
 

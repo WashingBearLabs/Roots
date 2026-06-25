@@ -9,7 +9,7 @@
 
 > **TEMPLATE_INTENT:** Persistent record of code quality, security, and intent alignment findings from automated validation. Tracks findings across sessions with status tracking and archival.
 
-> Last updated: 2026-06-14
+> Last updated: 2026-06-25
 > Updated by: Claude (public-readiness security pass)
 
 ---
@@ -36,6 +36,29 @@
 
 <!-- Newest findings at top. Each entry has a unique ID: YYYY-MM-DD-NNN -->
 <!-- Findings are added by /kit-tools:validate-feature -->
+
+### 2026-06-25 — Dotted-Path Resolution (close-session quality check)
+
+> Branch: `main` (merged + released as v0.1.1). Independent quality review of the
+> dotted-path state-resolution change (`resolve_state_path` + `_resolve_input_mapping`,
+> 4 read sites). **No critical or warning findings** — resolver and refactor are
+> correct (None-vs-missing sentinel, non-dict intermediates, degenerate dotted keys
+> all handled; subprocess path unchanged beyond error wording; no `state` mutation;
+> aliasing pre-existing, not a regression). 1 info note. Tests: 1647 passed, 113
+> skipped; ruff clean; pyright roots/ 0 errors.
+
+| ID | Category | Severity | File | Status |
+|----|----------|----------|------|--------|
+| 2026-06-25-001 | quality | info | `roots/core/decision.py`, `roots/core/orchestrator.py` | open |
+
+**2026-06-25-001** — Semantic narrowing: a top-level state key whose name literally
+contains a dot (e.g. `"epic_plan.stories"`) is no longer matchable by `items_key`/
+`input_mapping`, since the key is always split and walked as a path. `output_key`
+names are normally identifiers so this is unlikely to occur. Documented in
+`docs/GOTCHAS.md` (#7, edge case) and `arch/DECISIONS.md` (2026-06-25).
+> Recommendation: None required — intended behavior, documented. Captured for traceability.
+
+---
 
 ### 2026-06-14 — Public-Readiness Security Pass (reconciliation)
 

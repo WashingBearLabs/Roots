@@ -11,7 +11,7 @@
 
 > **TEMPLATE_INTENT:** One-page project overview for quick orientation. Answer: What is this? What state is it in? How do I run it?
 
-> Last updated: 2026-06-14
+> Last updated: 2026-06-25
 > Updated by: Claude
 
 ---
@@ -27,7 +27,7 @@ Roots is an AI-native process orchestration framework that defines processes as 
 | Aspect | Status |
 |--------|--------|
 | **Stage** | Beta — public |
-| **Version** | v0.1.0 |
+| **Version** | v0.1.1 |
 | **Distribution** | Published to PyPI as [`rootsflow`](https://pypi.org/project/rootsflow/) (import package `roots`) |
 | **Repo** | Public — [github.com/WashingBearLabs/Roots](https://github.com/WashingBearLabs/Roots) |
 | **Active Development** | Yes — core framework complete; first public release shipped |
@@ -35,7 +35,7 @@ Roots is an AI-native process orchestration framework that defines processes as 
 ### What Works
 - Process definition via YAML directed graphs with 10 node types and 4 decision modes
 - Tick-based crash-safe orchestrator with state accumulation
-- Process composition: subprocess nodes (call another process) and iterator nodes (dynamic `for_each` fan-out), with depth limits and cycle detection
+- Process composition: subprocess nodes (call another process) and iterator nodes (dynamic `for_each` fan-out), with depth limits and cycle detection; `items_key`/`input_mapping` accept dotted paths into nested run state (e.g. `epic_plan.stories`)
 - Crash-safe parallel execution: fork/join and parallel agent_pool persist per-branch results, so recovery resumes only incomplete branches
 - Run metadata & tagging with rich `metadata_filter` querying; decision history; process versioning
 - Agent registry supporting local, remote HTTP, and MCP agents, with agent context injection and event subscriptions (`on`/`once`/`wait_for`)
@@ -44,7 +44,7 @@ Roots is an AI-native process orchestration framework that defines processes as 
 - Root packaging (.root archives for portable process distribution)
 - Full HTTP API via FastAPI (process CRUD, run management, child runs, decision history, graph mutations)
 - 5 demo applications
-- 1,716 tests (1,603 passing, 113 skipped without a live PostgreSQL) under strict pyright
+- 1,760 tests (1,647 passing, 113 skipped without a live PostgreSQL) under strict pyright
 
 ### What's In Progress
 - Production hardening and expanded agent ecosystem
